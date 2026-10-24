@@ -46,6 +46,11 @@ SECTION_WORDS = {"deck": "main", "main": "main", "mainboard": "main", "main deck
                  "sideboard": "side", "side": "side", "companion": "side",
                  "commander": "commander", "commanders": "commander",
                  "maybeboard": "ignore", "maybe": "ignore", "considering": "ignore", "tokens": "ignore"}
+ALIASES = {"edh": "commander", "cedh": "commander", "pdh": "paupercommander", "pauperedh": "paupercommander",
+           "duelcommander": "duel", "frenchcommander": "duel", "historicbrawl": "brawl", "draft": "limited",
+           "sealed": "limited", "cube": "limited"}
+NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+                "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
 LINE = re.compile(r"^(?:(SB:)\s*)?(\d+)\s*x?\s+(.+?)\s*$", re.I)
 
 
@@ -58,16 +63,30 @@ def clean_name(n):
     return n.strip()
 
 
-def parse(text, fmt):
+def parse(text, fmt, notes=None):
+    """Return (sections, unparsed_lines). `notes` (a list) receives parser notes.
+
+    Header-less lists (MTGO / plain text): only the LAST blank-line-separated block is
+    treated as the sideboard, and only if it is no bigger than a legal sideboard. This
+    keeps lists that separate creatures / spells / lands with blank lines intact.
+    """
     sections = {"main": OrderedDict(), "side": OrderedDict(), "commander": OrderedDict()}
-    current, saw_header, saw_cards, blank_after_cards = "main", False, False, False
-    constructed = FORMATS.get(fmt, (60,))[0] == 60 and FORMATS.get(fmt, (0, 0, 15))[2] == 15
+    current, saw_header = "main", False
+    max_sb = FORMATS.get(fmt, (0, 0, None))[2]
+    constructed = FORMATS.get(fmt, (60,))[0] == 60 and max_sb == 15
+    blocks, block = [], []          # header-less entries grouped by blank lines
     bad = []
+
+    def add(target, name, qty):
+        d = sections[target]
+        d[name] = d.get(name, 0) + qty
+
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
-            if saw_cards and not saw_header:
-                blank_after_cards = True
+            if block:
+                blocks.append(block)
+                block = []
             continue
         if line.startswith("//") or line.lower().startswith(("about", "name ")):
             continue
@@ -82,16 +101,28 @@ def parse(text, fmt):
             bad.append(line)
             continue
         sb, qty, name = m.group(1), int(m.group(2)), clean_name(m.group(3))
-        target = current
         if sb:
-            target = "side"
-        elif blank_after_cards and not saw_header and constructed:
-            target = "side"  # MTGO style: blank line separates sideboard
-        if target == "ignore":
-            continue
-        d = sections[target]
-        d[name] = d.get(name, 0) + qty
-        saw_cards = True
+            add("side", name, qty)
+        elif saw_header:
+            if current != "ignore":
+                add(current, name, qty)
+        else:
+            block.append((name, qty))
+    if block:
+        blocks.append(block)
+
+    # Header-less cards (if a header appeared later, these came before it -> main deck)
+    side_block = None
+    if not saw_header and constructed and len(blocks) > 1:
+        last_n = sum(q for _, q in blocks[-1])
+        if last_n <= max_sb:
+            side_block = blocks[-1]
+            if notes is not None:
+                notes.append(f"No section headers: treated the last blank-line-separated block ({last_n} cards) "
+                             "as the sideboard (MTGO style). Add 'Deck'/'Sideboard' headers if that's wrong.")
+    for b in blocks:
+        for name, qty in b:
+            add("side" if b is side_block else "main", name, qty)
     return sections, bad
 
 
@@ -102,19 +133,28 @@ def main():
     ap.add_argument("--commander", action="append", default=[], help="commander name (repeat for partners)")
     ap.add_argument("--offline", action="store_true", help="skip Scryfall checks")
     a = ap.parse_args()
-    fmt = a.format.lower().replace(" ", "").replace("edh", "commander")
+    fmt = a.format.lower().replace(" ", "").replace("-", "")
+    fmt = ALIASES.get(fmt, fmt)
     if fmt not in FORMATS:
         print(f"Unknown format '{a.format}'. Known: {', '.join(FORMATS)}"); sys.exit(2)
-    text = sys.stdin.read() if a.file == "-" else open(a.file, encoding="utf-8").read()
-    secs, bad = parse(text, fmt)
+    try:
+        text = sys.stdin.read() if a.file == "-" else open(a.file, encoding="utf-8-sig").read()
+    except (OSError, UnicodeDecodeError) as e:
+        print(f"Can't read decklist: {e}"); sys.exit(2)
+    errors, warnings = [], []
+    secs, bad = parse(text, fmt, warnings)
     min_main, exact, max_sb, max_copies = FORMATS[fmt]
     singleton = max_copies == 1
 
     for c in a.commander:
         name = clean_name(c)
-        secs["main"].pop(name, None)
+        for sec in ("main", "commander"):
+            for k in [k for k in secs[sec] if k.lower() == name.lower()]:
+                if sec == "main" and secs[sec][k] > 1:
+                    secs[sec][k] -= 1
+                else:
+                    secs[sec].pop(k)
         secs["commander"][name] = 1
-    errors, warnings = [], []
     if bad:
         warnings.append("Unparsed lines: " + " | ".join(bad[:10]))
 
@@ -162,8 +202,8 @@ def main():
                 return None
             m = re.search(r"up to (\w+) cards named", txt)
             if m:
-                words = {"seven": 7, "nine": 9}
-                return words.get(m.group(1), None)
+                w = m.group(1).lower()
+                return int(w) if w.isdigit() else NUMBER_WORDS.get(w, max_copies)
             return False
         if n.lower() in ANY_NUMBER_OFFLINE:
             return None
@@ -179,9 +219,10 @@ def main():
                 errors.append(f"{q} copies of {n} (limit {limit}).")
 
     if online:
-        legal_key = "commander" if fmt in ("duel",) else fmt
-        if fmt == "limited":
-            legal_key = None
+        # Scryfall's legality keys match these format names (duel = Duel Commander's own list)
+        legal_key = None if fmt == "limited" else fmt
+        if legal_key and cards and not any(legal_key in c.get("legalities", {}) for c in cards.values()):
+            warnings.append(f"Scryfall has no '{legal_key}' legality data; legality NOT checked — verify manually.")
         for n in combined:
             c = card_for(n)
             if not c or not legal_key:
@@ -201,6 +242,15 @@ def main():
                 c = card_for(n)
                 if c:
                     ident |= set(c.get("color_identity", []))
+                    front = c.get("type_line", "").split("//")[0]
+                    text = (c.get("oracle_text") or "") + " ".join(f.get("oracle_text", "") for f in c.get("card_faces", []) or [])
+                    ok = "can be your commander" in text or ("Legendary" in front and "Creature" in front)
+                    if fmt in ("brawl", "standardbrawl"):
+                        ok = ok or ("Legendary" in front and "Planeswalker" in front)
+                    if fmt == "oathbreaker":
+                        ok = any(t in front for t in ("Planeswalker", "Instant", "Sorcery"))  # oathbreaker + signature spell
+                    if fmt != "paupercommander" and not ok:
+                        warnings.append(f"{c['name']} doesn't look like a legal commander for {fmt} ({front.strip()}).")
             for n in secs["main"]:
                 c = card_for(n)
                 if c and not set(c.get("color_identity", [])) <= ident:

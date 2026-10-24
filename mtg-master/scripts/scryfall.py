@@ -118,7 +118,7 @@ def fmt_card(c, legal=True):
     if "loyalty" in c:
         lines.append(f"Loyalty: {c['loyalty']}")
     lines.append(oracle(c))
-    lines.append(f"Color identity: {''.join(c.get('color_identity', [])) or 'colorless'}  |  Rarity: {c.get('rarity')}  |  First/this printing: {c.get('set_name')} ({c.get('released_at')})")
+    lines.append(f"Color identity: {''.join(c.get('color_identity', [])) or 'colorless'}  |  Rarity: {c.get('rarity')}  |  Printing: {c.get('set_name')} ({c.get('released_at')})")
     if c.get("game_changer"):
         lines.append("Commander Game Changer: yes")
     if legal:
@@ -134,18 +134,23 @@ def fmt_card(c, legal=True):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--json", action="store_true", help="print raw JSON")
+    # --json is accepted both before and after the subcommand
+    js = argparse.ArgumentParser(add_help=False)
+    js.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="print raw JSON")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("card"); p.add_argument("name")
-    p = sub.add_parser("cards"); p.add_argument("names", nargs="+")
-    p = sub.add_parser("search"); p.add_argument("query"); p.add_argument("--order"); p.add_argument("--limit", type=int, default=25); p.add_argument("--unique", default="cards")
-    p = sub.add_parser("rulings"); p.add_argument("name")
-    p = sub.add_parser("sets"); p.add_argument("--limit", type=int, default=15)
+    p = sub.add_parser("card", parents=[js]); p.add_argument("name")
+    p = sub.add_parser("cards", parents=[js]); p.add_argument("names", nargs="+")
+    p = sub.add_parser("search", parents=[js]); p.add_argument("query"); p.add_argument("--order"); p.add_argument("--limit", type=int, default=25); p.add_argument("--unique", default="cards")
+    p = sub.add_parser("rulings", parents=[js]); p.add_argument("name")
+    p = sub.add_parser("sets", parents=[js]); p.add_argument("--limit", type=int, default=15)
     a = ap.parse_args()
 
     try:
         if a.cmd == "card":
             c = get_card(a.name)
             print(json.dumps(c, indent=1) if a.json else fmt_card(c))
+            if c.get("object") == "error":
+                sys.exit(1)
         elif a.cmd == "cards":
             found, missing = get_cards(a.names)
             if a.json:
@@ -168,7 +173,7 @@ def main():
             else:
                 print(f"{res.get('total_cards', len(cards))} total matches; showing {len(cards)}")
                 for c in cards:
-                    print(f"- {c['name']} {c.get('mana_cost','') or ''} — {c.get('type_line','')} | ${c.get('prices',{}).get('usd')}")
+                    print(f"- {c['name']} {c.get('mana_cost','') or ''} — {c.get('type_line','')} | " + (f"${c['prices']['usd']}" if (c.get('prices') or {}).get('usd') else "no USD price"))
         elif a.cmd == "rulings":
             c = get_card(a.name)
             if c.get("object") == "error":

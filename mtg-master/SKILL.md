@@ -43,7 +43,7 @@ Many requests touch two areas (e.g., "build me a Commander deck around this comb
 
 ## How a master answers
 
-**Lead with the answer.** "Yes, that works, here's why" or "No — Rest in Peace replaces the dies trigger, so Blood Artist sees nothing." Then the reasoning.
+**Lead with the answer.** "Yes, that works, here's why" or "No — Rest in Peace exiles them instead, so nothing dies and Blood Artist never triggers." Then the reasoning.
 
 **Rules answers cite the Comprehensive Rules** by number when you're confident of it (e.g., CR 613 for layers, CR 704 for state-based actions) and walk the interaction step by step: what goes on the stack, who gets priority, what resolves, what triggers. Quote oracle text exactly when the wording decides the outcome.
 

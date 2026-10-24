@@ -66,7 +66,10 @@ Order with `order:edhrec` for popularity in Commander; `order:released dir:desc`
 
 ## 4. Fallback when the API is blocked
 
-- Search the web for `scryfall <exact card name>` and fetch the first `scryfall.com/card/...` result. Ask the fetch tool for "exact oracle text, mana cost, type line, P/T and the full legality list".
+- Search the web for `scryfall <exact card name>` **restricted to scryfall.com** (e.g. `allowed_domains: ["scryfall.com"]`); unrestricted searches often return other sites. Fetch the first `scryfall.com/card/...` result and ask for "exact oracle text, mana cost, type line, P/T and the full legality list". If that page won't load, try another printing's Scryfall URL, then Gatherer.
+- If the fetch tool only opens URLs from search results, skip route 2 (raw api.scryfall.com URLs) entirely.
+- For legality of a whole deck, fetch the official Banned and Restricted page on magic.wizards.com (find it via search) once per format, plus the latest B&R announcement, instead of checking card by card. Card-by-card checks are still needed for "not legal" (e.g. set legality in Pioneer/Standard).
+- "Newest set / what's in Standard": search magic.wizards.com for the current release schedule, confirm on the set's Wizards product page, and give the release date.
 - For search-style questions ("best green ramp in Pioneer"), search the web for format-specific resources (MTGGoldfish format staples, EDHREC theme pages) and verify the specific cards you pick.
 - Gatherer (`gatherer.wizards.com`) also has oracle text and rulings.
 - For a long decklist where you can't batch-verify, verify the cards that matter (the engine, the combo pieces, anything you're unsure exists or is legal) and say the rest is from memory.

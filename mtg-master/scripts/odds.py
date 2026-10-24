@@ -9,7 +9,8 @@ Examples:
   # P(at least 1 copy by turn 3 on the draw)
   odds.py turn --deck 60 --copies 4 --turn 3 --draw
   # P(enough colored sources to cast a 1CC spell on turn 3 with 18 sources), 60 cards, on the play
-  odds.py sources --deck 60 --sources 18 --pips 2 --turn 3
+  # add --lands 24 for the Karsten-style figure (assumes you hit your land drops)
+  odds.py sources --deck 60 --sources 18 --pips 2 --turn 3 --lands 24
   # P(at least 2 lands and at most 4 in opening 7) with 24 lands
   odds.py range --deck 60 --copies 24 --seen 7 --min 2 --max 4
   # Combo: P(at least 1 of group A (4 cards) AND 1 of group B (3 cards)) by turn 4 on the play
@@ -54,6 +55,20 @@ def combo(N, groups, n, need=None):
     return p / total
 
 
+def sources_given_lands(N, L, S, n, pips, min_lands):
+    """P(>= pips colored sources | >= min_lands lands among n cards seen).
+
+    L lands in the deck, S of them produce the color (S <= L). This is how Frank Karsten
+    counts: it assumes you hit your land drops, so it isolates color screw from mana screw.
+    """
+    hit = base = 0.0
+    for l in range(min_lands, min(L, n) + 1):
+        p_l = pmf(N, L, n, l)
+        base += p_l
+        hit += p_l * at_least(L, S, l, pips)
+    return hit / base if base else 0.0
+
+
 def pct(x):
     return f"{100 * x:.1f}%"
 
@@ -76,13 +91,34 @@ def main():
     p = sub.add_parser("range", help="P(min <= copies seen <= max)"); common(p); p.add_argument("--min", type=int, default=0); p.add_argument("--max", type=int, default=99)
     p = sub.add_parser("sources", help="P(at least --pips colored sources by turn)"); common(p, copies=False)
     p.add_argument("--sources", type=int, required=True); p.add_argument("--pips", type=int, default=1)
+    p.add_argument("--lands", type=int, help="total lands in the deck: also report Karsten-style odds, assuming you hit your land drops")
+    p.add_argument("--mv", type=int, help="mana value of the spell (lands you need; default: the turn number)")
     p = sub.add_parser("combo", help="P(at least one from each group)"); common(p, copies=False)
     p.add_argument("--groups", type=int, nargs="+", required=True); p.add_argument("--need", type=int, nargs="+")
     p = sub.add_parser("need", help="copies needed to hit target probability"); common(p, copies=False)
     p.add_argument("--target", type=float, default=0.9); p.add_argument("--atleast", type=int, default=1)
 
     a = ap.parse_args()
+    if a.deck < 1:
+        ap.error("--deck must be at least 1")
+    if a.turn is not None and a.turn < 1:
+        ap.error("--turn must be 1 or higher")
+    if a.seen is not None and a.seen < 0:
+        ap.error("--seen cannot be negative")
     n = a.seen if a.seen is not None else seen_by(a.turn or 1, a.draw)
+    if n > a.deck:
+        ap.error(f"{n} cards seen is more than the {a.deck}-card deck")
+    for attr in ("copies", "sources"):
+        v = getattr(a, attr, None)
+        if v is not None and not 0 <= v <= a.deck:
+            ap.error(f"--{attr} must be between 0 and the deck size ({a.deck})")
+    if a.cmd == "combo":
+        if any(g < 0 for g in a.groups) or sum(a.groups) > a.deck:
+            ap.error(f"--groups must be non-negative and add up to at most the deck size ({a.deck})")
+        if a.need is not None and len(a.need) != len(a.groups):
+            ap.error(f"--need has {len(a.need)} values but --groups has {len(a.groups)}; give one per group")
+    if a.cmd == "need" and not 0 < a.target <= 1:
+        ap.error("--target is a probability between 0 and 1 (e.g. 0.9)")
     when = f"{n} cards seen" + (f" (turn {a.turn} on the {'draw' if a.draw else 'play'})" if a.turn else "")
 
     if a.cmd in ("hit", "turn"):
@@ -96,8 +132,16 @@ def main():
                 print(f"  exactly {k}: {pct(v)}")
     elif a.cmd == "sources":
         p = at_least(a.deck, a.sources, n, a.pips)
-        print(f"P(>= {a.pips} sources among {a.sources}, {when}) = {pct(p)}")
-        print("  (Unconditional. Karsten's tables condition on hitting land drops, so they read slightly higher.)")
+        print(f"P(>= {a.pips} sources among {a.sources}, {when}) = {pct(p)}  [unconditional: includes mana screw]")
+        if a.lands is not None:
+            if not a.sources <= a.lands <= a.deck:
+                ap.error("--lands must be at least --sources and at most --deck")
+            need = a.mv if a.mv is not None else (a.turn or 1)
+            pc = sources_given_lands(a.deck, a.lands, a.sources, n, a.pips, need)
+            print(f"P(>= {a.pips} sources | >= {need} of {a.lands} lands seen) = {pct(pc)}  [Karsten-style: color screw only]")
+        else:
+            print("  Karsten's tables assume you hit your land drops and read noticeably higher;"
+                  " add --lands <total lands> to get that number.")
     elif a.cmd == "combo":
         p = combo(a.deck, a.groups, n, a.need)
         print(f"P(each group {a.groups} hit {a.need or [1]*len(a.groups)}, {when}) = {pct(p)}")
@@ -106,6 +150,8 @@ def main():
             if at_least(a.deck, k, n, a.atleast) >= a.target:
                 print(f"Need {k} copies for >= {pct(a.target)} to see {a.atleast}+ ({when}); gives {pct(at_least(a.deck, k, n, a.atleast))}")
                 break
+        else:
+            print(f"Not reachable: even {a.deck} copies can't give {a.atleast}+ with {n} cards seen.")
 
 
 if __name__ == "__main__":
