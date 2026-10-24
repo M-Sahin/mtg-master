@@ -7,6 +7,9 @@ on:
     paths: ["web/**", "mtg-master/**", ".github/workflows/web.yml"]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -33,12 +36,12 @@ jobs:
         run: |
           npm start -- -p 3000 > server.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://localhost:3000/api/config > /dev/null && break; sleep 1; done
-          node scripts/e2e-demo.mjs
+          node scripts/e2e-demo.mjs 2>&1 | tee e2e.log
       - name: Screenshots
         run: |
           npm install --no-save playwright
           npx playwright install --with-deps chromium
-          OUT=shots node scripts/screenshots.mjs
+          OUT=shots node scripts/screenshots.mjs 2>&1 | tee shots/log.txt
       - name: Server log
         if: always()
         run: cat server.log || true
@@ -49,3 +52,16 @@ jobs:
           path: |
             web/shots/
             web/package-lock.json
+      - name: Publish screenshots, lockfile and e2e log to the ci-output branch
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          set -e
+          mkdir -p /tmp/out && cp -r shots /tmp/out/ 2>/dev/null || true
+          cp package-lock.json e2e.log server.log /tmp/out/ 2>/dev/null || true
+          echo "${{ github.sha }} ${{ github.ref_name }} $(date -u +%FT%TZ)" > /tmp/out/SOURCE
+          cd /tmp/out
+          git init -q -b ci-output
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A && git commit -q -m "CI output for ${{ github.sha }}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-output
