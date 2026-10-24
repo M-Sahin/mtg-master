@@ -56,7 +56,7 @@ For competitive goals, check the current metagame (MTGGoldfish/MTGTop8/untapped.
 | 2CC (turn 4) | 16 | 11 | 26 |
 | CCC (turn 3) | 23 | 16 | 36 |
 
-A dual land counts as a source for both colors. Fetchlands count for every color they can find. These are approximate; use `scripts/odds.py sources ...` for exact probabilities for a specific deck. In practice two-color decks often can't hit every target — prioritize the colors of your early, important spells and say what you're compromising.
+A dual land counts as a source for both colors. Fetchlands count for every color they can find. These are approximate. For a specific deck use `scripts/odds.py sources ... --lands <total lands>`: the Karsten-style line (assumes you hit your land drops) is the one comparable to this table. The unconditional line also counts mana screw and reads 8–12 points lower, so don't compare it with the table. In practice two-color decks often can't hit every target — prioritize the colors of your early, important spells and say what you're compromising.
 
 **Mana base quality:** untapped duals > tapped duals for faster decks; count how many lands enter tapped and consider the turn-1/turn-2 cost. Utility lands cost colored consistency — justify each.
 

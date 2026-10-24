@@ -75,7 +75,7 @@ Steps: beginning of combat → declare attackers (attackers tap unless vigilance
 ## 8. Keywords people get wrong
 
 - **Protection** (CR 702.16) — DEBT: can't be Damaged (prevented), Enchanted/Equipped, Blocked, Targeted by things with that quality. Doesn't stop sweepers or "each opponent" effects.
-- **Hexproof** — only opponents can't target. **Shroud** — no one can. **Ward** — counter unless the cost is paid; it's a trigger, so split second or "can't be countered" matters.
+- **Hexproof** — only opponents can't target. **Shroud** — no one can. **Ward** — counter unless the cost is paid. It's a triggered ability, so it still works against split second (split second doesn't stop triggers), but a spell that "can't be countered" ignores it.
 - **Indestructible** — not destroyed by lethal damage or "destroy". Still dies to -X/-X / toughness 0, sacrifice, exile, legend rule.
 - **Deathtouch** — any nonzero damage is lethal, including from noncombat damage sources.
 - **Lifelink** — damage dealt causes life gain simultaneously; not a trigger.
