@@ -37,6 +37,7 @@ body {
 }
 body {
   font-family: var(--font-ui);
+  font-variant-numeric: lining-nums;
   font-size: 17px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;

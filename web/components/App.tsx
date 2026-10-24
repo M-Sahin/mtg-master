@@ -60,6 +60,7 @@ export default function App() {
   const problems = filledSeeds.map(seedProblem).filter(Boolean) as string[];
   const ready = filledSeeds.length === 5 && filledSeeds.every((s) => s.info && !s.loading) && problems.length === 0;
   const needCode = config?.accessCodeRequired && !accessCode.trim();
+  const blocked = config?.setupProblem ?? null;
 
   const pick = useCallback(async (slot: number, name: string) => {
     setError(null);
@@ -310,11 +311,13 @@ export default function App() {
           </section>
 
           <div className="go">
-            <button type="button" className="btn btn--big btn--brass" onClick={build} disabled={!ready || !!needCode}>
+            <button type="button" className="btn btn--big btn--brass" onClick={build} disabled={!ready || !!needCode || !!blocked}>
               Build my deck
             </button>
             <p className="go-hint">
-              {!ready
+              {blocked
+                ? blocked
+                : !ready
                 ? problems.length
                   ? problems[0]
                   : `Add ${5 - filledSeeds.length} more card${5 - filledSeeds.length === 1 ? "" : "s"} to start.`

@@ -77,7 +77,29 @@ export function buildDeck(s: SubmittedDeck, lookup: Lookup, seeds: string[] = []
   };
 }
 
-export function validateDeck(deck: Deck, notFound: string[], seeds: string[] = []): Validation {
+/** Can these two cards be co-commanders? Returns null if yes, or the reason they can't. */
+export function pairingProblem(a: CardInfo, b: CardInfo): string | null {
+  const t = (c: CardInfo) => c.oracleText;
+  const partnerWith = (c: CardInfo) => t(c).match(/Partner with ([^\n(]+?)(?:\s*\(|\n|$)/)?.[1]?.trim();
+  const plainPartner = (c: CardInfo) => /(^|\n)Partner(\s*\(|\s*$|\n)/.test(t(c));
+  const isBackground = (c: CardInfo) => /\bBackground\b/.test(c.typeLine);
+  const choosesBackground = (c: CardInfo) => /choose a background/i.test(t(c));
+  const friends = (c: CardInfo) => /friends forever/i.test(t(c));
+  const companionOf = (c: CardInfo) => /doctor's companion/i.test(t(c));
+  const isDoctor = (c: CardInfo) => /Time Lord Doctor/.test(c.typeLine);
+  const pw = [partnerWith(a), partnerWith(b)];
+  if (pw[0] || pw[1]) {
+    if (pw[0]?.toLowerCase() === b.name.toLowerCase() && pw[1]?.toLowerCase() === a.name.toLowerCase()) return null;
+    return `${pw[0] ? a.name : b.name} can only partner with ${pw[0] ?? pw[1]}.`;
+  }
+  if (plainPartner(a) && plainPartner(b)) return null;
+  if ((choosesBackground(a) && isBackground(b)) || (choosesBackground(b) && isBackground(a))) return null;
+  if (friends(a) && friends(b)) return null;
+  if ((companionOf(a) && isDoctor(b)) || (companionOf(b) && isDoctor(a))) return null;
+  return `${a.name} and ${b.name} can't be paired as commanders (they need matching Partner, Friends forever, Background or Doctor's companion abilities).`;
+}
+
+export function validateDeck(deck: Deck, notFound: string[], seeds: string[] = [], opts: { commander?: string | null } = {}): Validation {
   const errors: string[] = [];
   const warnings: string[] = [];
   const commanders = [deck.commander, ...(deck.partner ? [deck.partner] : [])];
@@ -93,16 +115,21 @@ export function validateDeck(deck: Deck, notFound: string[], seeds: string[] = [
 
   // commander checks
   const ident = new Set<Color>(deck.colorIdentity);
+  if (opts.commander) {
+    const chosen = opts.commander.toLowerCase();
+    if (!commanders.some((c) => c.name.toLowerCase() === chosen || c.info?.name.toLowerCase() === chosen)) {
+      errors.push(`The user chose ${opts.commander} as the commander, but the deck is led by ${deck.commander.name}. Use ${opts.commander} as the commander.`);
+    }
+  }
   for (const c of commanders) {
     if (!c.info) continue;
-    if (!c.info.canBeCommander) errors.push(`${c.name} can't be a commander (it isn't a legendary creature and doesn't say it can be your commander).`);
+    const background = c === deck.partner && /\bBackground\b/.test(c.info.typeLine);
+    if (!c.info.canBeCommander && !background) errors.push(`${c.name} can't be a commander (it isn't a legendary creature and doesn't say it can be your commander).`);
     if (c.info.legalCommander === "banned") errors.push(`${c.name} is BANNED in Commander.`);
   }
-  if (deck.partner) {
-    const txt = `${deck.commander.info?.oracleText ?? ""}\n${deck.partner.info?.oracleText ?? ""}`;
-    if (!/partner|choose a background|friends forever|doctor's companion/i.test(txt)) {
-      errors.push(`${deck.commander.name} and ${deck.partner.name} can't be paired as commanders (no Partner / Background / similar ability).`);
-    }
+  if (deck.partner?.info && deck.commander.info) {
+    const why = pairingProblem(deck.commander.info, deck.partner.info);
+    if (why) errors.push(why);
   }
 
   // per-card checks
@@ -110,7 +137,10 @@ export function validateDeck(deck: Deck, notFound: string[], seeds: string[] = [
   let extraTurns = 0;
   for (const c of [...commanders, ...deck.cards]) {
     const i = c.info;
-    if (!i) continue;
+    if (!i) {
+      if (!notFound.some((n) => n.toLowerCase() === c.name.toLowerCase())) errors.push(`Couldn't verify "${c.name}" on Scryfall. Check the exact card name.`);
+      continue;
+    }
     const basic = isBasicLand(i.name);
     if (!basic && c.qty > 1) {
       const t = i.oracleText;

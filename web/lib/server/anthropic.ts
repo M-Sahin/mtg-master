@@ -64,6 +64,7 @@ export async function consumeStream(events: AsyncIterable<{ event: string; data:
   const blocks: any[] = [];
   const json: string[] = [];
   const msg: AssistantMessage = { content: [], stop_reason: null };
+  let stopped = false;
   for await (const { data } of events) {
     let ev: any;
     try {
@@ -116,38 +117,54 @@ export async function consumeStream(events: AsyncIterable<{ event: string; data:
         if (ev.delta?.stop_reason) msg.stop_reason = ev.delta.stop_reason;
         if (ev.usage) msg.usage = { ...msg.usage, ...ev.usage };
         break;
-      case "error":
-        throw new ModelError(ev.error?.message ?? "Model stream error", 500);
+      case "message_stop":
+        stopped = true;
+        break;
+      case "error": {
+        const type = ev.error?.type ?? "";
+        throw new ModelError(ev.error?.message ?? "Model stream error", type === "overloaded_error" ? 529 : type === "rate_limit_error" ? 429 : 500);
+      }
     }
   }
+  if (!stopped) throw new ModelError("The response stream ended early", 503);
   msg.content = blocks.filter(Boolean);
   return msg;
 }
+
+const retryable = (status: number) => status === 429 || status === 529 || status >= 500;
 
 export function anthropicCaller(apiKey: string): ModelCaller {
   return async (params, handlers, signal) => {
     let lastErr: unknown;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        signal,
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({ ...params, stream: true }),
-      });
-      if (res.ok && res.body) return consumeStream(sseEvents(res.body), handlers);
-      const text = await res.text().catch(() => "");
-      let message = text;
+      let wait = 1500 * (attempt + 1);
       try {
-        message = JSON.parse(text).error?.message ?? text;
-      } catch {}
-      lastErr = new ModelError(`Claude API ${res.status}: ${message}`.slice(0, 400), res.status);
-      // retry overload / rate limit with backoff; fail fast on anything else
-      if (res.status !== 429 && res.status !== 529 && res.status < 500) break;
-      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          signal,
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({ ...params, stream: true }),
+        });
+        if (res.ok && res.body) return await consumeStream(sseEvents(res.body), handlers);
+        const text = await res.text().catch(() => "");
+        let message = text;
+        try {
+          message = JSON.parse(text).error?.message ?? text;
+        } catch {}
+        lastErr = new ModelError(`Claude API ${res.status}: ${message}`.slice(0, 400), res.status);
+        if (!retryable(res.status)) break;
+        wait = Math.max(wait, (Number(res.headers.get("retry-after")) || 0) * 1000);
+      } catch (e) {
+        if (signal?.aborted) throw e;
+        lastErr = e;
+        // mid-stream overload or a dropped stream: retry; anything else is final
+        if (!(e instanceof ModelError) || !retryable(e.status)) break;
+      }
+      await new Promise((r) => setTimeout(r, Math.min(wait, 10000)));
     }
     throw lastErr;
   };

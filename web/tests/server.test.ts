@@ -210,8 +210,10 @@ test("demo mode refuses other seeds; access code is enforced in live mode", asyn
   let res = await handleGenerate(new Request("http://x", { method: "POST", body: JSON.stringify({ seeds: ["a", "b", "c", "d", "e"] }) }));
   assert.equal(res.status, 400);
   process.env.ANTHROPIC_API_KEY = "sk-test";
-  process.env.ACCESS_CODE = "open-sesame";
   try {
+    res = await handleGenerate(new Request("http://x", { method: "POST", body: "{}" }));
+    assert.equal(res.status, 503); // key but no access code: refuse rather than open the wallet
+    process.env.ACCESS_CODE = "open-sesame";
     res = await handleGenerate(new Request("http://x", { method: "POST", body: "{}" }));
     assert.equal(res.status, 401);
     res = await handleGenerate(new Request("http://x", { method: "POST", headers: { "x-access-code": "open-sesame" }, body: "{}" }));
@@ -310,4 +312,110 @@ test("seed problems stop the run early with a clear message", async () => {
   } finally {
     fake.restore();
   }
+});
+
+test("rate limiter allows N builds per hour per IP", async () => {
+  const { rateLimited } = await import("../lib/server/generate-handler");
+  const t = 1_000_000;
+  for (let i = 0; i < 3; i++) assert.equal(rateLimited("1.2.3.4", 3, t + i), false);
+  assert.equal(rateLimited("1.2.3.4", 3, t + 10), true);
+  assert.equal(rateLimited("5.6.7.8", 3, t + 10), false);
+  assert.equal(rateLimited("1.2.3.4", 3, t + 3_600_100), false);
+});
+
+test("the user's chosen commander is enforced", () => {
+  const s = clone();
+  const { found, notFound } = lookup(namesInSubmission(s));
+  const v = validateDeck(buildDeck(s, found, DEMO_SEEDS), notFound, DEMO_SEEDS, { commander: "Grim Haruspex" });
+  assert.match(v.errors.join(), /user chose Grim Haruspex/);
+});
+
+test("partner pairing rules", async () => {
+  const { pairingProblem } = await import("../lib/server/validate");
+  const c = (name: string, oracleText: string, typeLine = "Legendary Creature — Human") => ({ ...toCardInfo(lookupFake(name)), name, oracleText, typeLine });
+  const thrasios = c("Thrasios", "{4}: Scry 1.\nPartner (You can have two commanders if both have partner.)");
+  const tymna = c("Tymna", "Lifelink\nPartner (You can have two commanders if both have partner.)");
+  const atraxa = c("Atraxa", "Flying, vigilance");
+  assert.equal(pairingProblem(thrasios, tymna), null);
+  assert.ok(pairingProblem(thrasios, atraxa));
+  const pir = c("Pir, Imaginative Rascal", "Partner with Toothy, Imaginary Friend (When this creature enters, ...)");
+  const toothy = c("Toothy, Imaginary Friend", "Partner with Pir, Imaginative Rascal (When this creature enters, ...)");
+  assert.equal(pairingProblem(pir, toothy), null);
+  assert.ok(pairingProblem(pir, tymna));
+  const wilson = c("Wilson, Refined Grizzly", "Choose a Background (You can have a Background as a second commander.)");
+  const bg = c("Raised by Giants", "Commander creatures you own have base power and toughness 10/10.", "Legendary Enchantment — Background");
+  assert.equal(pairingProblem(wilson, bg), null);
+  assert.ok(pairingProblem(tymna, bg));
+});
+
+test("unverified names can't slip through validation", () => {
+  const s = clone();
+  const { found, notFound } = lookup(namesInSubmission(s));
+  found.delete("sol ring"); // Scryfall answered under a different spelling and we lost it
+  const v = validateDeck(buildDeck(s, found, DEMO_SEEDS), notFound, DEMO_SEEDS);
+  assert.match(v.errors.join(), /Couldn't verify "Sol Ring"/);
+});
+
+test("agent: deadline returns the best deck so far; truncated submit is retried", async () => {
+  const fake = installFakeScryfall();
+  try {
+    let calls = 0;
+    const caller: ModelCaller = async (params) => {
+      calls++;
+      if (calls === 1) return { content: [{ type: "tool_use", id: "x", name: "submit_deck", input: { __invalid_json: '{"cards":[' } }], stop_reason: "max_tokens" };
+      assert.equal(params.max_tokens, 32000);
+      await new Promise((r) => setTimeout(r, 120)); // "Claude" takes a while; the deadline passes
+      const bad = clone();
+      bad.cards.pop();
+      return { content: [{ type: "tool_use", id: `s${calls}`, name: "submit_deck", input: bad }], stop_reason: "tool_use" };
+    };
+    const events: StreamEvent[] = [];
+    // hard deadline so short that only one real submission fits
+    const out = await runAgent({ seeds: DEMO_SEEDS, commander: null, budget: "any" }, { model: "m", callModel: caller, emit: (e) => events.push(e), hardDeadlineMs: 15_100 });
+    assert.equal(calls, 2, "no third turn after the deadline");
+    assert.ok(out, "returns the last deck even though it has errors");
+    assert.equal(out!.validation.ok, false);
+    assert.ok(events.some((e) => e.type === "status" && /cut off/.test(e.text)));
+  } finally {
+    fake.restore();
+  }
+});
+
+test("agent: parallel submits in one turn are handled one at a time, extra lookups are capped", async () => {
+  const fake = installFakeScryfall();
+  try {
+    let turn = 0;
+    const seen: any[] = [];
+    const caller: ModelCaller = async (params) => {
+      turn++;
+      if (turn === 2) seen.push(...params.messages.at(-1).content);
+      if (turn === 1)
+        return {
+          content: [
+            ...Array.from({ length: 8 }, (_, i) => ({ type: "tool_use" as const, id: `q${i}`, name: "search_cards", input: { query: `x${i}` } })),
+            { type: "tool_use", id: "bad", name: "submit_deck", input: (() => { const b = clone(); b.cards.pop(); return b; })() },
+            { type: "tool_use", id: "good", name: "submit_deck", input: clone() },
+          ],
+          stop_reason: "tool_use",
+        };
+      return { content: [{ type: "tool_use", id: "fin", name: "submit_deck", input: clone() }], stop_reason: "tool_use" };
+    };
+    const out = await runAgent({ seeds: DEMO_SEEDS, commander: null, budget: "any" }, { model: "m", callModel: caller, emit: () => {} });
+    assert.ok(out?.validation.ok);
+    const byId = Object.fromEntries(seen.map((r: any) => [r.tool_use_id, r]));
+    assert.match(byId.q7.content, /Skipped/);
+    assert.match(byId.bad.content, /REJECTED/);
+    assert.match(byId.good.content, /Only one submit_deck per turn/);
+    assert.equal(seen.length, 10); // every tool_use got exactly one result
+  } finally {
+    fake.restore();
+  }
+});
+
+test("stream that ends without message_stop is an error", async () => {
+  async function* ev() {
+    yield { event: "message_start", data: '{"type":"message_start","message":{}}' };
+    yield { event: "content_block_start", data: '{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' };
+  }
+  await assert.rejects(consumeStream(ev(), {}), /ended early/);
 });

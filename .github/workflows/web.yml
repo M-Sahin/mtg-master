@@ -36,11 +36,14 @@ jobs:
         run: |
           npm start -- -p 3000 > server.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://localhost:3000/api/config > /dev/null && break; sleep 1; done
+          set -o pipefail
           node scripts/e2e-demo.mjs 2>&1 | tee e2e.log
       - name: Screenshots
         run: |
           npm install --no-save playwright
           npx playwright install --with-deps chromium
+          mkdir -p shots
+          set -o pipefail
           OUT=shots node scripts/screenshots.mjs 2>&1 | tee shots/log.txt
       - name: Server log
         if: always()

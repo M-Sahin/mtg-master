@@ -29,6 +29,10 @@ The skill rests on one rule: **verify, don't recall**. A language model's memory
 
 Three small Python helpers (standard library only, no dependencies) do the work that shouldn't be done in Claude's head: card lookups, decklist validation and probability math.
 
+## Web app: Hundredfold
+
+[`web/`](web) contains **Hundredfold**, a Next.js app built on this skill. You pick five cards, and Claude builds a complete Bracket 3 Commander deck around them. Progress is shown live: Scryfall searches, the list filling a 10×10 grid, and server-side validation with automatic fixes. You can export the result to Moxfield or Arena. It deploys to Vercel with the root directory set to `web`; see [web/README.md](web/README.md).
+
 ## Repository layout
 
 ```
@@ -45,6 +49,7 @@ mtg-master/                  ← the skill itself (this folder is what you insta
     ├── deckcheck.py         ← decklist validator
     └── odds.py              ← hypergeometric draw probabilities
 tests/                       ← offline unit tests (Scryfall is mocked with fixtures)
+web/                         ← Hundredfold, the Next.js deckbuilder that uses this skill
 .github/workflows/tests.yml  ← CI: runs the tests and packages the skill
 ```
 

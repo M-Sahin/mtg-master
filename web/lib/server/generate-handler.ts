@@ -18,10 +18,33 @@ export function parseRequest(body: any): GenerateRequest | string {
   return { seeds, commander, budget, theme };
 }
 
+// Per-instance rate limit (best effort: each warm Vercel instance keeps its own counts).
+const hits = new Map<string, number[]>();
+export function rateLimited(ip: string, perHour: number, now = Date.now()): boolean {
+  const recent = (hits.get(ip) ?? []).filter((t) => now - t < 3_600_000);
+  if (recent.length >= perHour) {
+    hits.set(ip, recent);
+    return true;
+  }
+  recent.push(now);
+  hits.set(ip, recent);
+  if (hits.size > 5000) hits.delete(hits.keys().next().value as string);
+  return false;
+}
+
 export async function handleGenerate(request: Request, override?: { callModel?: ModelCaller; demoSpeed?: number }): Promise<Response> {
   const cfg = serverConfig();
-  if (cfg.accessCode && !cfg.demo && request.headers.get("x-access-code") !== cfg.accessCode) {
-    return Response.json({ error: "Wrong or missing access code." }, { status: 401 });
+  if (!cfg.demo && !override?.callModel) {
+    if (!cfg.accessCode && !cfg.publicAccess) {
+      return Response.json({ error: "This deployment has an API key but no ACCESS_CODE. Set ACCESS_CODE (or PUBLIC_ACCESS=1) in the Vercel project settings." }, { status: 503 });
+    }
+    if (cfg.accessCode && request.headers.get("x-access-code") !== cfg.accessCode) {
+      return Response.json({ error: "Wrong or missing access code." }, { status: 401 });
+    }
+    const ip = (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || request.headers.get("x-real-ip") || "unknown";
+    if (rateLimited(ip, cfg.buildsPerHour)) {
+      return Response.json({ error: `You've built ${cfg.buildsPerHour} decks in the last hour. Try again later.` }, { status: 429 });
+    }
   }
   let body: unknown;
   try {
@@ -43,7 +66,13 @@ export async function handleGenerate(request: Request, override?: { callModel?: 
   const callModel = override?.callModel ?? (cfg.demo ? demoCaller(override?.demoSpeed ?? 1) : anthropicCaller(cfg.apiKey));
   const started = Date.now();
   const encoder = new TextEncoder();
+  // Abort the run when the browser goes away (Stop building, closed tab).
+  const ctl = new AbortController();
+  request.signal?.addEventListener?.("abort", () => ctl.abort());
   const stream = new ReadableStream({
+    cancel() {
+      ctl.abort();
+    },
     async start(controller) {
       const emit = (e: StreamEvent) => {
         try {
@@ -55,7 +84,7 @@ export async function handleGenerate(request: Request, override?: { callModel?: 
       // keep proxies from closing an idle connection while Claude thinks
       const ping = setInterval(() => emit({ type: "status", text: "" }), 15000);
       try {
-        const result = await runAgent(req, { model: cfg.model, callModel, emit, signal: request.signal });
+        const result = await runAgent(req, { model: cfg.model, callModel, emit, signal: ctl.signal });
         if (result) emit({ type: "deck", deck: result.deck, validation: result.validation });
       } catch (e) {
         emit({ type: "error", message: (e as Error).message || "Something went wrong." });
