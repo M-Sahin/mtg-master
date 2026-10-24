@@ -1,0 +1,51 @@
+name: web
+
+on:
+  push:
+    paths: ["web/**", "mtg-master/**", ".github/workflows/web.yml"]
+  pull_request:
+    paths: ["web/**", "mtg-master/**", ".github/workflows/web.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Skill copy is in sync with ../mtg-master
+        run: npm run check-skill
+      - name: Unit tests
+        run: npm test
+      - name: Build (includes Next's type check)
+        run: npm run build
+      - name: Typecheck (tests and scripts too)
+        run: npm run typecheck
+      - name: End-to-end (demo mode, real Scryfall)
+        run: |
+          npm start -- -p 3000 > server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/api/config > /dev/null && break; sleep 1; done
+          node scripts/e2e-demo.mjs
+      - name: Screenshots
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+          OUT=shots node scripts/screenshots.mjs
+      - name: Server log
+        if: always()
+        run: cat server.log || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-screenshots-and-lockfile
+          path: |
+            web/shots/
+            web/package-lock.json

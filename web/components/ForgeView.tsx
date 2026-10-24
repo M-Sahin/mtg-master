@@ -1,0 +1,119 @@
+"use client";
+import { useEffect, useRef } from "react";
+import { ROLE_COLORS } from "../lib/shared/deck-utils";
+import type { Role, Validation } from "../lib/shared/types";
+import { ROLE_LABELS } from "../lib/shared/types";
+
+export type LogItem =
+  | { kind: "text"; text: string }
+  | { kind: "status"; text: string }
+  | { kind: "tool"; id: string; name: string; label: string; summary?: string; ok?: boolean }
+  | { kind: "validation"; attempt: number; validation: Validation };
+
+export interface DraftCell {
+  name: string;
+  role: Role;
+}
+
+const TOOL_VERB: Record<string, string> = { search_cards: "Searched Scryfall", get_cards: "Read card text", submit_deck: "Checked deck" };
+
+export function ForgeView({
+  log,
+  draft,
+  commander,
+  filled,
+  elapsed,
+  onCancel,
+}: {
+  log: LogItem[];
+  draft: DraftCell[];
+  commander?: string;
+  filled: number;
+  elapsed: number;
+  onCancel: () => void;
+}) {
+  const logRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [log]);
+
+  const cells = Array.from({ length: 100 }, (_, i) => (i === 0 ? (commander ? { name: commander, role: "wincon" as Role, cmd: true } : null) : draft[i - 1] ? { ...draft[i - 1], cmd: false } : i < filled ? { name: "Basic land", role: "land" as Role, cmd: false } : null));
+  const count = cells.filter(Boolean).length;
+  const legend = [...new Set(draft.map((d) => d.role))];
+
+  return (
+    <section className="forge" aria-live="polite">
+      <div className="forge-notes">
+        <div className="forge-head">
+          <h2>Claude is building your deck</h2>
+          <span className="forge-time">{formatTime(elapsed)}</span>
+        </div>
+        <div className="forge-log" ref={logRef}>
+          {log.map((item, i) => {
+            if (item.kind === "text") return <p key={i} className="log-text">{item.text}</p>;
+            if (item.kind === "status") return <p key={i} className="log-status">{item.text}</p>;
+            if (item.kind === "tool")
+              return (
+                <div key={i} className={`log-tool ${item.summary ? (item.ok ? "is-ok" : "is-warn") : "is-busy"}`}>
+                  <span className="log-tool-verb">{TOOL_VERB[item.name] ?? item.name}</span>
+                  <code className="log-tool-q">{item.label}</code>
+                  <span className="log-tool-res">{item.summary ?? "…"}</span>
+                </div>
+              );
+            const v = item.validation;
+            return (
+              <div key={i} className={`log-check ${v.ok ? "is-ok" : "is-warn"}`}>
+                <strong>{v.ok ? `Deck check passed: ${v.total} cards, ${v.gameChangers.length} of 3 Game Changers` : `Deck check found ${v.errors.length} problem${v.errors.length === 1 ? "" : "s"}. Claude is fixing ${v.errors.length === 1 ? "it" : "them"}.`}</strong>
+                {!v.ok ? (
+                  <ul>
+                    {v.errors.slice(0, 5).map((e) => (
+                      <li key={e}>{e}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            );
+          })}
+          <span className="log-caret" aria-hidden />
+        </div>
+        <button type="button" className="btn btn--quiet" onClick={onCancel}>
+          Stop building
+        </button>
+      </div>
+
+      <div className="forge-hundred">
+        <div className="hundred-count" aria-label={`${count} of 100 cards`}>
+          <span className="hundred-num">{count}</span>
+          <span className="hundred-of">of 100</span>
+        </div>
+        <div className="hundred" role="img" aria-label={`Deck grid, ${count} of 100 slots filled`}>
+          {cells.map((c, i) => (
+            <span
+              key={i}
+              className={`cell ${c ? "is-in" : ""} ${c?.cmd ? "is-cmd" : ""}`}
+              style={c ? { ["--c" as string]: ROLE_COLORS[c.role], ["--d" as string]: `${(i % 10) * 12}ms` } : undefined}
+              title={c ? `${c.name} (${ROLE_LABELS[c.role]})` : undefined}
+            />
+          ))}
+        </div>
+        <div className="hundred-latest">{draft.length ? <>Latest: <strong>{draft[draft.length - 1].name}</strong></> : commander ? <>Commander: <strong>{commander}</strong></> : "Waiting for the list"}</div>
+        {legend.length ? (
+          <ul className="legend">
+            {legend.map((r) => (
+              <li key={r}>
+                <span className="legend-dot" style={{ background: ROLE_COLORS[r] }} />
+                {ROLE_LABELS[r]}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function formatTime(ms: number) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
