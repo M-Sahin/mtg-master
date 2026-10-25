@@ -55,7 +55,8 @@ export async function GET(request: Request) {
           <div style={{ fontSize: px(32), marginTop: px(18), color: "#c9cdf0", maxWidth: px(fullCard ? 640 : 900) }}>{sub}</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: px(44), fontSize: px(24), color: "#e2b04a" }}>
             <span>Built with Hundredfold</span>
-            <span style={{ fontSize: px(17), color: "rgba(238,240,255,0.75)" }}>{credit}</span>
+            {/* the full card already shows artist and copyright */}
+            {fullCard ? null : <span style={{ fontSize: px(17), color: "rgba(238,240,255,0.75)" }}>{credit}</span>}
           </div>
         </div>
       </div>
