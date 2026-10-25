@@ -8,6 +8,7 @@ import { systemPrompt, toolsFor, userPrompt } from "./prompt";
 import * as scry from "./scryfall";
 import { EXTRA_TURN, MLD, buildDeck, namesInSubmission, rebalanceBasics, repairCount, strictProblems, validateDeck, type SubmittedDeck } from "./validate";
 import { analysisReport, analyzeDeck, type DeckAnalysis } from "../shared/analysis";
+import { openerReport, simulateOpeners } from "../shared/openers";
 import { bracketInfo } from "../shared/bracket";
 import type { CardInfo, Deck, GenerateRequest, Role, StreamEvent, Usage, Validation } from "../shared/types";
 import { ROLES, isBasicLand, nameKey } from "../shared/types";
@@ -518,12 +519,13 @@ function reviewRequest(c: Checked): string {
     "ACCEPTED — the deck is legal. One review round before it goes to the user.",
     "Independent analysis from the server:",
     analysisReport(c.analysis),
+    openerReport(simulateOpeners(c.deck, { games: 2000 })),
   ];
   if (c.combos) parts.push(comboNotes(c.combos));
   if (c.validation.warnings.length) parts.push(`Warnings: ${c.validation.warnings.join(" ")}`);
   parts.push(
     `Review the list as a strong Bracket ${c.deck.bracket ?? 3} player would.` +
-      " Fix template gaps the counts show; swap generic staples and weak or off-plan cards for cards that make the seeds better; check the curve and the mana. Seeds and the commander stay.",
+      " Fix template gaps the counts show; swap generic staples and weak or off-plan cards for cards that make the seeds better; check the curve and the mana (the goldfished opening hands show whether lands, colors and the commander arrive on time). Seeds and the commander stay.",
     "Then call revise_deck with up to 10 swaps (each removes one card and adds one), or with an empty swaps list if the deck is already right. Don't resubmit the whole deck.",
   );
   return parts.join("\n");

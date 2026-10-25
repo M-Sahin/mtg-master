@@ -13,17 +13,17 @@ export function renderReport(r: { meta: { model: string; judge: string; variants
     "",
     "## Summary",
     "",
-    "| Variant | Builds | Legal | Avg time | Max time | Avg cost | Searches | Submits | Template (of 6) | Missing template cards | Color-source gap | Generic staples | Over budget | Too-strong combos | All seeds | Judge W/L/T vs baseline |",
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+    "| Variant | Builds | Legal | Avg time | Max time | Avg cost | Searches | Submits | Template (of 6) | Missing template cards | Color-source gap | Generic staples | Over budget | Too-strong combos | All seeds | 4th land on T4 | Commander on time | Worst color by T3 | Judge W/L/T vs baseline |",
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
   ];
   for (const a of aggregates) {
     lines.push(
-      `| ${a.variant} | ${a.builds} | ${pct(a.okRate)} | ${s(a.avgMs)} | ${s(a.maxMs)} | ${a.avgCost != null ? `$${a.avgCost.toFixed(3)}` : "?"} | ${a.avgSearches} | ${a.avgSubmits} | ${a.templateHits} | ${a.templateShortfall} | ${a.colorShortfall} | ${pct(a.stapleShare)} | ${a.overBudget} | ${a.strongCombos} | ${pct(a.allSeeds)} | ${a.judgeWins != null ? `${a.judgeWins}/${a.judgeLosses}/${a.judgeTies}` : "baseline"} |`,
+      `| ${a.variant} | ${a.builds} | ${pct(a.okRate)} | ${s(a.avgMs)} | ${s(a.maxMs)} | ${a.avgCost != null ? `$${a.avgCost.toFixed(3)}` : "?"} | ${a.avgSearches} | ${a.avgSubmits} | ${a.templateHits} | ${a.templateShortfall} | ${a.colorShortfall} | ${pct(a.stapleShare)} | ${a.overBudget} | ${a.strongCombos} | ${pct(a.allSeeds)} | ${pct(a.landDrop4)} | ${pct(a.commanderOnTime)} | ${pct(a.worstColorT3)} | ${a.judgeWins != null ? `${a.judgeWins}/${a.judgeLosses}/${a.judgeTies}` : "baseline"} |`,
     );
   }
   lines.push(
     "",
-    "How to read it: higher is better for Legal, Template, All seeds and judge wins; lower is better for time, cost, missing template cards, color-source gap (lands short of the Karsten targets, summed over colors), generic staples (share of top-300 EDHREC cards among non-seed spells), over-budget decks and too-strong combos. Template and mana numbers are counted from Oracle text by `lib/shared/analysis.ts`, not from the builder's own tags.",
+    "How to read it: higher is better for Legal, Template, All seeds and judge wins; lower is better for time, cost, missing template cards, color-source gap (lands short of the Karsten targets, summed over colors), generic staples (share of top-300 EDHREC cards among non-seed spells), over-budget decks and too-strong combos. The last three come from 2,000 goldfished games per deck (`lib/shared/openers.ts`): the fourth land on turn 4, the commander cast by the turn after its mana value, and the deck's worst color on the battlefield by turn 3; higher is better. Template and mana numbers are counted from Oracle text by `lib/shared/analysis.ts`, not from the builder's own tags.",
   );
 
   if (pairs.length) {
@@ -43,10 +43,10 @@ export function renderReport(r: { meta: { model: string; judge: string; variants
     }
   }
 
-  lines.push("", "## Per build", "", "| Hand | Variant | Run | Result | Commander | Time | Cost | Searches | Submits | Template | Color gap | Staples | €  | Combos | Review |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+  lines.push("", "## Per build", "", "| Hand | Variant | Run | Result | Commander | Time | Cost | Searches | Submits | Template | Color gap | Staples | €  | Combos | T4 land / Cmdr / Color | Review |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const x of [...scores].sort((a, b) => a.hand.localeCompare(b.hand) || a.variant.localeCompare(b.variant) || a.run - b.run)) {
     lines.push(
-      `| ${x.hand} | ${x.variant} | ${x.run} | ${x.ok ? "legal" : `**failed**: ${(x.error ?? "").slice(0, 80)}`} | ${x.commander ?? ""} | ${s(x.ms)} | ${x.costUsd != null ? `$${x.costUsd.toFixed(3)}` : "?"} | ${x.searches} | ${x.submits}${x.revises ? `+${x.revises}r` : ""} | ${x.templateHits}/6 | ${x.colorShortfall} | ${pct(x.stapleShare)} | ${Math.round(x.priceEur)}${x.overBudget ? " (over)" : ""} | ${x.combosChecked ? x.strongCombos : "?"} | ${(x.review ?? "").replace(/\|/g, "/").slice(0, 80)} |`,
+      `| ${x.hand} | ${x.variant} | ${x.run} | ${x.ok ? "legal" : `**failed**: ${(x.error ?? "").slice(0, 80)}`} | ${x.commander ?? ""} | ${s(x.ms)} | ${x.costUsd != null ? `$${x.costUsd.toFixed(3)}` : "?"} | ${x.searches} | ${x.submits}${x.revises ? `+${x.revises}r` : ""} | ${x.templateHits}/6 | ${x.colorShortfall} | ${pct(x.stapleShare)} | ${Math.round(x.priceEur)}${x.overBudget ? " (over)" : ""} | ${x.combosChecked ? x.strongCombos : "?"} | ${x.landDrop4 != null ? `${pct(x.landDrop4)} / ${pct(x.commanderOnTime ?? 0)} / ${pct(x.worstColorT3 ?? 0)}` : ""} | ${(x.review ?? "").replace(/\|/g, "/").slice(0, 80)} |`,
     );
   }
   return lines.join("\n") + "\n";

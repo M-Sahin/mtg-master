@@ -2,6 +2,7 @@
 import type { AgentResult } from "../lib/server/agent";
 import type { ComboReport } from "../lib/server/combos";
 import type { StreamEvent, Usage } from "../lib/shared/types";
+import { simulateOpeners } from "../lib/shared/openers";
 
 export { costUsd } from "../lib/shared/models";
 import { costUsd } from "../lib/shared/models";
@@ -46,6 +47,10 @@ export interface Score {
   unverifiedTags: number;
   warnings: number;
   review?: string;
+  /** Goldfished opening hands: fourth land on turn 4; commander cast by the turn after its MV; worst color by turn 3. */
+  landDrop4?: number;
+  commanderOnTime?: number;
+  worstColorT3?: number;
 }
 
 export function scoreBuild(args: {
@@ -112,6 +117,16 @@ export function scoreBuild(args: {
     unverifiedTags: a.unverifiedTags.length,
     warnings: result.validation.warnings.length,
     review: result.review,
+    ...openerScores(result),
+  };
+}
+
+function openerScores(result: AgentResult) {
+  const o = simulateOpeners(result.deck, { games: 2000 });
+  return {
+    landDrop4: o.landDrop4,
+    commanderOnTime: o.commanders.length ? Math.min(...o.commanders.map((c) => c.oneLate)) : undefined,
+    worstColorT3: o.colorByTurn3.length ? Math.min(...o.colorByTurn3.map((c) => c.share)) : undefined,
   };
 }
 
@@ -131,6 +146,9 @@ export interface Aggregate {
   overBudget: number;
   strongCombos: number;
   allSeeds: number; // share of builds with all five seeds
+  landDrop4: number;
+  commanderOnTime: number;
+  worstColorT3: number;
   judgeWins?: number;
   judgeLosses?: number;
   judgeTies?: number;
@@ -159,5 +177,8 @@ export function aggregate(variant: string, scores: Score[]): Aggregate {
     overBudget: ok.filter((x) => x.overBudget).length,
     strongCombos: ok.reduce((n, x) => n + x.strongCombos, 0),
     allSeeds: r2(ok.length ? ok.filter((x) => x.seedsInDeck >= 5).length / ok.length : 0),
+    landDrop4: r2(avg(ok.map((x) => x.landDrop4 ?? 0))),
+    commanderOnTime: r2(avg(ok.map((x) => x.commanderOnTime ?? 0))),
+    worstColorT3: r2(avg(ok.map((x) => x.worstColorT3 ?? 0))),
   };
 }

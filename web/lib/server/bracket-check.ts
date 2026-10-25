@@ -14,6 +14,7 @@ import { checkCombos, type Combo } from "./combos";
 import * as scry from "./scryfall";
 import { EXTRA_TURN, MLD, pairingProblem, validateDeck } from "./validate";
 import { analyzeDeck, type DeckAnalysis } from "../shared/analysis";
+import { simulateOpeners, type OpenerReport } from "../shared/openers";
 import { parseDecklist } from "../shared/decklist";
 import type { CardInfo, Color, Deck, DeckCard } from "../shared/types";
 import { isBasicLand } from "../shared/types";
@@ -44,6 +45,8 @@ export interface BracketReport {
   notFound: string[];
   problems: string[]; // legality / deck-size issues
   analysis: DeckAnalysis | null;
+  /** Goldfished opening hands, for decks of 90+ cards. */
+  openers: OpenerReport | null;
 }
 
 /** The bracket rules as a pure function of what the deck contains. */
@@ -138,6 +141,7 @@ export async function checkBracket(text: string): Promise<BracketReport> {
     notFound,
     problems,
     analysis: cmdCards.length && total >= 60 ? analyzeDeck(deck) : null,
+    openers: cmdCards.length && total >= 90 ? simulateOpeners(deck, { games: 3000 }) : null,
   };
 }
 

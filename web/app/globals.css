@@ -1274,6 +1274,51 @@ button.card {
 .tpl-n small {
   color: var(--faint);
 }
+.openers {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+.op-row {
+  display: grid;
+  grid-template-columns: minmax(0, 11rem) 1fr 3rem;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.92rem;
+}
+.op-label {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.op-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+}
+.op-bar {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+.op-bar.is-ok {
+  background: var(--ok);
+}
+.op-bar.is-low {
+  background: var(--warn);
+}
+.op-n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.op-problems {
+  margin: 10px 0 0;
+  padding-left: 1.1rem;
+  color: var(--warn);
+  font-size: 0.92rem;
+}
 .pipbar {
   display: flex;
   height: 34px;

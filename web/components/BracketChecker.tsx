@@ -2,6 +2,7 @@
 // /bracket: paste a decklist, see the lowest Commander bracket it fits and why. No AI, no key.
 import { useState } from "react";
 import type { BracketReport } from "../lib/server/bracket-check";
+import { OpenersView } from "./OpenersView";
 
 const EXAMPLE = "Commander\n1 Meren of Clan Nel Toth\n\nDeck\n1 Sol Ring\n1 Sakura-Tribe Elder\n1 Viscera Seer\n…";
 
@@ -151,6 +152,8 @@ export default function BracketChecker() {
               )}
               {report.notFound.length ? <p className="note">Not found on Scryfall (check the spelling): {report.notFound.join(", ")}.</p> : null}
             </div>
+
+            {report.openers ? <OpenersView report={report.openers} /> : null}
 
             <p className="note">
               This is an estimate from the official bracket guidelines. Brackets are also about intent, so talk it over with your table. Game Changers come from Scryfall and combos from{" "}

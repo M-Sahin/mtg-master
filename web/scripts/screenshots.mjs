@@ -43,7 +43,11 @@ await run("4-result", { width: 1440, height: 1000 }, toResult);
 await run("5-numbers", { width: 1440, height: 1000 }, async (p) => {
   await toResult(p);
   await p.click("role=tab[name=Numbers]");
-  await p.waitForTimeout(800);
+  await p.waitForSelector("[data-testid=openers] .op-row", { timeout: 10000 }).catch(() => errors.push("no Opening hands panel on the Numbers tab"));
+  const rows = await p.locator("[data-testid=openers] .op-row").allInnerTexts();
+  console.log(`opening hands: ${rows.map((r) => r.replace(/\s+/g, " ")).join(" | ")}`);
+  await p.locator("[data-testid=openers]").scrollIntoViewIfNeeded().catch(() => {});
+  await p.waitForTimeout(500);
 });
 await run("6-hand", { width: 1440, height: 1000 }, async (p) => {
   await toResult(p);

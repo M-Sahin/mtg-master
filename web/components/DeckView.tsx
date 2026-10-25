@@ -4,6 +4,8 @@ import { COMMANDER_TEMPLATE, bracketInfo } from "../lib/shared/bracket";
 import { MANA_COLORS, ROLE_COLORS, averageMv, byRole, byType, curve, exportText, library, pips, price, shuffle, totalCards, isLand } from "../lib/shared/deck-utils";
 import type { Color, Deck, DeckCard, Validation } from "../lib/shared/types";
 import { ROLE_LABELS } from "../lib/shared/types";
+import { simulateOpeners } from "../lib/shared/openers";
+import { OpenersView } from "./OpenersView";
 import { CardFace, IdentityPips, ManaCost } from "./CardFace";
 import { ShareButton } from "./ShareSheet";
 
@@ -279,6 +281,7 @@ function NumbersTab({ deck }: { deck: Deck }) {
             ))}
         </div>
       </section>
+      <OpenersPanel deck={deck} />
       <section className="panel">
         <h3>Price</h3>
         <p className="panel-big">€{cost.eur.toFixed(0)}</p>
@@ -286,6 +289,12 @@ function NumbersTab({ deck }: { deck: Deck }) {
       </section>
     </div>
   );
+}
+
+/** Goldfished opening hands, worked out in the browser (no API calls). */
+function OpenersPanel({ deck }: { deck: Deck }) {
+  const r = useMemo(() => (deck.cards.some((c) => c.info) ? simulateOpeners(deck) : null), [deck]);
+  return r ? <OpenersView report={r} /> : null;
 }
 
 function HandTab({ deck, onOpen }: { deck: Deck; onOpen: (c: DeckCard) => void }) {
