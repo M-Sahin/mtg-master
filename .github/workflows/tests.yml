@@ -17,6 +17,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Unit tests (offline, Scryfall mocked)
         run: python -m unittest discover -s tests -v
+      - name: Live Scryfall smoke test (double-faced and split names)
+        if: matrix.python-version == '3.12'
+        run: |
+          set -e
+          out=$(python mtg-master/scripts/scryfall.py cards "Ojer Axonil, Deepest Might // Temple of Power" "Alrund, God of the Cosmos // Hakka, Whispering Raven" "Fire // Ice")
+          echo "$out" | grep -E "^(Ojer|Alrund|Fire)"
+          if echo "$out" | grep -q "NOT FOUND"; then echo "$out"; exit 1; fi
+          printf '1 Ojer Axonil, Deepest Might // Temple of Power\n59 Mountain\n' | python mtg-master/scripts/deckcheck.py - -f pioneer
       - name: Package the skill
         run: python -m zipfile -c mtg-master.skill mtg-master/
       - uses: actions/upload-artifact@v4

@@ -29,6 +29,10 @@ The skill rests on one rule: **verify, don't recall**. A language model's memory
 
 Three small Python helpers (standard library only, no dependencies) do the work that shouldn't be done in Claude's head: card lookups, decklist validation and probability math.
 
+## Web app: Hundredfold
+
+[`web/`](web) contains **Hundredfold**, a Next.js app built on this skill. You pick five cards, and Claude builds a complete Bracket 3 Commander deck around them. Progress is shown live: Scryfall searches, the list filling a 10×10 grid, and server-side validation with automatic fixes. You can export the result to Moxfield or Arena. It deploys to Vercel with the root directory set to `web`; see [web/README.md](web/README.md).
+
 ## Repository layout
 
 ```
@@ -45,6 +49,7 @@ mtg-master/                  ← the skill itself (this folder is what you insta
     ├── deckcheck.py         ← decklist validator
     └── odds.py              ← hypergeometric draw probabilities
 tests/                       ← offline unit tests (Scryfall is mocked with fixtures)
+web/                         ← Hundredfold, the Next.js deckbuilder that uses this skill
 .github/workflows/tests.yml  ← CI: runs the tests and packages the skill
 ```
 
@@ -159,6 +164,7 @@ The skill's reference files contain time-sensitive facts, such as Commander brac
 
 ## Changelog
 
+- **1.0.2**: `scryfall.py cards` and `deckcheck.py` couldn't find double-faced cards given by their full "Front // Back" name, because Scryfall's batch endpoint doesn't match those. They now look up the front face, fall back to an exact and then a fuzzy lookup for anything still missing, and CI checks this against the live Scryfall API.
 - **1.0.1**: fixes found while testing the original 1.0:
   - `odds.py`: `combo` with a `--need` list shorter than `--groups` used to give a silently wrong answer. It now refuses that input, along with other impossible inputs (more copies or cards seen than the deck has, a `--target` above 1, turn 0). `need` now says when the target can't be reached.
   - `deckcheck.py`: plain-text lists that separate creatures, spells and lands with blank lines used to have everything after the first blank line counted as sideboard. Now only the last block is treated as the sideboard, and only if it fits in 15 cards.

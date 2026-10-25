@@ -39,7 +39,8 @@ def fake_request(path, data=None):
     if path.startswith("/cards/collection"):
         found, missing = [], []
         for ident in data["identifiers"]:
-            c = INDEX.get(ident["name"].lower())
+            # like real Scryfall: the full "Front // Back" name doesn't match here
+            c = None if " // " in ident["name"] else INDEX.get(ident["name"].lower())
             (found.append(c) if c else missing.append(ident))
         return {"object": "list", "data": found, "not_found": missing}
     if path.startswith("/cards/named?"):
