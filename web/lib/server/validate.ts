@@ -78,26 +78,65 @@ export function buildDeck(s: SubmittedDeck, lookup: Lookup, seeds: string[] = []
   };
 }
 
+/** The abilities that let a card share the command zone (rule 702.124 and its relatives). */
+export interface PairingAbilities {
+  partner: boolean; // plain "Partner"
+  partnerWith?: string; // "Partner with NAME"
+  partnerGroup?: string; // "Partner—Father & son", "Partner—Survivors"… (lower-cased name)
+  friendsForever: boolean;
+  choosesBackground: boolean;
+  isBackground: boolean;
+  doctorsCompanion: boolean;
+  isDoctor: boolean;
+}
+
+export function pairingAbilities(c: CardInfo): PairingAbilities {
+  const t = c.oracleText.replace(/\([^)]*\)/g, ""); // reminder text repeats the keyword
+  const group = t.match(/(?:^|\n)Partner\s*[—–-]\s*([^\n(]+?)\s*(?:\n|$)/)?.[1]?.trim();
+  const friends = /(?:^|\n)Friends forever\b/i.test(t) || group?.toLowerCase() === "friends forever";
+  return {
+    partner: /(?:^|\n)Partner\s*(?:\n|$)/.test(t),
+    partnerWith: t.match(/(?:^|\n)Partner with ([^\n(]+?)\s*(?:\n|$)/)?.[1]?.trim(),
+    partnerGroup: friends ? undefined : group?.toLowerCase(),
+    friendsForever: friends,
+    choosesBackground: /choose a background/i.test(t),
+    isBackground: /\bBackground\b/.test(c.typeLine),
+    doctorsCompanion: /doctor's companion/i.test(t),
+    isDoctor: /Time Lord Doctor/.test(c.typeLine),
+  };
+}
+
+/** Short description of how a card can pair, for prompts ("" if it can't). */
+export function pairingLabel(c: CardInfo): string {
+  const p = pairingAbilities(c);
+  if (p.partnerWith) return `Partner with ${p.partnerWith}`;
+  if (p.partnerGroup) return `Partner—${c.oracleText.match(/Partner\s*[—–-]\s*([^\n(]+?)\s*(?:\(|\n|$)/)?.[1]?.trim()}: a second commander must have the same Partner— ability`;
+  if (p.partner) return "Partner: a second commander must also have plain Partner";
+  if (p.friendsForever) return "Friends forever: a second commander must also have Friends forever";
+  if (p.choosesBackground) return "Choose a Background: a Background enchantment can be the second commander";
+  if (p.doctorsCompanion) return "Doctor's companion: a Time Lord Doctor can be the second commander";
+  return "";
+}
+
 /** Can these two cards be co-commanders? Returns null if yes, or the reason they can't. */
 export function pairingProblem(a: CardInfo, b: CardInfo): string | null {
-  const t = (c: CardInfo) => c.oracleText;
-  const partnerWith = (c: CardInfo) => t(c).match(/Partner with ([^\n(]+?)(?:\s*\(|\n|$)/)?.[1]?.trim();
-  const plainPartner = (c: CardInfo) => /(^|\n)Partner(\s*\(|\s*$|\n)/.test(t(c));
-  const isBackground = (c: CardInfo) => /\bBackground\b/.test(c.typeLine);
-  const choosesBackground = (c: CardInfo) => /choose a background/i.test(t(c));
-  const friends = (c: CardInfo) => /friends forever/i.test(t(c));
-  const companionOf = (c: CardInfo) => /doctor's companion/i.test(t(c));
-  const isDoctor = (c: CardInfo) => /Time Lord Doctor/.test(c.typeLine);
-  const pw = [partnerWith(a), partnerWith(b)];
-  if (pw[0] || pw[1]) {
-    if (pw[0]?.toLowerCase() === b.name.toLowerCase() && pw[1]?.toLowerCase() === a.name.toLowerCase()) return null;
-    return `${pw[0] ? a.name : b.name} can only partner with ${pw[0] ?? pw[1]}.`;
+  const pa = pairingAbilities(a);
+  const pb = pairingAbilities(b);
+  if (pa.partnerWith || pb.partnerWith) {
+    if (pa.partnerWith?.toLowerCase() === b.name.toLowerCase() && pb.partnerWith?.toLowerCase() === a.name.toLowerCase()) return null;
+    return `${pa.partnerWith ? a.name : b.name} can only partner with ${pa.partnerWith ?? pb.partnerWith}.`;
   }
-  if (plainPartner(a) && plainPartner(b)) return null;
-  if ((choosesBackground(a) && isBackground(b)) || (choosesBackground(b) && isBackground(a))) return null;
-  if (friends(a) && friends(b)) return null;
-  if ((companionOf(a) && isDoctor(b)) || (companionOf(b) && isDoctor(a))) return null;
-  return `${a.name} and ${b.name} can't be paired as commanders (they need matching Partner, Friends forever, Background or Doctor's companion abilities).`;
+  if (pa.partnerGroup || pb.partnerGroup) {
+    if (pa.partnerGroup && pa.partnerGroup === pb.partnerGroup) return null;
+    const [has, other] = pa.partnerGroup ? [a, b] : [b, a];
+    const label = has.oracleText.match(/Partner\s*[—–-]\s*([^\n(]+?)\s*(?:\(|\n|$)/)?.[1]?.trim();
+    return `${has.name} has Partner—${label}, so the second commander must have Partner—${label} too (${other.name} doesn't).`;
+  }
+  if (pa.partner && pb.partner) return null;
+  if ((pa.choosesBackground && pb.isBackground) || (pb.choosesBackground && pa.isBackground)) return null;
+  if (pa.friendsForever && pb.friendsForever) return null;
+  if ((pa.doctorsCompanion && pb.isDoctor) || (pb.doctorsCompanion && pa.isDoctor)) return null;
+  return `${a.name} and ${b.name} can't be paired as commanders (they need matching Partner, Partner—[name], Friends forever, Background or Doctor's companion abilities).`;
 }
 
 export function validateDeck(deck: Deck, notFound: string[], seeds: string[] = [], opts: { commander?: string | null } = {}): Validation {

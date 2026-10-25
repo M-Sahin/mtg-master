@@ -347,6 +347,30 @@ test("partner pairing rules", async () => {
   const bg = c("Raised by Giants", "Commander creatures you own have base power and toughness 10/10.", "Legendary Enchantment — Background");
   assert.equal(pairingProblem(wilson, bg), null);
   assert.ok(pairingProblem(tymna, bg));
+  // named partner abilities ("Partner—[name]"): only the same name pairs
+  const kratos = c("Kratos, Stoic Father", "Whenever you attack with one or more Gods and whenever a God dies, you get an experience counter.\nAt the beginning of your end step, put a number of +1/+1 counters on target creature equal to the number of experience counters you have.\nPartner—Father & son (You can have two commanders if both have this ability.)");
+  const atreus = c("Atreus, Impulsive Son", "Reach\n{3}, {T}: Draw a card for each experience counter you have, then discard a card. Atreus deals 2 damage to each opponent.\nPartner—Father & son (You can have two commanders if both have this ability.)");
+  const survivor = c("Some Survivor", "Partner—Survivors (You can have two commanders if both have this ability.)");
+  assert.equal(pairingProblem(kratos, atreus), null);
+  assert.equal(pairingProblem(atreus, kratos), null);
+  assert.match(pairingProblem(kratos, survivor) ?? "", /Partner—Father & son, so the second commander must have Partner—Father & son too/);
+  assert.ok(pairingProblem(kratos, tymna), "a named partner doesn't pair with plain Partner");
+  const friend1 = c("Friend One", "Friends forever (You can have two commanders if both have friends forever.)");
+  const friend2 = c("Friend Two", "Partner—Friends forever (You can have two commanders if both have this ability.)");
+  assert.equal(pairingProblem(friend1, friend2), null);
+});
+
+test("the build prompt points out seeds that can be co-commanders", async () => {
+  const { pairingLabel } = await import("../lib/server/validate");
+  const c = (name: string, oracleText: string) => ({ ...toCardInfo(lookupFake(name)), name, oracleText, typeLine: "Legendary Creature — God", canBeCommander: true });
+  const kratos = c("Kratos, Stoic Father", "Partner—Father & son (You can have two commanders if both have this ability.)");
+  const atreus = c("Atreus, Impulsive Son", "Reach\nPartner—Father & son (You can have two commanders if both have this ability.)");
+  const others = ["Sol Ring", "Viscera Seer", "Grim Haruspex"].map((n) => toCardInfo(lookupFake(n)));
+  assert.match(pairingLabel(kratos), /^Partner—Father & son: a second commander must have the same/);
+  const up = userPrompt({ seeds: [kratos.name, atreus.name, ...others.map((o) => o.name)], commander: kratos.name, budget: "any" }, [kratos, atreus, ...others]);
+  assert.match(up, /Kratos, Stoic Father .*Partner—Father & son/);
+  assert.match(up, /can be co-commanders[^\n]*Kratos, Stoic Father \+ Atreus, Impulsive Son/);
+  assert.match(up, /put Kratos, Stoic Father in "commander" and its partner in "partner"/);
 });
 
 test("unverified names can't slip through validation", () => {

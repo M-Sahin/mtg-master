@@ -4,6 +4,7 @@ import { BRACKET } from "../shared/bracket";
 import type { Budget, CardInfo, GenerateRequest } from "../shared/types";
 import { SKILL_FILES, SKILL_VERSION } from "../skill/content";
 import type { EngineOptions } from "./engine";
+import { pairingLabel, pairingProblem } from "./validate";
 
 /** Pull "## N. Title" sections out of a reference file. */
 export function sections(md: string, numbers: number[]): string {
@@ -123,12 +124,23 @@ const BUDGET_TEXT: Record<Budget, string> = {
 };
 
 export function userPrompt(req: GenerateRequest, seeds: CardInfo[]): string {
-  const lines = seeds.map((s) => `- ${s.name} — ${s.manaCost || "(no cost)"} — ${s.typeLine} — identity ${s.colorIdentity.join("") || "C"}${s.canBeCommander ? " — can be a commander" : ""}`);
+  const lines = seeds.map((s) => {
+    const pair = pairingLabel(s);
+    return `- ${s.name} — ${s.manaCost || "(no cost)"} — ${s.typeLine} — identity ${s.colorIdentity.join("") || "C"}${s.canBeCommander ? " — can be a commander" : ""}${pair ? ` — ${pair}` : ""}`;
+  });
+  // seeds that can share the command zone with each other: point it out, the pair is usually the point
+  const pairs: string[] = [];
+  for (let i = 0; i < seeds.length; i++)
+    for (let j = i + 1; j < seeds.length; j++)
+      if (seeds[i].canBeCommander && seeds[j].canBeCommander && !pairingProblem(seeds[i], seeds[j])) pairs.push(`${seeds[i].name} + ${seeds[j].name}`);
   return [
     `Build a Bracket ${BRACKET.number} Commander deck from these five seed cards:`,
     ...lines,
     "",
     req.commander ? `Commander: ${req.commander} (chosen by the user — use it).` : "Commander: not chosen — pick the best commander for these seeds.",
+    pairs.length
+      ? `These seeds can be co-commanders (both in the command zone; their combined color identity counts): ${pairs.join("; ")}. ${req.commander ? `If ${req.commander} is one of them, use the pair: put ${req.commander} in "commander" and its partner in "partner".` : "Prefer the pair when it fits the seeds."}`
+      : "",
     `Budget: ${BUDGET_TEXT[req.budget]}`,
     req.theme?.trim() ? `Theme / wishes from the user: ${req.theme.trim().slice(0, 300)}` : "",
   ]
@@ -169,7 +181,7 @@ export const TOOLS = [
       properties: {
         deck_name: { type: "string", description: "Short evocative deck name" },
         commander: { type: "string" },
-        partner: { type: "string", description: "Only if the commander has Partner/Background etc." },
+        partner: { type: "string", description: "Second commander, only when both can pair: Partner, Partner with, Partner—[same name], Friends forever, a Background, or a Doctor's companion with a Doctor" },
         strategy: { type: "string", description: "2–4 sentences: game plan and how the seeds fit" },
         win_conditions: { type: "array", items: { type: "string" }, description: "3–6 concrete ways the deck wins" },
         bracket_notes: { type: "string", description: "1–2 sentences on why this is Bracket 3 (Game Changers used, no MLD/chained turns/early combos)" },

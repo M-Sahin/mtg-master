@@ -9,8 +9,12 @@ import { pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const esbuild = createRequire(import.meta.url)("esbuild");
 const out = join(here, "..", ".test-build", "scryfall-live.mjs");
-await esbuild.build({ entryPoints: [join(here, "..", "lib", "server", "scryfall.ts")], bundle: true, platform: "node", format: "esm", outfile: out, logLevel: "warning" });
-const { getCollection, previewArt } = await import(pathToFileURL(out).href);
+const { writeFileSync, mkdirSync } = await import("node:fs");
+const entry = join(here, "..", ".test-build", "scryfall-live-entry.ts");
+mkdirSync(dirname(entry), { recursive: true });
+writeFileSync(entry, `export * from "../lib/server/scryfall"; export { pairingProblem } from "../lib/server/validate";`);
+await esbuild.build({ entryPoints: [entry], bundle: true, platform: "node", format: "esm", outfile: out, logLevel: "warning" });
+const { getCollection, previewArt, pairingProblem } = await import(pathToFileURL(out).href);
 
 const names = [
   "Ojer Axonil, Deepest Might // Temple of Power", // transforming DFC
@@ -21,6 +25,24 @@ const names = [
   "Sol Ring",
 ];
 const { found, notFound } = await getCollection(names);
+// pairing abilities on real Oracle text: named partners ("Partner—Father & son"), plain Partner, Partner with
+const pairs = [
+  ["Kratos, Stoic Father", "Atreus, Impulsive Son", true],
+  ["Thrasios, Triton Hero", "Tymna the Weaver", true],
+  ["Pir, Imaginative Rascal", "Toothy, Imaginary Friend", true],
+  ["Kratos, Stoic Father", "Tymna the Weaver", false],
+];
+const pairCards = await getCollection(pairs.flatMap(([a, b]) => [a, b]));
+for (const [a, b, ok] of pairs) {
+  const ca = pairCards.found.get(a.toLowerCase());
+  const cb = pairCards.found.get(b.toLowerCase());
+  const why = ca && cb ? pairingProblem(ca, cb) : "card not found";
+  console.log(`pair ${a} + ${b}: ${why ?? "ok"}`);
+  if ((why === null) !== ok) {
+    console.error(`PAIRING CHECK FAILED for ${a} + ${b}${ca ? `\n  ${a}: ${JSON.stringify(ca.oracleText)}` : ""}`);
+    process.exitCode = 1;
+  }
+}
 for (const n of names) console.log(`${found.get(n.toLowerCase())?.name ?? "MISSING"}  <=  ${n}`);
 if (notFound.length) {
   console.error("LIVE SCRYFALL CHECK FAILED, not found:", notFound);
