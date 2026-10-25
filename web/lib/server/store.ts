@@ -12,7 +12,7 @@ export function kvConfig(): { url: string; token: string } | null {
   return url && token ? { url, token } : null;
 }
 
-async function kv(cmd: (string | number)[]): Promise<unknown> {
+export async function kv(cmd: (string | number)[]): Promise<unknown> {
   const cfg = kvConfig();
   if (!cfg) throw new Error("No store configured");
   const res = await fetch(cfg.url, {

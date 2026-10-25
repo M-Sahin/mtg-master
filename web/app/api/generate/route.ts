@@ -1,4 +1,5 @@
-import { handleGenerate } from "../../../lib/server/generate-handler";
+import { after } from "next/server";
+import { handleGenerate, handleResume } from "../../../lib/server/generate-handler";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -6,5 +7,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
-  return handleGenerate(request);
+  // after(): the build keeps running when the browser disconnects (phone switched apps)
+  return handleGenerate(request, { waitUntil: (p) => after(p) });
+}
+
+/** Reconnect: GET /api/generate?job=<id>&from=<n> */
+export async function GET(request: Request) {
+  return handleResume(request);
 }

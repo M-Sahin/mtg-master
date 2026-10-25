@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BRACKET } from "../lib/shared/bracket";
 import { MANA_COLORS } from "../lib/shared/deck-utils";
-import type { Budget, Color, Deck, StreamEvent, Validation } from "../lib/shared/types";
-import { cardByName, generate, getConfig, randomCard, storage, type PublicConfig } from "../lib/client/api";
+import type { Budget, Color, Deck, GenerateRequest, StreamEvent, Validation } from "../lib/shared/types";
+import { cardByName, generate, getConfig, randomCard, runningBuild, stopBuild, storage, type PublicConfig } from "../lib/client/api";
 import { IdentityPips } from "./CardFace";
 import { DeckView } from "./DeckView";
 import { ForgeView, type DraftCell, type LogItem } from "./ForgeView";
@@ -42,11 +42,21 @@ export default function App() {
   const [saved, setSaved] = useState<Result | null>(null);
   const [surprising, setSurprising] = useState(false);
   const abort = useRef<AbortController | null>(null);
+  const jobId = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     getConfig().then(setConfig).catch(() => setConfig(null));
     setSaved(lastDeck.get());
     setAccessCode(savedCode.get() ?? "");
+    // the phone reloaded the tab mid-build: show the seeds again and pick the build back up
+    const running = runningBuild.get();
+    if (running) {
+      void loadSeeds(running.req.seeds, running.req.commander);
+      setBudget(running.req.budget);
+      setTheme(running.req.theme ?? "");
+      void run(running.req, running.job);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filledSeeds = seeds.filter(Boolean) as Seed[];
@@ -121,22 +131,29 @@ export default function App() {
   const build = async () => {
     if (!ready) return;
     savedCode.set(accessCode.trim() || null);
+    await run({ seeds: filledSeeds.map((s) => s.info!.name), commander, budget, theme });
+  };
+
+  /** Start a build, or (with `resume`) reattach to one that was running before a reload. */
+  const run = async (req: GenerateRequest, resume?: string) => {
     abort.current?.abort();
     const ctl = new AbortController();
     abort.current = ctl;
+    jobId.current = resume;
     setPhase("forging");
     setLog([]);
     setDraft([]);
-    setDraftCmd(commander ?? undefined);
+    setDraftCmd(req.commander ?? undefined);
     setFilled(0);
     setError(null);
     setResult(null);
-    const start = Date.now();
-    setElapsed(0);
+    const start = resume ? (runningBuild.get()?.at ?? Date.now()) : Date.now();
+    setElapsed(Date.now() - start);
     const timer = setInterval(() => setElapsed(Date.now() - start), 250);
     let got: Result | null = null;
     try {
-      for await (const ev of generate({ seeds: filledSeeds.map((s) => s.info!.name), commander, budget, theme }, accessCode.trim(), ctl.signal)) {
+      for await (const ev of generate(req, accessCode.trim(), ctl.signal, resume)) {
+        if (!jobId.current) jobId.current = runningBuild.get()?.job;
         handle(ev);
         if (ev.type === "deck") got = { deck: ev.deck, validation: ev.validation };
         if (ev.type === "error") setError(ev.message);
@@ -200,6 +217,7 @@ export default function App() {
 
   const cancel = () => {
     abort.current?.abort();
+    void stopBuild(jobId.current ?? runningBuild.get()?.job);
     setPhase("setup");
   };
 

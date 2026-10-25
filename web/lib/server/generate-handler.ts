@@ -1,5 +1,6 @@
 // Framework-independent handler for POST /api/generate (used by the Next.js route and tests).
 import { anthropicCaller, type ModelCaller } from "./anthropic";
+import { JOB_ID, JobNotFound, jobExists, newJobId, startJob, stopJob, tailJob } from "./jobs";
 import { runAgent } from "./agent";
 import { serverConfig } from "./config";
 import { DEMO_SEEDS, demoCaller } from "./demo";
@@ -32,7 +33,70 @@ export function rateLimited(ip: string, perHour: number, now = Date.now()): bool
   return false;
 }
 
-export async function handleGenerate(request: Request, override?: { callModel?: ModelCaller; demoSpeed?: number }): Promise<Response> {
+export interface GenerateOverride {
+  callModel?: ModelCaller;
+  demoSpeed?: number;
+  /** Keeps the server working after the response (Next's after() / Vercel's waitUntil). */
+  waitUntil?: (p: Promise<unknown>) => void;
+}
+
+const NDJSON_HEADERS = { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" };
+
+/** Stream a job's events as NDJSON lines ({...event, i}); the browser leaving only ends this stream, not the build. */
+function tailResponse(id: string, from: number, first?: StreamEvent): Response {
+  const encoder = new TextEncoder();
+  const ctl = new AbortController();
+  const stream = new ReadableStream({
+    cancel() {
+      ctl.abort();
+    },
+    async start(controller) {
+      const send = (obj: unknown) => {
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+        } catch {
+          ctl.abort(); // client went away
+        }
+      };
+      if (first) send(first);
+      // keep proxies from closing an idle connection while Claude thinks
+      const ping = setInterval(() => send({ type: "status", text: "" }), 15000);
+      try {
+        for await (const { i, event } of tailJob(id, from, ctl.signal)) send({ ...event, i });
+      } catch (e) {
+        send({ type: "error", message: e instanceof JobNotFound ? e.message : "Lost track of the build." });
+      } finally {
+        clearInterval(ping);
+        try {
+          controller.close();
+        } catch {}
+      }
+    },
+  });
+  return new Response(stream, { headers: NDJSON_HEADERS });
+}
+
+/** GET /api/generate?job=<id>&from=<n>: reconnect to a running (or just finished) build. */
+export async function handleResume(request: Request): Promise<Response> {
+  const u = new URL(request.url);
+  const id = u.searchParams.get("job") ?? "";
+  const from = Math.max(0, Number(u.searchParams.get("from")) || 0);
+  if (!JOB_ID.test(id)) return Response.json({ error: "Unknown build." }, { status: 400 });
+  // check it exists before streaming, so the browser can tell "gone" from "connection trouble"
+  if (!(await jobExists(id))) return Response.json({ error: new JobNotFound().message }, { status: 404 });
+  return tailResponse(id, from);
+}
+
+/** POST /api/generate/stop {job}: the "Stop building" button. */
+export async function handleStop(request: Request): Promise<Response> {
+  const body = await request.json().catch(() => ({}));
+  const id = typeof body?.job === "string" ? body.job : "";
+  if (!JOB_ID.test(id)) return Response.json({ error: "Unknown build." }, { status: 400 });
+  await stopJob(id);
+  return Response.json({ ok: true });
+}
+
+export async function handleGenerate(request: Request, override?: GenerateOverride): Promise<Response> {
   const cfg = serverConfig();
   if (!cfg.demo && !override?.callModel) {
     if (!cfg.accessCode && !cfg.publicAccess) {
@@ -64,40 +128,18 @@ export async function handleGenerate(request: Request, override?: { callModel?: 
   }
 
   const callModel = override?.callModel ?? (cfg.demo ? demoCaller(override?.demoSpeed ?? 1) : anthropicCaller(cfg.apiKey));
+  const id = newJobId();
   const started = Date.now();
-  const encoder = new TextEncoder();
-  // Abort the run when the browser goes away (Stop building, closed tab).
-  const ctl = new AbortController();
-  request.signal?.addEventListener?.("abort", () => ctl.abort());
-  const stream = new ReadableStream({
-    cancel() {
-      ctl.abort();
-    },
-    async start(controller) {
-      const emit = (e: StreamEvent) => {
-        try {
-          controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
-        } catch {
-          /* client went away */
-        }
-      };
-      // keep proxies from closing an idle connection while Claude thinks
-      const ping = setInterval(() => emit({ type: "status", text: "" }), 15000);
-      try {
-        const result = await runAgent(req, { model: cfg.model, callModel, emit, signal: ctl.signal, engine: cfg.engine });
-        if (result) emit({ type: "deck", deck: result.deck, validation: result.validation, analysis: result.analysis, review: result.review });
-      } catch (e) {
-        emit({ type: "error", message: (e as Error).message || "Something went wrong." });
-      } finally {
-        clearInterval(ping);
-        emit({ type: "done", ms: Date.now() - started });
-        try {
-          controller.close();
-        } catch {}
-      }
-    },
+  const run = startJob(id, async (emit, signal) => {
+    try {
+      const result = await runAgent(req, { model: cfg.model, callModel, emit, signal, engine: cfg.engine });
+      if (result) emit({ type: "deck", deck: result.deck, validation: result.validation, analysis: result.analysis, review: result.review });
+    } catch (e) {
+      emit({ type: "error", message: (e as Error).message || "Something went wrong." });
+    } finally {
+      emit({ type: "done", ms: Date.now() - started });
+    }
   });
-  return new Response(stream, {
-    headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" },
-  });
+  override?.waitUntil?.(run);
+  return tailResponse(id, 0, { type: "job", id });
 }

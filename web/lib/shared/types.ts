@@ -110,6 +110,7 @@ export type StreamEvent =
   | { type: "validation"; validation: Validation; attempt: number }
   | { type: "deck"; deck: Deck; validation: Validation; analysis?: DeckAnalysis; review?: string }
   | { type: "usage"; usage: Usage }
+  | { type: "job"; id: string }
   | { type: "error"; message: string }
   | { type: "done"; ms: number };
 
