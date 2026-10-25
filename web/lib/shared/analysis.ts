@@ -46,7 +46,11 @@ const RX: Record<Fn, RegExp[]> = {
     /deals? (?:\d+|x) damage to each (?:other )?creature/i,
     /return all (?:nonland permanents|creatures|other creatures)[^.]* to their owners'? hands/i,
     /each (?:player|opponent) sacrifices (?:all|that many|\w+) creatures/i,
-    /\bsacrifices all creatures/i,
+    /\bsacrifices? all (?:\w+ )?(?:creatures|permanents|nonland permanents)/i,
+    /\bdestroy (?:all|each) (?:non-?\w+ )+(?:creatures|permanents)|\bdestroy each (?:creature|nonland permanent|artifact|enchantment)/i,
+    /\bcreatures your opponents control get -\d+\/-\d+/i,
+    /damage (?:equal to [^.]*? )?to each (?:other )?creature/i,
+    /return all (?:attacking|tapped|nonland|other) [^.]*to (?:its|their) owner(?:'s|s'|s)? hands?/i,
   ],
   protection: [
     /(?:gains?|gain|have|has|get)\b[^.]{0,60}\b(?:hexproof|indestructible|shroud|protection from)/i,
@@ -110,9 +114,11 @@ export function detectFunctions(c: CardInfo): Set<Fn> {
       }
     }
   }
+  // overload turns a targeted spell into a one-sided wipe (Cyclonic Rift, Vandalblast)
+  if (/^Overload\b/m.test(text) && out.has("removal")) out.add("wipe");
   if (out.has("wipe") && MLD_OR_LANDS.test(text) && !/creatures|nonland/.test(text)) out.delete("wipe");
   // a wipe usually also reads like removal; count it once, as a wipe
-  if (out.has("wipe") && !RX.removal.some((r) => r.test(text.replace(/all [^.]*/gi, "")))) out.delete("removal");
+  if (out.has("wipe") && !/^Overload\b/m.test(text) && !RX.removal.some((r) => r.test(text.replace(/all [^.]*/gi, "")))) out.delete("removal");
   return out;
 }
 
