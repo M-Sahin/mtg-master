@@ -201,6 +201,36 @@ for (const b of chosen) {
   const top = topCards(prod, gross, 3).map((t) => `${t.card.n}${t.card.f ? " (foil)" : ""} ${Math.round(t.share * 100)}%`);
   console.log(`${b.code.padEnd(16)} gross €${row.grossBox.toFixed(0).padStart(5)}  net €${row.netBox.toFixed(0).padStart(5)}  unpriced ${Math.round(row.unpriced * 100)}%  top: ${top.join("; ")}`);
 }
+// ---- 5. Card Kingdom prices (Scryfall has Cardmarket and TCGplayer prices, not Card Kingdom's):
+// the cheapest in-stock non-foil copy of each card, for the card buy links
+try {
+  let ck = null;
+  for (const url of ["https://api.cardkingdom.com/api/v2/pricelist", "https://api.cardkingdom.com/api/pricelist"]) {
+    const res = await fetch(url, { headers: UA });
+    if (res.ok) {
+      ck = await res.json();
+      console.log(`Card Kingdom: ${url}, ${ck?.data?.length ?? 0} rows; first: ${JSON.stringify(ck?.data?.[0] ?? null).slice(0, 400)}`);
+      break;
+    }
+    console.log(`Card Kingdom: ${url} → ${res.status}`);
+  }
+  const best = {};
+  for (const r of ck?.data ?? []) {
+    if (!r?.name || String(r.is_foil) === "true") continue;
+    const price = Number(r.price_retail);
+    if (!(price > 0)) continue;
+    const k = nameKey(String(r.name));
+    const stock = Number(r.qty_retail ?? 0) > 0;
+    const cur = best[k];
+    // in stock beats out of stock, then cheaper
+    if (!cur || (stock && !cur[2]) || (stock === !!cur[2] && price < cur[0])) best[k] = [Math.round(price * 100) / 100, String(r.url ?? ""), stock ? 1 : 0];
+  }
+  writeFileSync(join(out, "ck-prices.json"), JSON.stringify(best));
+  console.log(`Card Kingdom prices: ${Object.keys(best).length} cards`);
+} catch (e) {
+  console.log(`Card Kingdom prices skipped: ${e.message}`);
+}
+
 rows.sort((a, b) => b.released.localeCompare(a.released) || KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind));
 writeFileSync(join(out, "index.json"), JSON.stringify({ generatedAt: pricedAt, source: "taw/magic-sealed-data + Scryfall (Cardmarket trend, EUR)", products: rows }));
 writeFileSync(join(out, "names.json"), JSON.stringify(names));
