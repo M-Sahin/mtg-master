@@ -38,8 +38,4 @@ Demo mode needs no API key: load the demo seeds and it replays one scripted buil
 
 ## Releasing (maintainers)
 
-Bump the version in the README changelog, then push a tag. The release workflow attaches `mtg-master.skill` to a GitHub Release.
-
-```bash
-git tag v1.0.3 && git push origin v1.0.3
-```
+Bump the version in the README changelog. Then go to **Actions → release → Run workflow** and enter the version, or push a tag (`git tag v1.0.3 && git push origin v1.0.3`). The workflow creates the GitHub Release and attaches `mtg-master.skill`.

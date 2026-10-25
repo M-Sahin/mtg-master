@@ -1,9 +1,16 @@
 name: release
 
-# Push a tag like v1.0.3 to publish a GitHub Release with the packaged skill attached.
+# Publishes a GitHub Release with the packaged skill attached. Either:
+#  - push a tag like v1.0.3, or
+#  - Actions → release → Run workflow, and enter the version (the tag is created for you).
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 1.0.3 (must have a line in the README changelog)"
+        required: true
 
 permissions:
   contents: write
@@ -11,6 +18,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,17 +33,17 @@ jobs:
           python -m zipfile -c mtg-master.skill mtg-master/
       - name: Release notes from the changelog
         run: |
-          v="${GITHUB_REF_NAME#v}"
+          v="${TAG#v}"
           notes=$(grep -E "^- \*\*${v//./\\.}\*\*" README.md | sed -E 's/^- \*\*[0-9.]+\*\*: ?//' || true)
           {
             echo "${notes:-See the changelog in the README.}"
             echo
             echo "**Install the skill:** download \`mtg-master.skill\` below and upload it in Claude (Customize → Skills), or copy the \`mtg-master/\` folder to \`~/.claude/skills/\` for Claude Code."
             echo
-            echo "**Host the web app:** see [web/README.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/web/README.md)."
+            echo "**Host the web app:** see [web/README.md](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/web/README.md)."
           } > notes.md
           cat notes.md
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" mtg-master.skill --title "$GITHUB_REF_NAME" --notes-file notes.md
+        run: gh release create "$TAG" mtg-master.skill --title "$TAG" --notes-file notes.md --target "$GITHUB_SHA"
