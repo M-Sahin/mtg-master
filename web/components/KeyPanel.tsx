@@ -10,6 +10,30 @@ export interface KeyState {
 }
 
 const MODEL_NAME = "hundredfold:model";
+const CHECKED = "hundredfold:key-checked"; // per tab: don't re-check the same key on every reload
+
+type ModelList = { id: string; name: string }[];
+
+function cachedModels(key: string): ModelList | null {
+  try {
+    const c = JSON.parse(sessionStorage.getItem(CHECKED) ?? "null");
+    return c && c.tail === key.slice(-10) && Date.now() - c.at < 6 * 3_600_000 ? c.models : null;
+  } catch {
+    return null;
+  }
+}
+function cacheModels(key: string, models: ModelList) {
+  try {
+    sessionStorage.setItem(CHECKED, JSON.stringify({ tail: key.slice(-10), at: Date.now(), models }));
+  } catch {}
+}
+
+/** The model to use: the saved choice if the key can use it, else Sonnet, else the key's first model. */
+function fitModel(wanted: string, list: ModelList): string {
+  if (list.some((m) => m.id === wanted)) return wanted;
+  if (list.some((m) => m.id === DEFAULT_MODEL)) return DEFAULT_MODEL;
+  return list[0]?.id ?? DEFAULT_MODEL;
+}
 
 export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onChange: (v: KeyState) => void; serverKey: boolean }) {
   const [draft, setDraft] = useState("");
@@ -29,10 +53,20 @@ export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onCh
     } catch {}
     if (saved) {
       setRemember(saved.remember);
+      const cached = cachedModels(saved.key);
+      const apply = (list: ModelList) => {
+        setModels(list);
+        onChange({ key: saved.key, model: fitModel(model, list) });
+      };
       onChange({ key: saved.key, model });
-      checkKey(saved.key)
-        .then(setModels)
-        .catch((e) => setError((e as Error).message));
+      if (cached) apply(cached);
+      else
+        checkKey(saved.key)
+          .then((list) => {
+            cacheModels(saved.key, list);
+            apply(list);
+          })
+          .catch((e) => setError((e as Error).message));
     } else onChange({ key: "", model });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -45,9 +79,9 @@ export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onCh
     try {
       const list = await checkKey(key);
       setModels(list);
+      cacheModels(key, list);
       keyStore.set(key, remember);
-      const model = list.some((m) => m.id === value.model) ? value.model : list.some((m) => m.id === DEFAULT_MODEL) ? DEFAULT_MODEL : list[0]?.id ?? DEFAULT_MODEL;
-      onChange({ key, model });
+      onChange({ key, model: fitModel(value.model, list) });
       setDraft("");
     } catch (e) {
       setError((e as Error).message);
@@ -58,6 +92,9 @@ export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onCh
 
   const forget = () => {
     keyStore.forget();
+    try {
+      sessionStorage.removeItem(CHECKED);
+    } catch {}
     setModels(null);
     setError(null);
     onChange({ key: "", model: value.model });

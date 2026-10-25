@@ -13,7 +13,7 @@ export interface Collection {
 
 const saved = storage<Collection>("hundredfold:collection");
 
-export function CollectionPanel({ value, onChange }: { value: Collection | null; onChange: (c: Collection | null) => void }) {
+export function CollectionPanel({ value, onChange, inactive }: { value: Collection | null; onChange: (c: Collection | null) => void; inactive?: string }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [note, setNote] = useState<string | null>(null);
@@ -104,6 +104,7 @@ export function CollectionPanel({ value, onChange }: { value: Collection | null;
         </div>
       ) : null}
       {note ? <p className="note">{note}</p> : null}
+      {value && inactive ? <p className="note">{inactive}</p> : null}
     </section>
   );
 }

@@ -25,8 +25,9 @@ export function serverConfig() {
     // Without an access code, anyone with the URL spends your API credits. Opt in explicitly.
     publicAccess: process.env.PUBLIC_ACCESS === "1",
     buildsPerHour: Math.max(1, Number(process.env.BUILDS_PER_HOUR_PER_IP) || 6),
-    // visitors may use their own Claude API key (on unless OWN_KEYS=0)
-    ownKeys: process.env.OWN_KEYS !== "0",
+    // visitors may use their own Claude API key: on by default without a server key; with one,
+    // only when OWN_KEYS=1 (so an access-code deployment doesn't open up to strangers on update)
+    ownKeys: apiKey ? process.env.OWN_KEYS === "1" : process.env.OWN_KEYS !== "0",
     ownKeyBuildsPerHour: Math.max(1, Number(process.env.OWN_KEY_BUILDS_PER_HOUR) || 20),
     donationUrl: /^https:\/\/[^\s"'<>]+$/.test(donation) ? donation : null,
     engine: engineFromEnv(demo),

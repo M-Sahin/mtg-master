@@ -176,14 +176,17 @@ export function anthropicCaller(apiKey: string): ModelCaller {
  * A readable explanation for Claude API errors, mostly for people using their own key.
  * The raw message is kept at the end for anything we don't recognise.
  */
-export function friendlyModelError(e: unknown): string {
+export function friendlyModelError(e: unknown, ownKey = true): string {
   const status = e instanceof ModelError ? e.status : 0;
   const raw = (e as Error)?.message ?? String(e);
   const m = raw.toLowerCase();
+  if (!ownKey && /credit balance|purchase credits|billing|usage limit|spend limit/.test(m))
+    return "This site's Claude API account is out of credit or at its spend limit. Tell the person who runs it, or build with your own API key.";
   if (/credit balance is too low|purchase credits|billing/.test(m))
     return "Your Claude API account is out of credit. Add credit in the Claude Console (Billing), then try again.";
   if (/usage limit|spend limit|specified api usage limits/.test(m))
     return "This key has reached its spend limit. Raise the workspace's limit in the Claude Console, or wait for it to reset.";
+  if (/max_tokens/.test(m)) return "That model can't write a whole deck in one go. Pick one of the recommended models.";
   if (status === 401 || /invalid x-api-key|authentication_error|invalid api key/.test(m))
     return "Claude didn't accept this API key. Check that it was copied completely, or create a new one in the Claude Console.";
   if (status === 403 || /permission/.test(m)) return "This API key isn't allowed to use that model. Pick another model, or check the key's workspace in the Claude Console.";

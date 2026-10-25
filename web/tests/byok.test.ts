@@ -151,3 +151,28 @@ test("only-owned mode: unowned cards are sent back to Claude; owned cards are ma
     fake.restore();
   }
 });
+
+test("review fixes: own keys are opt-in next to a server key; Dragon Shield CSV; wording; size cap", async () => {
+  const { serverConfig } = await import("../lib/server/config");
+  process.env.ANTHROPIC_API_KEY = "sk-ant-server-" + "z".repeat(30);
+  try {
+    assert.equal(serverConfig().ownKeys, false, "an access-code deployment doesn't open up on update");
+    process.env.OWN_KEYS = "1";
+    assert.equal(serverConfig().ownKeys, true);
+  } finally {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OWN_KEYS;
+  }
+  assert.equal(serverConfig().ownKeys, true, "on by default without a server key");
+
+  const dragon = `"sep=,"\nQuantity,Trade Quantity,Card Name,Set Code,Set Name\n1,0,Sol Ring,CMR,Commander Legends\n2,0,"Fire // Ice",MH2,Modern Horizons 2`;
+  assert.deepEqual(parseCollection(dragon).names, ["Sol Ring", "Fire // Ice"]);
+  const titled = `My collection export\nCount,Name,Edition\n1,Counterspell,7ED`;
+  assert.deepEqual(parseCollection(titled).names, ["Counterspell"]);
+
+  assert.match(friendlyModelError(new ModelError("Claude API 400: Your credit balance is too low", 400), false), /This site's Claude API account/);
+  assert.match(friendlyModelError(new ModelError("Claude API 400: max_tokens: 16000 > 4096", 400)), /recommended models/);
+
+  const big = await handleGenerate(new Request("http://x/api/generate", { method: "POST", headers: { "content-length": "2000000" }, body: "{}" }));
+  assert.equal(big.status, 413);
+});

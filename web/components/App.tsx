@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BRACKET } from "../lib/shared/bracket";
 import { MANA_COLORS } from "../lib/shared/deck-utils";
 import type { Budget, Color, Deck, GenerateRequest, StreamEvent, Usage, Validation } from "../lib/shared/types";
-import { cardByName, generate, getConfig, keyStore, myDecks, randomCard, resolveDeck, runningBuild, stopBuild, storage, type PublicConfig, type SavedDeck } from "../lib/client/api";
+import { cardByName, generate, getConfig, myDecks, randomCard, resolveDeck, runningBuild, stopBuild, storage, type PublicConfig, type SavedDeck } from "../lib/client/api";
 import { costUsd, formatCost, formatTokens, modelInfo } from "../lib/shared/models";
 import { encodeDeck } from "../lib/shared/share";
 import { CollectionPanel, type Collection } from "./CollectionPanel";
@@ -172,7 +172,7 @@ export default function App() {
     const timer = setInterval(() => setElapsed(Date.now() - start), 250);
     let got: Result | null = null;
     let spent: { usage: Usage; model?: string } | null = null;
-    const own = keyStore.get()?.key ?? key.key;
+    const own = key.key; // the key this tab shows (another tab may have saved a different one)
     try {
       for await (const ev of generate(req, { accessCode, apiKey: own || undefined, model: key.model || undefined }, ctl.signal, resume)) {
         if (!jobId.current) jobId.current = runningBuild.get()?.job;
@@ -389,7 +389,7 @@ export default function App() {
 
           <div className="panels">
             {config?.ownKeys ? <KeyPanel value={key} onChange={setKey} serverKey={config.mode === "live"} /> : null}
-            <CollectionPanel value={collection} onChange={setCollection} />
+            <CollectionPanel value={collection} onChange={setCollection} inactive={demoOnly ? "Your collection is used once you add an API key; the demo deck ignores it." : undefined} />
           </div>
 
           <div className="go">
