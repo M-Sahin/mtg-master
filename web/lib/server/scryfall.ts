@@ -8,14 +8,21 @@ const HEADERS = {
   Accept: "application/json",
 };
 
-// Requests go through one queue so parallel tool calls still respect Scryfall's spacing.
+// Requests go through one queue so parallel tool calls still respect Scryfall's limits
+// (scryfall.com/docs/api/rate-limits): 2 requests/second for /cards/search, /cards/named,
+// /cards/random and /cards/collection, 10/second for everything else. A 429 locks the
+// client out for 30 seconds.
+const SLOW = /^\/cards\/(search|named|random|collection)\b/;
 let queue: Promise<unknown> = Promise.resolve();
 let last = 0;
-function slot(): Promise<void> {
+let lastSlow = 0;
+function slot(path: string): Promise<void> {
+  const slow = SLOW.test(path.replace(API, ""));
   const next = queue.then(async () => {
-    const wait = 110 - (Date.now() - last);
+    const wait = Math.max(110 - (Date.now() - last), slow ? 520 - (Date.now() - lastSlow) : 0);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     last = Date.now();
+    if (slow) lastSlow = last;
   });
   queue = next.catch(() => {});
   return next;
@@ -43,7 +50,7 @@ async function cached<T>(key: string, fn: () => Promise<T>, keep: (v: T) => bool
 
 async function request<T = any>(path: string, body?: unknown): Promise<T> {
   for (let attempt = 0; attempt < 3; attempt++) {
-    await slot();
+    await slot(path);
     let res: Response;
     try {
       res = await fetch(path.startsWith("http") ? path : API + path, {
@@ -56,10 +63,11 @@ async function request<T = any>(path: string, body?: unknown): Promise<T> {
       throw new ScryfallError(`Can't reach Scryfall: ${(e as Error).message}`);
     }
     if (res.status === 429 || res.status >= 500) {
-      // rate limited / overloaded: back off and retry instead of reporting "no results"
-      const after = Number(res.headers.get("retry-after")) || 1 + attempt;
+      // rate limited (a 429 means a 30-second lockout) or overloaded: back off and retry
+      // instead of reporting "no results"
+      const after = Number(res.headers.get("retry-after")) || (res.status === 429 ? 30 : 1 + attempt);
       if (attempt < 2) {
-        await new Promise((r) => setTimeout(r, Math.min(after, 5) * 1000));
+        await new Promise((r) => setTimeout(r, Math.min(after, res.status === 429 ? 31 : 5) * 1000));
         continue;
       }
       throw new ScryfallError(`Scryfall is busy (HTTP ${res.status}). Try again in a minute.`, res.status);

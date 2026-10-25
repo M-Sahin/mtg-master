@@ -209,6 +209,7 @@ async function checkSubmission(sub: SubmittedDeck, attempt: number, req: Generat
     if (attempt <= 3) validation.errors.push(...comboErrors(blocking));
     else validation.warnings.push(...comboErrors(blocking));
     for (const c of forced) validation.warnings.push(`${c.cards.join(" + ")} is a strong two-card combo made of your own picks; Bracket 3 tables may not expect it.`);
+    for (const c of combos.flagged ?? []) validation.warnings.push(`Combo in the deck: ${c.cards.join(" + ")} (${c.results.slice(0, 2).join(", ")}), rated Spicy by Commander Spellbook. Fine for Bracket 3, but mention it at the table.`);
     if (!combos.checked) validation.warnings.push(combos.error ?? "Combo check unavailable.");
   }
   validation.ok = validation.errors.length === 0;

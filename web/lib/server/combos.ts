@@ -21,10 +21,17 @@ export interface ComboReport {
   combos: Combo[];
   /** Two-card combos rated for higher brackets: not expected at a Bracket 3 table. */
   tooStrong: Combo[];
+  /** Strong but slower combos: fine for Bracket 3, worth telling the user about. */
+  flagged?: Combo[];
 }
 
-/** Tags Commander Spellbook gives combos that belong above Bracket 3. */
-export const TOO_STRONG_TAGS = new Set(["R", "S"]);
+/**
+ * Commander Spellbook rates each combo: Ruthless = fast two-card combos (above Bracket 3),
+ * Spicy = powerful but slower or needing more pieces (allowed, flagged), Powerful, Core, Oddball,
+ * Exhibition. Only Ruthless two-card combos are rejected.
+ */
+export const TOO_STRONG_TAGS = new Set(["R"]);
+export const FLAG_TAGS = new Set(["S"]);
 export const TAG_NAMES: Record<string, string> = { R: "Ruthless", S: "Spicy", P: "Powerful", O: "Oddball", C: "Core", E: "Exhibition", B: "Banned" };
 
 const cache = new Map<string, ComboReport>();
@@ -71,6 +78,7 @@ export async function checkCombos(deck: Deck, fetchImpl: typeof fetch = fetch): 
       checked: true,
       combos,
       tooStrong: combos.filter((c) => c.cards.length <= 2 && c.bracketTag != null && TOO_STRONG_TAGS.has(c.bracketTag)),
+      flagged: combos.filter((c) => c.bracketTag != null && FLAG_TAGS.has(c.bracketTag)),
     };
     cache.set(key, report);
     if (cache.size > 200) cache.delete(cache.keys().next().value as string);

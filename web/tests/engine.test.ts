@@ -176,7 +176,8 @@ test("v2 agent: a high-bracket two-card combo is rejected, unless it's made of t
     const names = req.main.map((m: any) => m.card);
     const included = [];
     if (names.includes("Ashnod's Altar")) included.push(SB(["Sol Ring", "Ashnod's Altar"], "R"));
-    included.push(SB(["Viscera Seer", "Grim Haruspex"], "S")); // both seeds
+    included.push(SB(["Viscera Seer", "Grim Haruspex"], "R")); // both seeds
+    included.push(SB(["Phyrexian Arena", "Harmonize"], "S")); // slower: flagged only
     return { results: { included } };
   };
   try {
@@ -194,6 +195,7 @@ test("v2 agent: a high-bracket two-card combo is rejected, unless it's made of t
     assert.match(seen[0], /REJECTED[\s\S]*Sol Ring \+ Ashnod's Altar[\s\S]*too strong for Bracket 3/);
     assert.ok(out?.validation.ok);
     assert.ok(out!.validation.warnings.some((w) => /Viscera Seer \+ Grim Haruspex .*your own picks/.test(w)));
+    assert.ok(out!.validation.warnings.some((w) => /Phyrexian Arena \+ Harmonize .*Spicy/.test(w)));
   } finally {
     spellbook.body = { results: { included: [] } };
     fake.restore();
