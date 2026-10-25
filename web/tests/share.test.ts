@@ -90,3 +90,87 @@ test("toPayload keeps the payload compact", () => {
   assert.ok(!("why" in (p as any)));
   assert.ok(p.k.every((x) => x.length <= 3));
 });
+
+// ---- short links (/api/share + store) ----
+import { canonicalOrigin, handleShare } from "../lib/server/share-handler";
+import { loadShare, shareId } from "../lib/server/store";
+
+function withEnv(vars: Record<string, string | undefined>, fn: () => Promise<void>) {
+  const old: Record<string, string | undefined> = {};
+  for (const k of Object.keys(vars)) {
+    old[k] = process.env[k];
+    if (vars[k] === undefined) delete process.env[k];
+    else process.env[k] = vars[k];
+  }
+  return fn().finally(() => {
+    for (const k of Object.keys(old)) old[k] === undefined ? delete process.env[k] : (process.env[k] = old[k]);
+  });
+}
+
+/** Fake Upstash REST endpoint backed by a Map. */
+function fakeKv() {
+  const data = new Map<string, string>();
+  const seen: any[] = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const url = String(input);
+    if (!url.startsWith("https://kv.example")) return original(input, init);
+    assert.equal(init.headers.authorization, "Bearer tok");
+    const cmd = JSON.parse(init.body);
+    seen.push(cmd);
+    const [op, key, value] = cmd;
+    let result: unknown = null;
+    if (op === "SET") {
+      data.set(key, value);
+      result = "OK";
+    } else if (op === "GETEX" || op === "GET") result = data.get(key) ?? null;
+    return new Response(JSON.stringify({ result }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  return { data, seen, restore: () => (globalThis.fetch = original) };
+}
+
+const post = (body: unknown, headers: Record<string, string> = {}) =>
+  new Request("https://deckbuilder-abc123-msahin.vercel.app/api/share", { method: "POST", headers: { "content-type": "application/json", host: "deckbuilder-abc123-msahin.vercel.app", ...headers }, body: JSON.stringify(body) });
+
+test("share links use the public production domain, not the (protected) deployment URL", async () => {
+  await withEnv({ SITE_URL: undefined, VERCEL_PROJECT_PRODUCTION_URL: "deckbuilder-jet.vercel.app" }, async () => {
+    assert.equal(canonicalOrigin(post({})), "https://deckbuilder-jet.vercel.app");
+  });
+  await withEnv({ SITE_URL: "https://hundredfold.example/", VERCEL_PROJECT_PRODUCTION_URL: "x.vercel.app" }, async () => {
+    assert.equal(canonicalOrigin(post({})), "https://hundredfold.example");
+  });
+  await withEnv({ SITE_URL: undefined, VERCEL_PROJECT_PRODUCTION_URL: undefined }, async () => {
+    assert.equal(canonicalOrigin(new Request("http://localhost:3000/api/share", { headers: { host: "localhost:3000" } })), "http://localhost:3000");
+  });
+});
+
+test("/api/share: long link without a store, short /d/<id> link with one, same id for the same deck", async () => {
+  const d = await encodeDeck(demoDeck());
+  await withEnv({ VERCEL_PROJECT_PRODUCTION_URL: "deckbuilder-jet.vercel.app", SITE_URL: undefined, KV_REST_API_URL: undefined, KV_REST_API_TOKEN: undefined, UPSTASH_REDIS_REST_URL: undefined, UPSTASH_REDIS_REST_TOKEN: undefined }, async () => {
+    const r = await (await handleShare(post({ d }))).json();
+    assert.equal(r.short, false);
+    assert.equal(r.url, `https://deckbuilder-jet.vercel.app/deck?d=${d}`);
+  });
+  const kv = fakeKv();
+  try {
+    await withEnv({ VERCEL_PROJECT_PRODUCTION_URL: "deckbuilder-jet.vercel.app", SITE_URL: undefined, KV_REST_API_URL: "https://kv.example/", KV_REST_API_TOKEN: "tok" }, async () => {
+      const a = await (await handleShare(post({ d }, { "x-forwarded-for": "1.2.3.4" }))).json();
+      const b = await (await handleShare(post({ d }, { "x-forwarded-for": "1.2.3.4" }))).json();
+      assert.equal(a.short, true);
+      assert.match(a.url, /^https:\/\/deckbuilder-jet\.vercel\.app\/d\/[0-9A-Za-z]{9}$/);
+      assert.equal(a.url, b.url, "deterministic id");
+      assert.ok(a.url.length < 50, a.url);
+      const id = a.url.split("/d/")[1];
+      assert.equal(id, await shareId(d));
+      assert.equal(await loadShare(id), d);
+      assert.equal(await loadShare("nope!"), null, "bad ids never reach the store");
+      assert.equal(await loadShare("zzzzzzzzz"), null);
+      assert.deepEqual(kv.seen[0].slice(0, 1).concat(kv.seen[0].slice(3)), ["SET", "EX", 31536000]);
+      // only real decks get stored
+      const bad = await handleShare(post({ d: "garbage" }));
+      assert.equal(bad.status, 400);
+    });
+  } finally {
+    kv.restore();
+  }
+});

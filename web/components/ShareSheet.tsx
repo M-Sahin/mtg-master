@@ -29,7 +29,7 @@ export function ShareButton({ deck, shareD }: { deck: Deck; shareD?: string }) {
 
 function ShareSheet({ deck, shareD, onClose }: { deck: Deck; shareD?: string; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const [d, setD] = useState<string | null>(shareD ?? null);
+  const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const canNative = typeof navigator !== "undefined" && typeof navigator.share === "function";
@@ -37,13 +37,31 @@ function ShareSheet({ deck, shareD, onClose }: { deck: Deck; shareD?: string; on
   useEffect(() => {
     const dlg = ref.current;
     if (dlg && !dlg.open) dlg.showModal?.();
-    if (!shareD)
-      encodeDeck(deck)
-        .then(setD)
-        .catch(() => setError("Couldn't create a link in this browser. Copy the list instead."));
+    let live = true;
+    (async () => {
+      let d: string;
+      try {
+        d = shareD ?? (await encodeDeck(deck));
+      } catch {
+        if (live) setError("Couldn't create a link in this browser. Copy the list instead.");
+        return;
+      }
+      // the server returns a short link when a store is set up, and always uses the public domain
+      let link = `${window.location.origin}/deck?d=${d}`;
+      try {
+        const r = await fetch("/api/share", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ d }) });
+        const j = await r.json();
+        if (r.ok && typeof j.url === "string") link = j.url;
+      } catch {
+        /* keep the long link */
+      }
+      if (live) setUrl(link);
+    })();
+    return () => {
+      live = false;
+    };
   }, [deck, shareD]);
 
-  const url = d ? `${window.location.origin}/deck?d=${d}` : "";
   const title = shareTitle({ n: deck.name, c: deck.commander.name, p: deck.partner?.name });
   const targets = useMemo(() => (url ? shareTargets({ url, title }) : []), [url, title]);
 
@@ -61,7 +79,7 @@ function ShareSheet({ deck, shareD, onClose }: { deck: Deck; shareD?: string; on
             Close
           </button>
         </div>
-        <p className="sheet-sub">The whole deck is inside the link, so nothing is stored anywhere. Anyone with the link can see it.</p>
+        <p className="sheet-sub">Anyone with the link can see this deck.</p>
 
         {error ? <p className="error">{error}</p> : null}
 

@@ -19,7 +19,8 @@ Next.js (App Router), React 19, plain CSS. No database, and no SDK dependencies 
   - the "Share deck" sheet: native sharing on phones, WhatsApp, Reddit (as a link, or a ready-made Markdown post with the decklist), Telegram, X and email
   - "Open in Moxfield/Archidekt", which copies the list and opens their importer
   - shared links open a read-only deck page with fresh card data and the bracket check, and get a preview image (commander art, deck name) in WhatsApp, Reddit and Discord
-  - the whole deck is compressed into the link (`/deck?d=…`, about 1.8 KB), so there's no database and self-hosted copies share the same way
+  - with a store connected (see [Short share links](#short-share-links)), links are short: `/d/x7Kp2QaZ1`. Without one, the whole deck is compressed into the link (`/deck?d=…`, about 1.8 KB), so sharing works with no database at all
+  - links always point at your public domain, never at a deployment URL that sits behind Vercel's login
 
 ## How it uses the skill
 
@@ -83,9 +84,17 @@ cd web && npm ci && npm run build && npm start
 | `ANTHROPIC_MODEL` | no | Defaults to `claude-sonnet-5-5`. `claude-opus-5-5` gives stronger decks but is slower and costs more. |
 | `BUILDS_PER_HOUR_PER_IP` | no | A best-effort limit per IP, kept per server instance (default 6). |
 | `DEMO_MODE` | no | Set it to `1` to force demo mode even when a key is set. Only the value `1` switches it on. |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | no | Turn on short share links. Set automatically when you connect Upstash for Redis on Vercel (`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` work too). |
+| `SITE_URL` | no | The public address used in share links, e.g. `https://decks.example.com`. On Vercel the default is your production domain. |
 | `ENGINE` | no | The deckbuilding engine: `v1` (default) or `v2`. See [Engine quality and evals](#engine-quality-and-evals). |
 
 On Vercel, store `ANTHROPIC_API_KEY` and `ACCESS_CODE` as the **Secret** type. Redeploy after changing a variable, because changes only apply to new deployments.
+
+### Short share links
+
+Shared decks are stored for a year (renewed whenever someone opens the link) in Upstash Redis, which has a free tier. On Vercel: **Storage → Create Database → Upstash for Redis** (or the Marketplace), connect it to this project, and redeploy. The integration adds `KV_REST_API_URL` and `KV_REST_API_TOKEN` for you. Elsewhere, create a free database at upstash.com and set those two variables yourself. The same deck always gets the same link, and links fall back to the long form if the store is unreachable.
+
+**Why did a shared link ask for a Vercel login?** Vercel's default Deployment Protection puts a login in front of deployment URLs (`yourproject-abc123-you.vercel.app`, the "Visit" button in the dashboard). Only the production domain is public. Share links now always use the production domain (or `SITE_URL`), so this can't happen anymore.
 
 **Cost:** each build is one Claude conversation of about 4–8 turns, paid from your own API account. The skill prompt and the growing conversation are prompt-cached. Set a monthly spend limit in the Claude Console (Billing → Spend limits) as an extra guard.
 
