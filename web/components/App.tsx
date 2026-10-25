@@ -11,6 +11,7 @@ import { CollectionPanel, type Collection } from "./CollectionPanel";
 import { KeyPanel, type KeyState } from "./KeyPanel";
 import { MyDecks } from "./MyDecks";
 import { SiteHeader } from "./SiteHeader";
+import { DeckShapeFields, draftToShape, emptyShape, type ShapeDraft } from "./DeckShapeFields";
 import { IdentityPips } from "./CardFace";
 import { DeckView } from "./DeckView";
 import { UpgradeSummary } from "./UpgradeSummary";
@@ -61,6 +62,10 @@ export default function App() {
   const [usage, setUsage] = useState<{ usage: Usage; model?: string } | null>(null);
   const [decksVersion, setDecksVersion] = useState(0);
   const [decksHash, setDecksHash] = useState(false);
+  const [shape, setShape] = useState<ShapeDraft>(emptyShape);
+  const shapeParsed = draftToShape(shape);
+  const shapeReq = typeof shapeParsed === "object" ? shapeParsed : undefined;
+  const shapeError = typeof shapeParsed === "string" ? shapeParsed : null;
 
   useEffect(() => {
     getConfig().then(setConfig).catch(() => setConfig(null));
@@ -86,7 +91,7 @@ export default function App() {
   const tintSource = phase === "result" && result ? result.deck.colorIdentity : identity;
 
   const problems = filledSeeds.map(seedProblem).filter(Boolean) as string[];
-  const ready = filledSeeds.length === 5 && filledSeeds.every((s) => s.info && !s.loading) && problems.length === 0;
+  const ready = filledSeeds.length === 5 && filledSeeds.every((s) => s.info && !s.loading) && problems.length === 0 && !shapeError;
   const needCode = config?.accessCodeRequired && !accessCode.trim() && !key.key;
   // without a key (yours or the server's) only the scripted demo deck can be built
   const demoOnly = config?.mode === "demo" && !key.key;
@@ -157,6 +162,7 @@ export default function App() {
       budget,
       theme,
       bracket,
+      ...(shapeReq ? { shape: shapeReq } : {}),
       ...(collection && !demoOnly ? { collection: { names: collection.names, mode: collection.mode } } : {}),
     });
   };
@@ -174,6 +180,7 @@ export default function App() {
       budget,
       theme,
       bracket,
+      ...(shapeReq ? { shape: shapeReq } : {}),
       ...(collection ? { collection: { names: collection.names, mode: collection.mode } } : {}),
     });
   };
@@ -191,6 +198,7 @@ export default function App() {
       budget,
       theme,
       bracket,
+      ...(shapeReq ? { shape: shapeReq } : {}),
       ...(collection ? { collection: { names: collection.names, mode: collection.mode } } : {}),
     });
   };
@@ -449,6 +457,7 @@ export default function App() {
                 ))}
               </div>
             </fieldset>
+            <DeckShapeFields value={shape} onChange={setShape} />
             <label className="opt">
               <span className="opt-label">Anything else?</span>
               <input className="field" value={theme} maxLength={300} onChange={(e) => setTheme(e.target.value)} placeholder="For example: lots of tokens, no infinite combos, flavor over power" />
@@ -470,7 +479,9 @@ export default function App() {
                 if (r.bracket >= 1 && r.bracket <= 4) setBracket(r.bracket as BracketNumber);
               }}
               blocked={
-                demoOnly
+                shapeError
+                  ? "Fix the deck shape first."
+                  : demoOnly
                   ? config?.ownKeys
                     ? "Completing or upgrading a deck needs a Claude API key: add yours in the key panel."
                     : "Completing or upgrading a deck needs a Claude API key on this site."

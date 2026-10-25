@@ -2503,3 +2503,36 @@ a.ev-row:hover {
   padding: 5px 12px;
   font-size: 14px;
 }
+.shape summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.shape-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4.5rem 4.5rem 4.5rem;
+  gap: 6px 10px;
+  align-items: center;
+  margin-top: 8px;
+  max-width: 34rem;
+}
+.shape-row {
+  display: contents;
+}
+.shape-head {
+  color: var(--faint);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.shape-grid .field {
+  padding: 7px 10px;
+  text-align: center;
+}
+.shape-typical,
+.shape-dash {
+  color: var(--faint);
+  font-size: 14px;
+  text-align: center;
+}

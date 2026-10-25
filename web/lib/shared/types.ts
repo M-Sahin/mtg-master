@@ -1,4 +1,5 @@
 // Types shared by the server (route handlers) and the client UI.
+import type { DeckShape } from "./shape";
 import type { DeckAnalysis } from "./analysis";
 
 export type Color = "W" | "U" | "B" | "R" | "G";
@@ -72,6 +73,8 @@ export interface Deck {
   colorIdentity: Color[];
   /** The bracket the deck was built for (missing = 3). */
   bracket?: number;
+  /** The user's deck-shape limits, when they set any. */
+  shape?: DeckShape;
 }
 
 export interface Validation {
@@ -110,6 +113,8 @@ export interface GenerateRequest {
   theme?: string;
   /** Cards the user owns: "prefer" them, or build "only" from them (plus basics and the seeds). */
   collection?: { names: string[]; mode: "prefer" | "only" };
+  /** Optional limits: creatures, lands, ramp, draw, removal, wipes, average mana value. */
+  shape?: DeckShape;
 }
 
 export const MAX_COLLECTION = 5000;

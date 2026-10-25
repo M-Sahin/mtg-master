@@ -9,6 +9,7 @@ import * as scry from "./scryfall";
 import { EXTRA_TURN, MLD, buildDeck, namesInSubmission, rebalanceBasics, repairCount, strictProblems, validateDeck, type SubmittedDeck } from "./validate";
 import { analysisReport, analyzeDeck, detectFunctions, isLand, type DeckAnalysis } from "../shared/analysis";
 import { openerReport, simulateOpeners } from "../shared/openers";
+import { shapeCounts, shapeProblems } from "../shared/shape";
 import { bracketInfo } from "../shared/bracket";
 import type { CardInfo, Deck, GenerateRequest, Role, StreamEvent, Swap, Usage, Validation } from "../shared/types";
 import { ROLES, isBasicLand, nameKey } from "../shared/types";
@@ -225,7 +226,13 @@ async function checkSubmission(sub: SubmittedDeck, attempt: number, req: Generat
     if (missing.length) (attempt <= 3 ? problems : validation.warnings).push(attempt <= 3 ? msg : `Not in your collection: ${missing.join(", ")}.`);
   }
   // The stricter checks only block the first attempts, so a heuristic miss can't sink a build.
-  if (engine.strict && attempt <= 2) problems.push(...strictProblems(analysis));
+  if (engine.strict && attempt <= 2) problems.push(...strictProblems(analysis, req.shape));
+  // the user's deck-shape limits: sent back for the first three tries, a warning after that
+  if (req.shape) {
+    deck.shape = req.shape;
+    const off = shapeProblems(req.shape, shapeCounts(deck, analysis));
+    (attempt <= 3 ? problems : validation.warnings).push(...(attempt <= 3 ? off : off.map((m) => m.replace(/ (Add|Cut|Swap) .*$/, ""))));
+  }
   // the chosen bracket: land denial and extra turns (combos below)
   const strictBracket = attempt <= 3 ? problems : validation.warnings;
   if (bracket.number <= 3) {

@@ -1,4 +1,5 @@
 // Framework-independent handler for POST /api/generate (used by the Next.js route and tests).
+import { cleanShape } from "../shared/shape";
 import { anthropicCaller, friendlyModelError, listModels, type ModelCaller } from "./anthropic";
 import { DEFAULT_MODEL, MODEL_ID } from "../shared/models";
 import { JOB_ID, JobNotFound, jobExists, newJobId, startJob, stopJob, tailJob } from "./jobs";
@@ -58,7 +59,9 @@ export function parseRequest(body: any): GenerateRequest | string {
     if (names.length > MAX_COLLECTION) return `Collections can have up to ${MAX_COLLECTION} different cards.`;
     if (names.length) collection = { names, mode: body.collection.mode === "only" ? "only" : "prefer" };
   }
-  return { seeds, commander, budget, theme, bracket, ...extra, ...(collection ? { collection } : {}) };
+  const shape = cleanShape(body.shape);
+  if (typeof shape === "string") return shape;
+  return { seeds, commander, budget, theme, bracket, ...extra, ...(collection ? { collection } : {}), ...(shape ? { shape } : {}) };
 }
 
 // Per-instance rate limit (best effort: each warm Vercel instance keeps its own counts).
@@ -184,6 +187,7 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
     }
     req.commander = "Meren of Clan Nel Toth";
     req.bracket = 3; // the scripted demo deck is a Bracket 3 deck
+    delete req.shape; // and it can't follow deck-shape limits
   }
   const wanted = typeof (body as any)?.model === "string" ? String((body as any).model).trim() : "";
   const model = userKey ? (MODEL_ID.test(wanted) ? wanted : DEFAULT_MODEL) : cfg.model;

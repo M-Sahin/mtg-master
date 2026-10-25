@@ -320,6 +320,20 @@ await run("26-mobile-nav", { width: 390, height: 844 }, async (p) => {
   console.log(`phone menu: ${links.join(" | ")}`);
   if (!["Build a deck", "Bracket checker", "Box EV", "My decks", "GitHub"].every((l) => links.includes(l))) errors.push(`phone menu links: ${links.join(", ")}`);
 });
+// deck shape: a broken limit is explained and blocks the build; a good one is counted
+await run("29-deck-shape", { width: 1440, height: 1000 }, async (p) => {
+  await loadSeeds(p);
+  await p.click("[data-testid=deck-shape] summary");
+  await p.fill("[data-testid=shape-creatures-min]", "40");
+  await p.fill("[data-testid=shape-creatures-max]", "20");
+  const err = await p.locator("[data-testid=deck-shape] .error").innerText().catch(() => "");
+  const blocked = await p.locator("text=Build my deck").isDisabled();
+  console.log(`deck shape: "${err}"; build blocked: ${blocked}`);
+  if (!/minimum \(40\) is above the maximum \(20\)/.test(err) || !blocked) errors.push(`deck shape check: "${err}", blocked ${blocked}`);
+  await p.fill("[data-testid=shape-creatures-max]", "45");
+  const pill = await p.locator("[data-testid=deck-shape] summary .pill").innerText();
+  if (pill !== "1 limit") errors.push(`deck shape pill: ${pill}`);
+});
 await run("7-mobile-setup", { width: 390, height: 844 }, loadSeeds);
 await run("8-mobile-result", { width: 390, height: 844 }, toResult);
 

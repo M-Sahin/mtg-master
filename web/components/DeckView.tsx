@@ -5,6 +5,8 @@ import { MANA_COLORS, ROLE_COLORS, averageMv, byRole, byType, curve, exportText,
 import type { Color, Deck, DeckCard, Validation } from "../lib/shared/types";
 import { ROLE_LABELS, isBasicLand } from "../lib/shared/types";
 import { simulateOpeners } from "../lib/shared/openers";
+import { checkShape, shapeCounts } from "../lib/shared/shape";
+import { analyzeDeck } from "../lib/shared/analysis";
 import { OpenersView } from "./OpenersView";
 import { DeckBoxesPanel } from "./DeckBoxesPanel";
 import { BuyLinks } from "./BuyLinks";
@@ -148,6 +150,7 @@ export function DeckView({
             ))}
           </ol>
           <BracketCard deck={deck} validation={validation} />
+          {deck.shape ? <ShapeCard deck={deck} /> : null}
         </aside>
 
         <div className="deck-main">
@@ -174,6 +177,24 @@ export function DeckView({
       </div>
       {open ? <CardModal card={open} onClose={() => setOpen(null)} /> : null}
     </section>
+  );
+}
+
+/** The user's deck-shape limits against the counts from the card text. */
+function ShapeCard({ deck }: { deck: Deck }) {
+  const checks = useMemo(() => checkShape(deck.shape, shapeCounts(deck, analyzeDeck(deck))), [deck]);
+  if (!checks.length) return null;
+  return (
+    <div className="bracket" data-testid="shape-card">
+      <h3>Your deck shape</h3>
+      <ul>
+        {checks.map((c) => (
+          <li key={c.key} className={c.ok ? "is-ok" : "is-warn"}>
+            <span aria-hidden>{c.ok ? "✓" : "!"}</span> {c.label}: {c.have} <small>(you asked for {c.want})</small>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

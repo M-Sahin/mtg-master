@@ -1,5 +1,6 @@
 // Builds Claude's system prompt from the mtg-master skill (lib/skill/content.ts, generated
 // from ../mtg-master by scripts/sync-skill.mjs) plus an adapter for this app's tools.
+import { shapeText } from "../shared/shape";
 import { bracketInfo, type BracketInfo } from "../shared/bracket";
 import type { Budget, CardInfo, GenerateRequest } from "../shared/types";
 import { SKILL_FILES, SKILL_VERSION } from "../skill/content";
@@ -146,6 +147,7 @@ export function userPrompt(req: GenerateRequest, seeds: CardInfo[]): string {
       : "",
     `Budget: ${BUDGET_TEXT[req.budget]}`,
     req.theme?.trim() ? `Theme / wishes from the user: ${req.theme.trim().slice(0, 300)}` : "",
+    shapeText(req.shape),
     req.collection?.names.length ? collectionText(req.collection) : "",
   ]
     .filter((l) => l !== "")
@@ -267,6 +269,7 @@ export function upgradePrompt(req: GenerateRequest, deckList: string[], report: 
     "",
     `Budget for the cards you add: ${BUDGET_TEXT[req.budget]}`,
     req.theme?.trim() ? `Wishes from the user: ${req.theme.trim().slice(0, 300)}` : "",
+    shapeText(req.shape),
     req.collection?.names.length ? collectionText(req.collection) : "",
   ]
     .filter((l) => l !== "")
@@ -299,6 +302,7 @@ function completePrompt(req: GenerateRequest, cards: CardInfo[]): string {
     "",
     `Budget: ${BUDGET_TEXT[req.budget]}`,
     req.theme?.trim() ? `Wishes from the user: ${req.theme.trim().slice(0, 300)}` : "",
+    shapeText(req.shape),
     req.collection?.names.length ? collectionText(req.collection) : "",
   ]
     .filter((l) => l !== "")

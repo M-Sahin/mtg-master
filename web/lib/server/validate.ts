@@ -1,5 +1,6 @@
 // Commander deck validation: a TypeScript port of mtg-master/scripts/deckcheck.py,
 // plus the Bracket 3 checks. Returns errors (must fix) and warnings (worth a look).
+import type { DeckShape } from "../shared/shape";
 import { COMMANDER_TEMPLATE, bracketInfo } from "../shared/bracket";
 import type { CardInfo, Color, Deck, DeckCard, Role, Validation } from "../shared/types";
 import { BASIC_FOR_COLOR, ROLES, isBasicLand } from "../shared/types";
@@ -277,13 +278,15 @@ export function repairCount(deck: Deck): string | null {
  * below the template so a heuristic miss rarely blocks a reasonable deck; the template itself
  * stays a warning.
  */
-export function strictProblems(a: DeckAnalysis): string[] {
+export function strictProblems(a: DeckAnalysis, shape?: DeckShape): string[] {
   const out: string[] = [];
+  // the user's own limits replace the template for the counts they set
+  const own = (k: string) => !!(shape as Record<string, unknown> | undefined)?.[k];
   const named = (fn: string) => Object.entries(a.byCard).filter(([, f]) => (f as string[]).includes(fn)).map(([n]) => n);
   const landEq = a.lands + a.mdfcLands * 0.5;
-  if (landEq < 33) out.push(`Only ${a.lands} lands${a.mdfcLands ? ` (+${a.mdfcLands} MDFC land backs)` : ""}: a Commander deck needs about 35–38. Add ${Math.ceil(35 - landEq)} lands.`);
+  if (!own("lands") && landEq < 33) out.push(`Only ${a.lands} lands${a.mdfcLands ? ` (+${a.mdfcLands} MDFC land backs)` : ""}: a Commander deck needs about 35–38. Add ${Math.ceil(35 - landEq)} lands.`);
   // landfall and lands-matter decks run 40+ on purpose; only flag the extreme
-  if (a.lands > 44) out.push(`${a.lands} lands is too many even for a lands deck; the usual range is 35–38 (up to ~42 for landfall). Cut ${a.lands - 42}.`);
+  if (!own("lands") && a.lands > 44) out.push(`${a.lands} lands is too many even for a lands deck; the usual range is 35–38 (up to ~42 for landfall). Cut ${a.lands - 42}.`);
   const mins: [string, string, number, string][] = [
     ["ramp", "ramp", 7, "mana rocks and dorks, land-fetching spells, Treasure makers"],
     ["draw", "card draw", 7, "cards that draw, impulse-draw or make Clues"],
@@ -291,7 +294,7 @@ export function strictProblems(a: DeckAnalysis): string[] {
   ];
   for (const [fn, label, min, what] of mins) {
     const have = a.counts[fn as keyof typeof a.counts];
-    if (have < min) {
+    if (!own(fn) && have < min) {
       const list = named(fn);
       out.push(`The card text shows only ${have} ${label} card(s)${list.length ? ` (${list.join(", ")})` : ""}; the template wants ${a.template[fn].want[0]}–${a.template[fn].want[1]}. Add at least ${min - have} (counted: ${what}).`);
     }
