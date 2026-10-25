@@ -88,6 +88,7 @@ if (shareUrl) {
     writeFileSync(`${out}/11-og-image.png`, buf);
     console.log(`og:image: HTTP ${r.status}, ${r.headers.get("content-type")}, ${Math.round(buf.length / 1024)} KB`);
     if (r.status !== 200 || !String(r.headers.get("content-type")).includes("image/png")) errors.push("og:image did not render");
+    if (buf.length > 300 * 1024) errors.push(`og:image is ${Math.round(buf.length / 1024)} KB; WhatsApp only shows previews up to ~300 KB`);
   }
 }
 await run("12-mobile-share", { width: 390, height: 844 }, async (p) => {

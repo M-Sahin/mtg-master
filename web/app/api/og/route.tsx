@@ -5,6 +5,12 @@ import { MANA_COLORS } from "../../../lib/shared/deck-utils";
 
 export const runtime = "nodejs";
 
+// 800×420 keeps the PNG under ~300 KB, which WhatsApp needs to show the preview.
+const W = 800;
+const H = 420;
+const k = W / 1200;
+const px = (n: number) => Math.round(n * k);
+
 // Link-preview image for shared decks (WhatsApp, Reddit, Discord, ...).
 export async function GET(request: Request) {
   const d = new URL(request.url).searchParams.get("d") ?? "";
@@ -32,27 +38,27 @@ export async function GET(request: Request) {
   return new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", position: "relative", background: "#121733", color: "#eef0ff", fontFamily: "serif" }}>
-        {art && !fullCard ? <img src={art} width={1200} height={630} style={{ position: "absolute", top: 0, left: 0, width: 1200, height: 630, objectFit: "cover" }} /> : null}
+        {art && !fullCard ? <img src={art} width={W} height={H} style={{ position: "absolute", top: 0, left: 0, width: W, height: H, objectFit: "cover" }} /> : null}
         {art && fullCard ? (
           // whole card (with its own credits) on the right instead of a background crop
-          <img src={art} width={400} height={558} style={{ position: "absolute", top: 36, right: 56, width: 400, height: 558, borderRadius: 20 }} />
+          <img src={art} width={px(400)} height={px(558)} style={{ position: "absolute", top: px(36), right: px(56), width: px(400), height: px(558), borderRadius: px(20) }} />
         ) : null}
-        <div style={{ position: "absolute", top: 0, left: 0, width: 1200, height: 630, display: "flex", backgroundImage: "linear-gradient(90deg, rgba(14,18,44,0.97) 0%, rgba(14,18,44,0.85) 55%, rgba(14,18,44,0.35) 100%)" }} />
-        <div style={{ position: "relative", display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: "64px 72px", width: "100%", height: "100%" }}>
-          <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
+        <div style={{ position: "absolute", top: 0, left: 0, width: W, height: H, display: "flex", backgroundImage: "linear-gradient(90deg, rgba(14,18,44,0.97) 0%, rgba(14,18,44,0.85) 55%, rgba(14,18,44,0.35) 100%)" }} />
+        <div style={{ position: "relative", display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: `${px(64)}px ${px(72)}px`, width: "100%", height: "100%" }}>
+          <div style={{ display: "flex", gap: px(10), marginBottom: px(22) }}>
             {colors.map((c, i) => (
-              <div key={i} style={{ width: 30, height: 30, borderRadius: 30, background: c, boxShadow: "0 0 0 3px rgba(0,0,0,0.35)" }} />
+              <div key={i} style={{ width: px(30), height: px(30), borderRadius: px(30), background: c, boxShadow: "0 0 0 3px rgba(0,0,0,0.35)" }} />
             ))}
           </div>
-          <div style={{ fontSize: 76, fontWeight: 700, lineHeight: 1.02, maxWidth: fullCard ? 640 : 900 }}>{title}</div>
-          <div style={{ fontSize: 32, marginTop: 18, color: "#c9cdf0", maxWidth: fullCard ? 640 : 900 }}>{sub}</div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 44, fontSize: 24, color: "#e2b04a" }}>
+          <div style={{ fontSize: px(76), fontWeight: 700, lineHeight: 1.02, maxWidth: px(fullCard ? 640 : 900) }}>{title}</div>
+          <div style={{ fontSize: px(32), marginTop: px(18), color: "#c9cdf0", maxWidth: px(fullCard ? 640 : 900) }}>{sub}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: px(44), fontSize: px(24), color: "#e2b04a" }}>
             <span>Built with Hundredfold</span>
-            <span style={{ fontSize: 16, color: "rgba(238,240,255,0.75)" }}>{credit}</span>
+            <span style={{ fontSize: px(17), color: "rgba(238,240,255,0.75)" }}>{credit}</span>
           </div>
         </div>
       </div>
     ),
-    { width: 1200, height: 630, headers: { "Cache-Control": "public, max-age=86400, s-maxage=604800, immutable" } },
+    { width: W, height: H, headers: { "Cache-Control": "public, max-age=86400, s-maxage=604800, immutable" } },
   );
 }

@@ -25,7 +25,7 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
       title,
       description,
       metadataBase: new URL(base),
-      openGraph: { title, description, type: "website", url: `${base}/deck?d=${value}`, images: [{ url: image, width: 1200, height: 630 }] },
+      openGraph: { title, description, type: "website", url: `${base}/deck?d=${value}`, images: [{ url: image, width: 800, height: 420 }] },
       twitter: { card: "summary_large_image", title, description, images: [image] },
     };
   } catch {
