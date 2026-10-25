@@ -2,14 +2,14 @@
 import type { PairResult } from "./judge";
 import type { Aggregate, Score } from "./score";
 
-export function renderReport(r: { meta: { model: string; judge: string; variants: string[]; hands: string[]; repeat: number; date: string }; aggregates: Aggregate[]; scores: Score[]; pairs: PairResult[] }): string {
+export function renderReport(r: { meta: { model: string; judge: string; variants: string[]; hands: string[]; repeat: number; date: string; spentUsd?: number }; aggregates: Aggregate[]; scores: Score[]; pairs: PairResult[] }): string {
   const { meta, aggregates, scores, pairs } = r;
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   const s = (ms: number) => `${Math.round(ms / 1000)}s`;
   const lines: string[] = [
     `# Hundredfold engine eval`,
     "",
-    `${meta.date.slice(0, 16).replace("T", " ")} UTC · builder ${meta.model} · judge ${meta.judge} · ${meta.hands.length} hands × ${meta.variants.length} variants × ${meta.repeat}`,
+    `${meta.date.slice(0, 16).replace("T", " ")} UTC · builder ${meta.model} · judge ${meta.judge} · ${meta.hands.length} hands × ${meta.variants.length} variants × ${meta.repeat}${meta.spentUsd != null ? ` · estimated spend $${meta.spentUsd.toFixed(2)}` : ""}`,
     "",
     "## Summary",
     "",

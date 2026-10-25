@@ -25,6 +25,18 @@ Look up the commander's exact oracle text and color identity first. Then check t
 
 Wizards' Commander Brackets (introduced 2025) sort decks into five tiers: 1 Exhibition, 2 Core, 3 Upgraded, 4 Optimized, 5 cEDH. Brackets limit things like the number of "Game Changer" cards, mass land denial, chained extra turns, and early two-card infinite combos. The specific limits and the Game Changers list have been revised since launch — look up the current version before telling a user which bracket their deck is in. On Scryfall, cards on the list have `game_changer: true`.
 
+As of October 2026 (verify; Wizards updates these, most recently in October 2025 and February 2026):
+
+| Bracket | Game Changers | Two-card infinite combos | Mass land denial | Extra turns | Games last about |
+|---|---|---|---|---|---|
+| 1 Exhibition | none | none intended | no | none | 9+ turns |
+| 2 Core | none | none intended | no | a few, never chained | 8+ turns |
+| 3 Upgraded | up to 3 | none that come together early | no | a few, never chained | 6+ turns |
+| 4 Optimized | any | anything legal | allowed | allowed | 4+ turns |
+| 5 cEDH | any | anything legal | allowed | allowed | any turn |
+
+Tutors are no longer limited by bracket (October 2025): the most efficient ones are Game Changers. Brackets 1 and 5 are about intent (a themed, deliberately low-power deck; a deck tuned for competitive play), so a list alone can't prove them. Commander Spellbook (commanderspellbook.com) rates combos; its "Ruthless" combos are the fast ones that belong in bracket 4 and up.
+
 When helping, state which bracket you built for and what would push the deck up or down one bracket. Respect the bracket the user asked for: suggesting fast mana and tutors for a casual pod makes their games worse.
 
 ## 3. Building around a commander

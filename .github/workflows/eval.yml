@@ -12,7 +12,7 @@ on:
         default: "v1,v2"
       hands:
         description: "all, a number (first N hands) or comma-separated hand ids from web/evals/hands.json"
-        default: "6"
+        default: "judith-aristocrats,esper-flicker,krenko-goblins"
       model:
         description: "Builder model"
         default: "claude-sonnet-5-5"
@@ -24,7 +24,10 @@ on:
         default: "1"
       concurrency:
         description: "Builds running at the same time"
-        default: "3"
+        default: "2"
+      max_usd:
+        description: "Budget in USD: no new builds or judging once the estimated spend reaches it"
+        default: "3.5"
 
 permissions:
   contents: write
@@ -67,10 +70,11 @@ jobs:
           JUDGE: ${{ inputs.judge }}
           REPEAT: ${{ inputs.repeat }}
           CONCURRENCY: ${{ inputs.concurrency }}
+          MAX_USD: ${{ inputs.max_usd }}
         run: |
           set -o pipefail
           node scripts/eval.mjs run --variants "$VARIANTS" --hands "$HANDS" --model "$MODEL" --judge "$JUDGE" \
-            --repeat "$REPEAT" --concurrency "$CONCURRENCY" --out eval-out 2>&1 | tee eval-out.log
+            --repeat "$REPEAT" --concurrency "$CONCURRENCY" --max-usd "$MAX_USD" --out eval-out 2>&1 | tee eval-out.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:

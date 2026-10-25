@@ -165,13 +165,16 @@ Add `--json` to any command, before or after it, to get raw JSON. Batch lookups 
 python3 -m unittest discover -s tests -v
 ```
 
-The 47 tests run fully offline. Scryfall is replaced by fixture cards in `tests/fixtures/cards.json`. Those cards are shaped like real Scryfall objects, but their legalities are simplified for testing, so don't use them as a reference. The probability tests are checked against values from `scipy`, exhaustive enumeration and a Monte Carlo simulation. CI runs the tests on Python 3.8 and 3.12 and packages the skill.
+The 49 tests run fully offline. Scryfall is replaced by fixture cards in `tests/fixtures/cards.json`. Those cards are shaped like real Scryfall objects, but their legalities are simplified for testing, so don't use them as a reference. The probability tests are checked against values from `scipy`, exhaustive enumeration and a Monte Carlo simulation. CI runs the tests on Python 3.8 and 3.12 and packages the skill.
 
 The skill's reference files contain time-sensitive facts, such as Commander brackets and recent rules changes. The skill always tells Claude to verify these, but the files themselves still need updating now and then.
 
 ## Changelog
 
-- **1.0.3**: `references/commander.md` lists every way to have two commanders, including the named Partner—[name] abilities (such as Partner—Father & son on Kratos, Stoic Father and Atreus, Impulsive Son).
+- **1.0.3**:
+  - The description is now under 200 characters, the limit for skills uploaded to Claude.ai (it was over 500).
+  - `references/commander.md` lists every way to have two commanders, including the named Partner—[name] abilities (such as Partner—Father & son on Kratos, Stoic Father and Atreus, Impulsive Son).
+  - `references/commander.md` has a table of all five brackets as of the October 2025 update: Game Changers, combos, land denial, extra turns and expected game length.
 - **1.0.2**: `scryfall.py cards` and `deckcheck.py` couldn't find double-faced cards given by their full "Front // Back" name, because Scryfall's batch endpoint doesn't match those. They now look up the front face, fall back to an exact and then a fuzzy lookup for anything still missing, and CI checks this against the live Scryfall API.
 - **1.0.1**: fixes found while testing the original 1.0:
   - `odds.py`: `combo` with a `--need` list shorter than `--groups` used to give a silently wrong answer. It now refuses that input, along with other impossible inputs (more copies or cards seen than the deck has, a `--target` above 1, turn 0). `need` now says when the target can't be reached.

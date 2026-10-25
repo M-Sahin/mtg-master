@@ -1,6 +1,6 @@
 ---
 name: mtg-master
-description: "Expert Magic: The Gathering assistant for card knowledge, rules questions, deckbuilding, deck review, Commander/EDH, draft and sealed, format legality, metagame and play decisions. Use this skill whenever the user mentions Magic, MTG, MTG Arena, a card name, a decklist, a commander, a format (Standard, Pioneer, Modern, Legacy, Vintage, Pauper, Commander, Brawl, Historic, Timeless, Limited), mana bases, sideboards, combos, banned lists or how a card interaction works, even if they don't say Magic explicitly."
+description: "Magic: The Gathering expert: cards, rules, legality, deckbuilding and deck review, Commander brackets, Limited, mana bases and combos. Use whenever MTG, a card, a decklist or a format comes up."
 ---
 
 # MTG Master

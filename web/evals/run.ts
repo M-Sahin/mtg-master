@@ -5,10 +5,12 @@
 //   ANTHROPIC_API_KEY=… node scripts/eval.mjs run --variants v1,v2 --hands 6 --judge claude-opus-5-5
 //
 // Options: --variants (comma list of engine specs, the first is the baseline), --hands (all, a
-// number, or comma-separated ids), --model, --judge (a model, or "none"), --repeat, --concurrency, --out.
+// number, or comma-separated ids), --model, --judge (a model, or "none"), --repeat, --concurrency, --out,
+// --max-usd (stop starting builds and judging once the estimated spend reaches this; default 4).
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { anthropicCaller } from "../lib/server/anthropic";
+import { anthropicCaller, type ModelCaller } from "../lib/server/anthropic";
+import { costUsd as priceOf } from "../lib/shared/models";
 import { resolveSeeds, runAgent, type AgentResult } from "../lib/server/agent";
 import { checkCombos, parseCombos } from "../lib/server/combos";
 import { parseEngine } from "../lib/server/engine";
@@ -113,15 +115,30 @@ async function run(o: Record<string, string>) {
   const judge = o.judge ?? "claude-opus-5-5";
   const repeat = Math.max(1, Number(o.repeat ?? 1));
   const concurrency = Math.max(1, Number(o.concurrency ?? 3));
+  const maxUsd = Math.max(0.1, Number(o["max-usd"] ?? 4));
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const out = o.out ?? join(here, "out", stamp);
   mkdirSync(join(out, "decks"), { recursive: true });
-  const caller = anthropicCaller(key);
+  // every model call is priced as it happens; past the budget nothing new starts, and a call
+  // that would run far past it (1.3× the budget) is refused, so a small credit balance is safe
+  let spent = 0;
+  const raw = anthropicCaller(key);
+  const caller: ModelCaller = async (params, handlers, signal) => {
+    if (spent >= maxUsd * 1.3) throw new Error(`eval budget of $${maxUsd} used up`);
+    const msg = await raw(params, handlers, signal);
+    const u = msg.usage ?? {};
+    spent += priceOf(params.model, { calls: 1, input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0 }) ?? 0;
+    return msg;
+  };
 
   const jobs = hands.flatMap((hand) => engines.flatMap((engine, vi) => Array.from({ length: repeat }, (_, r) => ({ hand, engine, variant: variants[vi], run: r + 1 }))));
   console.log(`Eval: ${hands.length} hands × ${variants.length} variants × ${repeat} = ${jobs.length} builds with ${model}; judge ${judge}; output ${out}`);
   const builds: Build[] = [];
   await pool(jobs, concurrency, async (j, i) => {
+    if (spent >= maxUsd) {
+      console.log(`[${i + 1}/${jobs.length}] ${j.hand.id} ${j.variant}#${j.run}: skipped (estimated spend $${spent.toFixed(2)} reached the $${maxUsd} budget)`);
+      return;
+    }
     const events: StreamEvent[] = [];
     const started = Date.now();
     let result: AgentResult | null = null;
@@ -159,6 +176,10 @@ async function run(o: Record<string, string>) {
       }
     console.log(`Judging ${tasks.length} pair(s) with ${judge}`);
     await pool(tasks, concurrency, async (t) => {
+      if (spent >= maxUsd) {
+        console.log(`  ${t.hand.id}: not judged (budget reached)`);
+        return;
+      }
       try {
         const p = await judgePair(caller, judge, t.hand, { variant: t.a.variant, deck: t.a.deck! }, { variant: t.b.variant, deck: t.b.deck! });
         pairs.push(p);
@@ -180,7 +201,8 @@ async function run(o: Record<string, string>) {
     }
     return a;
   });
-  const meta = { model, judge, variants, hands: hands.map((h) => h.id), repeat, date: new Date().toISOString() };
+  console.log(`Estimated spend: $${spent.toFixed(2)} of the $${maxUsd} budget`);
+  const meta = { model, judge, variants, hands: hands.map((h) => h.id), repeat, date: new Date().toISOString(), spentUsd: Math.round(spent * 100) / 100 };
   writeFileSync(join(out, "results.json"), JSON.stringify({ meta, aggregates, scores, pairs }, null, 2));
   const md = renderReport({ meta, aggregates, scores, pairs });
   writeFileSync(join(out, "report.md"), md);
