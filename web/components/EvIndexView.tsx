@@ -8,7 +8,7 @@ import { SiteFooter } from "./SiteFooter";
 
 type Sort = "new" | "gross" | "net";
 const KINDS: (EvKind | "all")[] = ["all", "play", "collector", "set", "draft"];
-const eur = (x: number) => `€${x >= 100 ? Math.round(x).toLocaleString("en") : x.toFixed(2)}`;
+const eur = (x: number) => `€${Math.round(x).toLocaleString("en")}`;
 
 export default function EvIndexView({ index, error }: { index: EvIndex | null; error: string | null }) {
   const [kind, setKind] = useState<EvKind | "all">("all");
@@ -75,6 +75,7 @@ export default function EvIndexView({ index, error }: { index: EvIndex | null; e
                       <strong>{p.setName}</strong>
                       <small>
                         {KIND_LABEL[p.kind]} box · {p.packsPerBox} packs
+                        {p.unpriced >= 0.1 ? <span className="ev-warn"> · {Math.round(p.unpriced * 100)}% of cards unpriced</span> : null}
                       </small>
                     </span>
                   </span>

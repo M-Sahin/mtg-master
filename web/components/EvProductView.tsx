@@ -188,7 +188,7 @@ export default function EvProductView({ product, error }: { product: EvProduct |
             magic-sealed-data
           </a>
           , the source MTGJSON uses), and each card is priced at its Cardmarket trend price from Scryfall.{" "}
-          {base.unpriced > 0.005 ? `${pct(base.unpriced)} of the cards in a pack have no price and count as €0. ` : ""}
+          {base.unpriced > 0.005 ? `${pct(base.unpriced)} of the cards in a pack have no price and count as €0${base.unpriced >= 0.1 ? ", so the real value is likely higher than shown" : ""}. ` : ""}
           Trend prices aren&apos;t offers: selling a lot of one card at once usually gets less, and postage isn&apos;t included. The average is not a promise: most boxes come out below it.
         </p>
       </main>

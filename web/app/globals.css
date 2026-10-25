@@ -2437,3 +2437,6 @@ a.ev-row:hover {
 .deckboxes-list a {
   color: var(--ink);
 }
+.ev-warn {
+  color: var(--warn);
+}

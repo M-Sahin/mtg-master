@@ -46,7 +46,8 @@ await run("5-numbers", { width: 1440, height: 1000 }, async (p) => {
   await p.waitForSelector("[data-testid=openers] .op-row", { timeout: 10000 }).catch(() => errors.push("no Opening hands panel on the Numbers tab"));
   const rows = await p.locator("[data-testid=openers] .op-row").allInnerTexts();
   console.log(`opening hands: ${rows.map((r) => r.replace(/\s+/g, " ")).join(" | ")}`);
-  const boxes = await p.locator("[data-testid=deck-boxes]").innerText({ timeout: 8000 }).catch(() => "(no panel)");
+  await p.waitForSelector("[data-testid=deck-boxes] .deckboxes-list", { timeout: 20000 }).catch(() => {});
+  const boxes = await p.locator("[data-testid=deck-boxes]").innerText({ timeout: 2000 }).catch(() => "(no panel: none of the deck's cards are in a box since 2020)");
   console.log(`singles or boxes: ${boxes.replace(/\s+/g, " ").slice(0, 400)}`);
   await p.locator("[data-testid=openers]").scrollIntoViewIfNeeded().catch(() => {});
   await p.waitForTimeout(500);
