@@ -39,6 +39,11 @@ jobs:
         run: |
           set -o pipefail
           node scripts/eval.mjs check 2>&1 | tee eval-check.log
+      - name: Calibrate the role detector against Scryfall Tagger
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/calibrate-analysis.mjs 2>&1 | tee calibrate.log
       - name: End-to-end (demo mode, real Scryfall)
         run: |
           npm start -- -p 3000 > server.log 2>&1 &
@@ -67,7 +72,7 @@ jobs:
         run: |
           set -e
           mkdir -p /tmp/out && cp -r shots /tmp/out/ 2>/dev/null || true
-          cp package-lock.json e2e.log server.log eval-check.log /tmp/out/ 2>/dev/null || true
+          cp package-lock.json e2e.log server.log eval-check.log calibrate.log /tmp/out/ 2>/dev/null || true
           # keep earlier eval reports (published by the eval workflow)
           (cd "$GITHUB_WORKSPACE" && git fetch -q origin ci-output && git archive FETCH_HEAD evals | tar -x -C /tmp/out) 2>/dev/null || true
           echo "${{ github.sha }} ${{ github.ref_name }} $(date -u +%FT%TZ)" > /tmp/out/SOURCE

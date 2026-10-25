@@ -372,7 +372,7 @@ test("agent: deadline returns the best deck so far; truncated submit is retried"
     };
     const events: StreamEvent[] = [];
     // hard deadline so short that only one real submission fits
-    const out = await runAgent({ seeds: DEMO_SEEDS, commander: null, budget: "any" }, { model: "m", callModel: caller, emit: (e) => events.push(e), hardDeadlineMs: 15_100 });
+    const out = await runAgent({ seeds: DEMO_SEEDS, commander: null, budget: "any" }, { model: "m", callModel: caller, emit: (e) => events.push(e), hardDeadlineMs: 30_100 });
     assert.equal(calls, 2, "no third turn after the deadline");
     assert.ok(out, "returns the last deck even though it has errors");
     assert.equal(out!.validation.ok, false);

@@ -1,7 +1,7 @@
 // The objective analysis must recognise what real cards do (Oracle text as on Scryfall).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyzeDeck, detectFunctions, entersTapped, landColors, pips, sourceTarget } from "../lib/shared/analysis";
+import { analyzeDeck, detectFunctions, entersTapped, isMdfcLand, landColors, pips, sourceTarget } from "../lib/shared/analysis";
 import type { CardInfo, Color, Deck, DeckCard } from "../lib/shared/types";
 
 function card(name: string, typeLine: string, manaCost: string, text: string, extra: Partial<CardInfo> = {}): CardInfo {
@@ -37,6 +37,27 @@ const CARDS: [CardInfo, string[]][] = [
   [card("Eternal Witness", "Creature — Human Shaman", "{1}{G}{G}", "When this creature enters, return target card from your graveyard to your hand."), ["recursion"]],
   [card("Demonic Tutor", "Sorcery", "{1}{B}", "Search your library for a card, put that card into your hand, then shuffle."), ["tutor"]],
   [card("Viscera Seer", "Creature — Vampire Wizard", "{B}", "Sacrifice a creature: Scry 1."), []],
+  // misses found by calibrating on the demo deck in CI
+  [card("Go for the Throat", "Instant", "{1}{B}", "Destroy target nonartifact creature."), ["removal"]],
+  [card("Living Death", "Sorcery", "{3}{B}{B}", "Each player exiles all creature cards from their graveyard, then sacrifices all creatures they control, then puts all cards they exiled this way onto the battlefield."), ["wipe"]],
+  [card("Animate Dead", "Enchantment — Aura", "{1}{B}", "Enchant creature card in a graveyard\nWhen this Aura enters, if it's on the battlefield, it loses \"enchant creature card in a graveyard\" and gains \"enchant creature put onto the battlefield with this Aura.\" Return enchanted creature card to the battlefield under your control and attach this Aura to it. Enchanted creature gets -1/-0."), ["recursion"]],
+  [card("Victimize", "Sorcery", "{2}{B}", "Choose two target creature cards in your graveyard. Sacrifice a creature. If you do, return the chosen cards to the battlefield tapped."), ["recursion"]],
+  [card("Doom Blade", "Instant", "{1}{B}", "Destroy target nonblack creature."), ["removal"]],
+  [card("Vindicate", "Sorcery", "{1}{W}{B}", "Destroy target permanent."), ["removal"]],
+  // from the code review: real wording the first patterns missed or over-counted
+  [card("Ultimate Price", "Instant", "{1}{B}", "Destroy target monocolored creature."), ["removal"]],
+  [card("Rabid Bite", "Sorcery", "{1}{G}", "Target creature you control deals damage equal to its power to target creature you don't control."), ["removal"]],
+  [card("Ram Through", "Sorcery", "{1}{G}", "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control. If the creature you control has trample, excess damage is dealt to that permanent's controller instead."), ["removal"]],
+  [card("Swan Song", "Instant", "{U}", "Counter target enchantment, instant, or sorcery spell. Its controller creates a 2/2 blue Bird creature token with flying."), ["removal"]],
+  [card("Chaos Warp", "Instant", "{2}{R}", "The owner of target permanent shuffles it into their library, then reveals the top card of their library. If it's a permanent card, they may put it onto the battlefield."), ["removal"]],
+  [card("Wheel of Fortune", "Sorcery", "{2}{R}", "Each player discards their hand, then draws seven cards."), ["draw"]],
+  [card("Windfall", "Sorcery", "{2}{U}", "Each player discards their hand, then draws cards equal to the greatest number of cards a player discarded this way."), ["draw"]],
+  [card("Old Gnawbone", "Legendary Creature — Dragon", "{5}{G}{G}", "Flying\nWhenever a creature you control deals combat damage to a player, create that many Treasure tokens."), ["ramp"]],
+  [card("Tireless Provisioner", "Creature — Elf Scout", "{2}{G}", "Landfall — Whenever a land you control enters, create a Food token or a Treasure token."), ["ramp"]],
+  [card("Ephemerate", "Instant", "{W}", "Exile target creature you control, then return it to the battlefield under its owner's control.\nRebound"), []],
+  [card("Laboratory Maniac", "Creature — Human Wizard", "{2}{U}", "If you would draw a card while your library has no cards in it, you win the game instead."), []],
+  [card("Kazandu Mammoth // Kazandu Valley", "Creature — Elephant // Land", "{1}{G}{G} // ", "[Kazandu Mammoth] {1}{G}{G} — Creature — Elephant\nLandfall — Whenever a land you control enters, Kazandu Mammoth gets +2/+2 until end of turn.\n[Kazandu Valley]  — Land\nKazandu Valley enters tapped.\n{T}: Add {G}.", { layout: "modal_dfc", producedMana: ["G"] }), []],
+  [card("Scavenging Ooze", "Creature — Ooze", "{1}{G}", "{G}: Exile target card from a graveyard. If it was a creature card, put a +1/+1 counter on this creature and you gain 1 life."), []],
 ];
 
 for (const [c, want] of CARDS) {
@@ -44,6 +65,13 @@ for (const [c, want] of CARDS) {
     assert.deepEqual([...detectFunctions(c)].sort(), [...want].sort());
   });
 }
+
+test("MDFC vs transforming double-faced cards", () => {
+  const mdfc = card("Kazandu Mammoth // Kazandu Valley", "Creature — Elephant // Land", "{1}{G}{G}", "", { layout: "modal_dfc" });
+  const azcanta = card("Search for Azcanta // Azcanta, the Sunken Ruin", "Legendary Enchantment // Legendary Land", "{1}{U}", "", { layout: "transform" });
+  assert.equal(isMdfcLand(mdfc), true);
+  assert.equal(isMdfcLand(azcanta), false);
+});
 
 test("pips: hybrid and Phyrexian count half; front face only", () => {
   assert.deepEqual(pips("{1}{G}{G}"), { W: 0, U: 0, B: 0, R: 0, G: 2 });

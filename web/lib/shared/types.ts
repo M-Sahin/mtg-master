@@ -22,6 +22,7 @@ export interface CardInfo {
   scryfallUri: string;
   edhrecRank: number | null;
   producedMana?: string[]; // Scryfall produced_mana (W U B R G C)
+  layout?: string; // Scryfall layout: normal, transform, modal_dfc, split, adventure…
 }
 
 export const ROLES = [

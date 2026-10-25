@@ -162,13 +162,28 @@ export function applySwaps(sub: SubmittedDeck, swaps: Swap[], protect: string[] 
 
 interface Checked {
   deck: Deck;
+  /** The rules (legality, size, seeds, Game Changers): decides whether the deck is legal. */
   validation: Validation;
+  /** Engine checks on top (strict counts, combos): sent back as errors, but never make a deck "illegal". */
+  problems: string[];
   analysis: DeckAnalysis;
   combos?: ComboReport;
+  /** The attempt number the checks ran as (later attempts relax the engine checks). */
+  attempt: number;
+}
+
+const accepted = (c: Checked) => c.validation.ok && c.problems.length === 0;
+/** Lower is better: legal first, then fewer problems. */
+const rank = (c: Checked) => (c.validation.ok ? 0 : 1000) + c.validation.errors.length + c.problems.length;
+
+/** The deck as returned to the user: engine problems left over become warnings. */
+function finish(c: Checked, review?: string): AgentResult {
+  const warnings = [...c.problems, ...c.validation.warnings.filter((w) => !c.problems.includes(w))];
+  return { deck: c.deck, validation: { ...c.validation, warnings }, analysis: c.analysis, combos: c.combos, ...(review ? { review } : {}) };
 }
 
 /** Look up, build, (re)balance and validate a submission with every check the engine enables. */
-async function checkSubmission(sub: SubmittedDeck, attempt: number, req: GenerateRequest, seedNames: string[], engine: EngineOptions): Promise<Checked> {
+async function checkSubmission(sub: SubmittedDeck, attempt: number, req: GenerateRequest, seedNames: string[], engine: EngineOptions, msLeft: () => number = () => Infinity): Promise<Checked> {
   const { found, notFound } = await scry.getCollection(namesInSubmission(sub));
   const deck = buildDeck(sub, found, seedNames);
   const notes: string[] = [];
@@ -197,24 +212,28 @@ async function checkSubmission(sub: SubmittedDeck, attempt: number, req: Generat
     }
   }
   const analysis = analyzeDeck(deck, { budget: req.budget, seeds: seedNames });
+  const problems: string[] = [];
   // The stricter checks only block the first attempts, so a heuristic miss can't sink a build.
-  if (engine.strict && attempt <= 2) validation.errors.push(...strictProblems(analysis));
+  if (engine.strict && attempt <= 2) problems.push(...strictProblems(analysis));
   let combos: ComboReport | undefined;
+  const room = msLeft() - 8000;
   if (engine.combos && validation.errors.every((e) => !e.startsWith("Deck has "))) {
-    combos = await checkCombos(deck);
-    const chosen = new Set([...seedNames, deck.commander.name, deck.partner?.name ?? ""].map((n) => n.toLowerCase()));
-    // a combo made only of the user's own picks is their call: warn, don't reject
-    const forced = combos.tooStrong.filter((c) => c.cards.every((n) => chosen.has(n.toLowerCase())));
-    const blocking = { ...combos, tooStrong: combos.tooStrong.filter((c) => !forced.includes(c)) };
-    if (attempt <= 3) validation.errors.push(...comboErrors(blocking));
-    else validation.warnings.push(...comboErrors(blocking));
-    for (const c of forced) validation.warnings.push(`${c.cards.join(" + ")} is a strong two-card combo made of your own picks; Bracket 3 tables may not expect it.`);
-    for (const c of combos.flagged ?? []) validation.warnings.push(`Combo in the deck: ${c.cards.join(" + ")} (${c.results.slice(0, 2).join(", ")}), rated Spicy by Commander Spellbook. Fine for Bracket 3, but mention it at the table.`);
-    if (!combos.checked) validation.warnings.push(combos.error ?? "Combo check unavailable.");
+    if (room < 3000) validation.warnings.push("Combo check skipped: out of time.");
+    else {
+      combos = await checkCombos(deck, fetch, Math.min(12000, room));
+      const chosen = new Set([...seedNames, deck.commander.name, deck.partner?.name ?? ""].map((n) => n.toLowerCase()));
+      // a combo made only of the user's own picks is their call: warn, don't reject
+      const forced = combos.tooStrong.filter((c) => c.cards.every((n) => chosen.has(n.toLowerCase())));
+      const blocking = comboErrors({ ...combos, tooStrong: combos.tooStrong.filter((c) => !forced.includes(c)) });
+      if (attempt <= 3) problems.push(...blocking);
+      else validation.warnings.push(...blocking);
+      for (const c of forced) validation.warnings.push(`${c.cards.join(" + ")} is a strong two-card combo made of your own picks; Bracket 3 tables may not expect it.`);
+      for (const c of combos.flagged ?? []) validation.warnings.push(`Combo in the deck: ${c.cards.join(" + ")} (${c.results.slice(0, 2).join(", ")}), rated Spicy by Commander Spellbook. Fine for Bracket 3, but mention it at the table.`);
+      if (!combos.checked) validation.warnings.push(combos.error ?? "Combo check unavailable.");
+    }
   }
-  validation.ok = validation.errors.length === 0;
   validation.warnings.unshift(...notes);
-  return { deck, validation, analysis, combos };
+  return { deck, validation, problems, analysis, combos, attempt };
 }
 
 export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promise<AgentResult | null> {
@@ -253,15 +272,18 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
   let truncated = 0;
   let reviewing = false; // a legal deck is waiting for its review swaps
   let reviewNote: string | undefined;
-  let lastDeck: AgentResult | null = null;
+  let reviewBase: Checked | null = null; // the accepted deck under review
+  let best: Checked | null = null; // best deck so far (legal first, then fewest problems)
+  let lastDeck: AgentResult | null = null; // what gets returned
 
   emit({ type: "status", text: "Claude is studying the seeds with the mtg-master skill" });
 
   for (let turn = 0; turn < maxTurns; turn++) {
     if (opts.signal?.aborted) return lastDeck;
-    if (left() < 15_000) break;
+    if (left() < 30_000) break;
     const scanner = new DraftScanner();
-    const timeout = AbortSignal.timeout(Math.max(1000, left()));
+    // leave ~25 s after the model call to check a submitted deck before the hard deadline
+    const timeout = AbortSignal.timeout(Math.max(1000, left() - 25_000));
     const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
     let msg;
     try {
@@ -355,7 +377,7 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
         continue;
       }
       if (x.name === "revise_deck") {
-        if (!reviewing || !lastDeck) {
+        if (!reviewing || !reviewBase || !lastDeck) {
           reply("revise_deck is only for the review round after an accepted deck. Use submit_deck.");
           continue;
         }
@@ -369,25 +391,26 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
           done = true;
           continue;
         }
-        const protect = [...seedNames, lastDeck.deck.commander.name, lastDeck.deck.partner?.name ?? ""].filter(Boolean);
-        const base = toSubmission(lastDeck.deck);
+        const protect = [...seedNames, reviewBase.deck.commander.name, reviewBase.deck.partner?.name ?? ""].filter(Boolean);
+        const base = toSubmission(reviewBase.deck);
         if (typeof x.input?.strategy === "string" && x.input.strategy.trim()) base.strategy = x.input.strategy.trim();
         const { sub, problems } = applySwaps(base, swaps, protect);
         let checked: Checked | null = null;
         if (!problems.length) {
           emit({ type: "status", text: `Checking ${swaps.length} review swap(s)` });
           try {
-            checked = await checkSubmission(sub, 1, req, seedNames, engine);
+            // same strictness as the accepted deck had, so the review can't fail on checks it passed
+            checked = await checkSubmission(sub, reviewBase!.attempt, req, seedNames, engine, left);
           } catch (e) {
             problems.push(`Couldn't check the swaps: ${(e as Error).message}`);
           }
         }
-        const errs = checked ? checked.validation.errors : problems;
-        if (checked && checked.validation.ok) {
+        const errs = checked ? [...checked.validation.errors, ...checked.problems] : problems;
+        if (checked && accepted(checked)) {
           emit({ type: "tool_result", id: x.id, summary: `${swaps.length} swap(s) accepted`, ok: true });
           emit({ type: "validation", validation: checked.validation, attempt: submits + revises });
           reviewNote = String(x.input?.notes ?? "").trim() || `Review: ${swaps.map((s) => `${s.out} → ${s.in}`).join(", ")}.`;
-          lastDeck = { ...checked, review: reviewNote };
+          lastDeck = finish(checked, reviewNote);
           reply("ACCEPTED", false);
           done = true;
         } else if (revises >= MAX_REVISES) {
@@ -402,28 +425,36 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
       }
       // submit_deck
       submits++;
-      const r = await runSubmit(x, submits, req, seedNames, emit, engine);
+      const r = await runSubmit(x, submits, req, seedNames, emit, engine, left);
       results.set(x.id, r.result);
       if (!r.checked) continue;
-      const final = r.checked.validation.ok || submits >= MAX_SUBMITS;
-      if (!final) {
-        if (!reviewing) lastDeck = r.checked; // best effort so far
+      const c = r.checked;
+      const final = accepted(c) || submits >= MAX_SUBMITS;
+      if (reviewing) {
+        // during the review only an accepted resubmission replaces the accepted deck
+        if (accepted(c)) {
+          lastDeck = finish(c, "Review: resubmitted the whole deck.");
+          r.result.content = "ACCEPTED";
+          r.result.is_error = undefined;
+          done = true;
+        } else if (final) {
+          r.result.content = "The resubmitted deck didn't pass; keeping the deck that was already accepted.";
+          r.result.is_error = undefined;
+          done = true;
+        }
         continue;
       }
-      if (reviewing && !r.checked.validation.ok) {
-        // a failed resubmission during the review keeps the accepted deck
-        r.result.content = "The resubmitted deck didn't pass; keeping the deck that was already accepted.";
-        r.result.is_error = undefined;
-        done = true;
-        continue;
-      }
-      lastDeck = r.checked;
-      const canReview = engine.review && !reviewing && r.checked.validation.ok && left() > REVIEW_NEEDS_MS && !late;
+      if (!best || rank(c) <= rank(best)) best = c;
+      lastDeck = finish(best);
+      if (!final) continue;
+      const canReview = engine.review && accepted(c) && left() > REVIEW_NEEDS_MS && !late;
       if (canReview) {
         reviewing = true;
+        reviewBase = c;
         emit({ type: "status", text: "Deck is legal; Claude is reviewing it" });
-        r.result.content = reviewRequest(r.checked);
+        r.result.content = reviewRequest(c);
       } else {
+        lastDeck = finish(accepted(c) ? c : best);
         r.result.content = "ACCEPTED";
         r.result.is_error = undefined;
         done = true;
@@ -486,20 +517,21 @@ async function runLookup(u: ContentBlock & { type: "tool_use" }, emit: (e: Strea
   }
 }
 
-async function runSubmit(u: ContentBlock & { type: "tool_use" }, attempt: number, req: GenerateRequest, seedNames: string[], emit: (e: StreamEvent) => void, engine: EngineOptions) {
+async function runSubmit(u: ContentBlock & { type: "tool_use" }, attempt: number, req: GenerateRequest, seedNames: string[], emit: (e: StreamEvent) => void, engine: EngineOptions, msLeft: () => number) {
   const sub = u.input as SubmittedDeck;
   if (!sub || !Array.isArray(sub.cards) || typeof sub.commander !== "string" || sub.cards.length > 150) {
     return { checked: null, result: { type: "tool_result", tool_use_id: u.id, is_error: true as boolean | undefined, content: "Invalid submission: a commander and a cards[] list (max 150 entries) are required." } };
   }
   try {
     emit({ type: "status", text: `Checking the deck with Scryfall (attempt ${attempt})` });
-    const checked = await checkSubmission(sub, attempt, req, seedNames, engine);
-    const { validation } = checked;
-    emit({ type: "validation", validation, attempt });
-    const final = validation.ok || attempt >= MAX_SUBMITS;
+    const checked = await checkSubmission(sub, attempt, req, seedNames, engine, msLeft);
+    const { validation, problems } = checked;
+    emit({ type: "validation", validation: { ...validation, ok: validation.ok && !problems.length, errors: [...validation.errors, ...problems] }, attempt });
+    const final = accepted(checked) || attempt >= MAX_SUBMITS;
+    const errors = [...validation.errors, ...problems];
     const content = final
       ? "ACCEPTED"
-      : `REJECTED — fix these and resubmit the whole deck:\n- ${validation.errors.join("\n- ")}${validation.warnings.length ? `\nWarnings (optional): ${validation.warnings.join(" ")}` : ""}`;
+      : `REJECTED — fix these and resubmit the whole deck:\n- ${errors.join("\n- ")}${validation.warnings.length ? `\nWarnings (optional): ${validation.warnings.join(" ")}` : ""}`;
     return { checked, result: { type: "tool_result", tool_use_id: u.id, is_error: (!final || undefined) as boolean | undefined, content } };
   } catch (e) {
     return { checked: null, result: { type: "tool_result", tool_use_id: u.id, is_error: true as boolean | undefined, content: `Couldn't check the deck: ${(e as Error).message}. Resubmit it.` } };

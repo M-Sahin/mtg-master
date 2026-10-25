@@ -9,8 +9,9 @@ import { isBasicLand } from "./types";
 export const FUNCTIONS = ["ramp", "draw", "removal", "wipe", "protection", "recursion", "tutor"] as const;
 export type Fn = (typeof FUNCTIONS)[number];
 
-const N = "(?:a|an|one|two|three|four|five|x|that many|up to (?:one|two|three|four|x)|\\d+)";
+const N = "(?:a|an|one|two|three|four|five|six|seven|eight|ten|x|that many|up to (?:one|two|three|four|five|x)|\\d+)";
 const BASIC_TYPES = "(?:basic land|land|forest|plains|island|swamp|mountain)";
+const TARGET_MODS = "(?:(?:non-?\\w+|tapped|untapped|attacking|blocking|legendary|colored|monocolored|multicolored|white|blue|black|red|green),? (?:or )?)*";
 
 const RX: Record<Fn, RegExp[]> = {
   ramp: [
@@ -19,23 +20,24 @@ const RX: Record<Fn, RegExp[]> = {
     new RegExp(`search your library for [^.]*${BASIC_TYPES} cards?[^.]*put (?:it|them|one|those cards) onto the battlefield`, "i"),
     /put (?:a|up to \w+) land cards? from your hand onto the battlefield/i,
     /you may play (?:an|two) additional lands?/i,
-    /create (?:a|an|two|three|x|\w+) treasure tokens?/i,
+    /create [^.]*?\btreasure tokens?/i,
     /\badd (?:one mana of any color|\{[wubrgc]\}\{[wubrgc]\}|\w+ mana)[^.]*for each/i, // big mana (Cabal Coffers, Gaea's Cradle style)
   ],
   draw: [
     new RegExp(`\\bdraws? ${N} (?:additional )?cards?`, "i"),
-    /\bdraw cards? equal to/i,
+    /\bdraws? (?:\w+ )?cards? equal to/i,
     /exile the top (?:\w+ )?cards? of your library[^.]*\. (?:until|you may (?:play|cast))/i, // impulse draw
     /investigate|create (?:a|an|two|\w+) clue tokens?/i,
   ],
   removal: [
-    /\b(?:destroy|exile) (?:another |up to (?:one|two|x) )?target (?:nonland |noncreature |nontoken |tapped |attacking |blocking |creature|artifact|enchantment|planeswalker|permanent|battle)/i,
-    /\bcounter target (?:\w+ )?spell/i,
-    /deals? (?:\d+|x|damage equal to [^.]*?) damage to (?:any target|target creature|target (?:creature or )?planeswalker|up to (?:one|two) target)/i,
-    /target creature (?:an opponent controls )?gets -\d+\/-\d+|target creature gets -x\/-x/i,
-    /\b(?:target|each) (?:opponent|player) sacrifices (?:a|an) (?:creature|attacking creature|nonland permanent|artifact|enchantment)/i,
+    new RegExp(`\\b(?:destroy|exile) (?:another |up to (?:one|two|x) )?target ${TARGET_MODS}(?:creature|artifact|enchantment|planeswalker|permanent|battle)`, "i"),
+    /\bcounter target [^.]*?(?:spell|ability)/i,
+    /deals? (?:\d+|x) damage to (?:any target|target (?:creature|planeswalker|attacking|blocking)|(?:up to )?(?:one|two|three) target|each creature your opponents control)/i,
+    /deals? damage equal to [^.]*? to (?:any target|target (?:creature|planeswalker)|(?:up to )?one target)/i,
+    /target creature (?:an opponent controls |you don't control )?gets -(?:\d+|x)\/-(?:\d+|x)/i,
+    /\b(?:target|each) (?:opponent|player)s? sacrifices? (?:a|an|one|two) (?:\w+ )?(?:creature|nonland permanent|artifact|enchantment|planeswalker)/i,
     /\bfights? (?:target|another target|up to one target)/i,
-    /(?:put|shuffle) target [^.]* into its owner's library/i,
+    /(?:put|shuffle)s? target [^.]* into its owner's library|the owner of target [^.]*(?:shuffles|puts)/i,
     /return target (?:nonland )?(?:creature|permanent|artifact)[^.]* to its owner's hand/i,
   ],
   wipe: [
@@ -44,6 +46,7 @@ const RX: Record<Fn, RegExp[]> = {
     /deals? (?:\d+|x) damage to each (?:other )?creature/i,
     /return all (?:nonland permanents|creatures|other creatures)[^.]* to their owners'? hands/i,
     /each (?:player|opponent) sacrifices (?:all|that many|\w+) creatures/i,
+    /\bsacrifices all creatures/i,
   ],
   protection: [
     /(?:gains?|gain|have|has|get)\b[^.]{0,60}\b(?:hexproof|indestructible|shroud|protection from)/i,
@@ -54,11 +57,17 @@ const RX: Record<Fn, RegExp[]> = {
     /return [^.]*from (?:your|a) graveyard to (?:your hand|the battlefield)/i,
     /put [^.]*from (?:your|a) graveyard onto the battlefield/i,
     /(?:cast|play) [^.]*from your graveyard/i,
+    /enchant creature card in a graveyard/i, // Animate Dead, Dance of the Dead
+    /target (?:\w+ )?cards? in (?:your|a) graveyard/i, // Victimize-style
   ],
   tutor: [/search your library for (?:a|an|up to \w+) (?!basic land|land|forest|plains|island|swamp|mountain)[^.]*card/i],
 };
 
 const MLD_OR_LANDS = /\b(?:destroy|exile) all lands/i;
+// "exile target creature you control, then return it" is a blink, not removal
+const FLICKER = /[^.]*\btarget [^.]*you control, then return[^.]*\./gi;
+// "if you would draw a card…" replaces draws; it isn't card draw
+const WOULD_DRAW = /[^.]*\bwould draw\b[^.]*\./gi;
 
 function frontType(c: CardInfo) {
   return c.typeLine.split("//")[0];
@@ -66,16 +75,25 @@ function frontType(c: CardInfo) {
 export function isLand(c: CardInfo) {
   return /\bLand\b/.test(frontType(c));
 }
-/** Modal double-faced card with a land back (counts as roughly half a land). */
+/** Modal double-faced card with a land back (counts as roughly half a land). Transforming cards don't count. */
 export function isMdfcLand(c: CardInfo) {
   const [front, back] = c.typeLine.split("//");
-  return !!back && /\bLand\b/.test(back) && !/\bLand\b/.test(front);
+  if (!back || !/\bLand\b/.test(back) || /\bLand\b/.test(front)) return false;
+  return c.layout ? c.layout === "modal_dfc" : true;
+}
+
+/** Oracle text of the face you cast: the front of a double-faced card; both halves of split/adventure cards. */
+export function castableText(c: CardInfo): string {
+  const t = c.oracleText;
+  const twoSided = c.layout ? ["transform", "modal_dfc", "flip", "meld", "reversible_card"].includes(c.layout) : /\/\//.test(c.typeLine) && t.startsWith("[");
+  if (!twoSided || !t.startsWith("[")) return t;
+  return t.split(/\n(?=\[[^\]\n]+\] )/)[0].replace(/^\[[^\]]+\][^\n]*\n?/, "");
 }
 
 /** Which functions a card reliably performs, judged from its Oracle text. */
 export function detectFunctions(c: CardInfo): Set<Fn> {
   const out = new Set<Fn>();
-  const text = c.oracleText.replace(/\([^)]*\)/g, ""); // drop reminder text
+  const text = castableText(c).replace(/\([^)]*\)/g, ""); // drop reminder text
   if (isLand(c)) {
     // lands only count for things beyond tapping for mana (e.g. Bojuka Bog-style removal is rare; keep it simple)
     if (RX.recursion.some((r) => r.test(text))) out.add("recursion");
@@ -83,9 +101,10 @@ export function detectFunctions(c: CardInfo): Set<Fn> {
   }
   const permanent = /\b(?:Artifact|Creature|Enchantment|Planeswalker|Battle)\b/.test(frontType(c));
   for (const fn of FUNCTIONS) {
+    const t = fn === "removal" ? text.replace(FLICKER, "") : fn === "draw" ? text.replace(WOULD_DRAW, "") : text;
     for (const [k, r] of RX[fn].entries()) {
       if (fn === "ramp" && k === 0 && !permanent) continue; // a ritual isn't ramp
-      if (r.test(text)) {
+      if (r.test(t)) {
         out.add(fn);
         break;
       }

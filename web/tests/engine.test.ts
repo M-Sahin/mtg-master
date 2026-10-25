@@ -219,3 +219,64 @@ test("effort is sent only when the engine sets it", async () => {
     fake.restore();
   }
 });
+
+test("v2 agent: a deck that only passed once strict checks relaxed can still be reviewed", async () => {
+  const fake = installFakeScryfall();
+  resetComboCache();
+  spellbook.body = { results: { included: [] } };
+  try {
+    let turn = 0;
+    const seen: string[] = [];
+    const caller: ModelCaller = async (params) => {
+      turn++;
+      const last = params.messages.at(-1);
+      if (Array.isArray(last.content)) for (const r of last.content) if (r.type === "tool_result") seen.push(String(r.content));
+      // fixture cards have no real text, so the strict counts fail on attempts 1 and 2
+      if (turn <= 3) return { content: [{ type: "tool_use", id: `s${turn}`, name: "submit_deck", input: clone() }], stop_reason: "tool_use" };
+      return { content: [{ type: "tool_use", id: "r", name: "revise_deck", input: { swaps: [{ out: "Phyrexian Arena", in: "Night's Whisper", role: "draw", why: "x" }] } }], stop_reason: "tool_use" };
+    };
+    const out = await runAgent({ seeds: DEMO_SEEDS, commander: "Meren of Clan Nel Toth", budget: "any" }, { model: "m", callModel: caller, emit: () => {}, engine: parseEngine("v2") });
+    assert.match(seen[0], /REJECTED[\s\S]*card text shows only/);
+    assert.match(seen[2], /ACCEPTED — the deck is legal/);
+    assert.ok(out?.validation.ok);
+    assert.ok(out!.deck.cards.some((c) => c.name === "Night's Whisper"), "the review swap was accepted under the same checks");
+  } finally {
+    fake.restore();
+  }
+});
+
+test("v2 agent: a legal deck held back only by engine checks comes back legal, with the problems as warnings", async () => {
+  const fake = installFakeScryfall();
+  resetComboCache();
+  spellbook.body = { results: { included: [] } };
+  try {
+    let turn = 0;
+    const caller: ModelCaller = async () => {
+      turn++;
+      if (turn === 1) return { content: [{ type: "tool_use", id: "s1", name: "submit_deck", input: clone() }], stop_reason: "tool_use" };
+      return { content: [{ type: "text", text: "I think the deck is fine as it is." }], stop_reason: "end_turn" };
+    };
+    const out = await runAgent({ seeds: DEMO_SEEDS, commander: "Meren of Clan Nel Toth", budget: "any" }, { model: "m", callModel: caller, emit: () => {}, engine: parseEngine("v2") });
+    assert.ok(out);
+    assert.equal(out!.validation.ok, true);
+    assert.ok(out!.validation.warnings.some((w) => /card text shows only/.test(w)));
+  } finally {
+    fake.restore();
+  }
+});
+
+test("rebalanceBasics keeps Wastes and snow choices per basic type", () => {
+  const gg = Array.from({ length: 6 }, (_, i) => dc(card(`Green ${i}`, "Creature", "{1}{G}{G}")));
+  const uu = Array.from({ length: 6 }, (_, i) => dc(card(`Blue ${i}`, "Creature", "{1}{U}{U}")));
+  const deck: Deck = {
+    name: "t", commander: dc(card("Cmd", "Legendary Creature", "{G}{U}"), "wincon"), strategy: "", winConditions: [], bracketNotes: "", colorIdentity: ["G", "U"],
+    cards: [...gg, ...uu, dc(card("Snow-Covered Wastes", "Basic Snow Land", ""), "land", 2), dc(card("Snow-Covered Island", "Basic Snow Land — Island", ""), "land", 4), dc(card("Forest", "Basic Land — Forest", ""), "land", 20)],
+  };
+  rebalanceBasics(deck);
+  const q = (n: string) => deck.cards.find((c) => c.name === n)?.qty ?? 0;
+  assert.equal(q("Snow-Covered Wastes"), 2, "Wastes are left alone");
+  assert.equal(q("Snow-Covered Island") + q("Forest"), 24);
+  assert.equal(q("Island"), 0, "Islands stay snow");
+  assert.equal(q("Snow-Covered Forest"), 0, "Forests stay non-snow");
+  assert.ok(q("Snow-Covered Island") >= 10);
+});

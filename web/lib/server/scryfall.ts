@@ -114,6 +114,7 @@ export function toCardInfo(c: any): CardInfo {
     scryfallUri: String(c.scryfall_uri ?? "").split("?")[0],
     edhrecRank: c.edhrec_rank ?? null,
     producedMana: Array.isArray(c.produced_mana) ? c.produced_mana : [],
+    layout: typeof c.layout === "string" ? c.layout : undefined,
   };
 }
 

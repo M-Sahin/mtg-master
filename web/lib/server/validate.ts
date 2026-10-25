@@ -228,7 +228,8 @@ export function strictProblems(a: DeckAnalysis): string[] {
   const named = (fn: string) => Object.entries(a.byCard).filter(([, f]) => (f as string[]).includes(fn)).map(([n]) => n);
   const landEq = a.lands + a.mdfcLands * 0.5;
   if (landEq < 33) out.push(`Only ${a.lands} lands${a.mdfcLands ? ` (+${a.mdfcLands} MDFC land backs)` : ""}: a Bracket 3 deck needs about 35–38. Add ${Math.ceil(35 - landEq)} lands.`);
-  if (a.lands > 41) out.push(`${a.lands} lands is too many; the usual range is 35–38. Cut ${a.lands - 38}.`);
+  // landfall and lands-matter decks run 40+ on purpose; only flag the extreme
+  if (a.lands > 44) out.push(`${a.lands} lands is too many even for a lands deck; the usual range is 35–38 (up to ~42 for landfall). Cut ${a.lands - 42}.`);
   const mins: [string, string, number, string][] = [
     ["ramp", "ramp", 7, "mana rocks and dorks, land-fetching spells, Treasure makers"],
     ["draw", "card draw", 7, "cards that draw, impulse-draw or make Clues"],
@@ -257,10 +258,17 @@ export function strictProblems(a: DeckAnalysis): string[] {
  */
 export function rebalanceBasics(deck: Deck): string | null {
   const colors = deck.colorIdentity;
-  const basics = deck.cards.filter((c) => isBasicLand(c.name) && !/^wastes$/i.test(c.name));
+  const basics = deck.cards.filter((c) => isBasicLand(c.name) && !/^(snow-covered )?wastes$/i.test(c.name));
   const total = basics.reduce((n, c) => n + c.qty, 0);
   if (!colors.length || !total) return null;
-  const snow = basics.some((c) => /^snow-covered /i.test(c.name));
+  // snow or not, per basic type: a color stays snow only if all its basics were snow;
+  // a color that had no basics follows the rest of the deck
+  const isSnow = (n: string) => /^snow-covered /i.test(n);
+  const allSnow = basics.every((c) => isSnow(c.name));
+  const snowFor = (col: Color) => {
+    const own = basics.filter((c) => c.name.toLowerCase().replace(/^snow-covered /, "") === BASIC_FOR_COLOR[col].toLowerCase());
+    return own.length ? own.every((c) => isSnow(c.name)) : allSnow;
+  };
   const before = Object.fromEntries(basics.map((c) => [c.name, c.qty]));
 
   const sources: Record<string, number> = {};
@@ -302,7 +310,7 @@ export function rebalanceBasics(deck: Deck): string | null {
     })[0];
     alloc[pick]++;
   }
-  const name = (col: Color) => (snow ? `Snow-Covered ${BASIC_FOR_COLOR[col]}` : BASIC_FOR_COLOR[col]);
+  const name = (col: Color) => (snowFor(col) ? `Snow-Covered ${BASIC_FOR_COLOR[col]}` : BASIC_FOR_COLOR[col]);
   const after: Record<string, number> = {};
   for (const col of use) if (alloc[col]) after[name(col as Color)] = alloc[col];
   const same = Object.keys(before).length === Object.keys(after).length && Object.entries(after).every(([n, q]) => before[n] === q);

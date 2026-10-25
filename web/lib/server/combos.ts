@@ -59,7 +59,7 @@ export function parseCombos(body: any): Combo[] {
   });
 }
 
-export async function checkCombos(deck: Deck, fetchImpl: typeof fetch = fetch): Promise<ComboReport> {
+export async function checkCombos(deck: Deck, fetchImpl: typeof fetch = fetch, timeoutMs = 12000): Promise<ComboReport> {
   const commanders = [deck.commander, deck.partner].filter(Boolean).map((c) => ({ card: c!.name }));
   const main = deck.cards.filter((c) => !isBasicLand(c.name)).map((c) => ({ card: c.name, quantity: c.qty }));
   const key = [...commanders.map((c) => c.card), "|", ...main.map((c) => c.card).sort()].join("\n");
@@ -70,7 +70,7 @@ export async function checkCombos(deck: Deck, fetchImpl: typeof fetch = fetch): 
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json", "user-agent": "hundredfold-mtg-master/1.0 (+https://github.com/M-Sahin/mtg-master)" },
       body: JSON.stringify({ commanders, main }),
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return { checked: false, error: `Commander Spellbook returned HTTP ${res.status}`, combos: [], tooStrong: [] };
     const combos = parseCombos(await res.json());
