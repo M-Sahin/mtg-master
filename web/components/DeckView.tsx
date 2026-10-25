@@ -6,6 +6,7 @@ import type { Color, Deck, DeckCard, Validation } from "../lib/shared/types";
 import { ROLE_LABELS } from "../lib/shared/types";
 import { simulateOpeners } from "../lib/shared/openers";
 import { OpenersView } from "./OpenersView";
+import { DeckBoxesPanel } from "./DeckBoxesPanel";
 import { CardFace, IdentityPips, ManaCost } from "./CardFace";
 import { ShareButton } from "./ShareSheet";
 
@@ -287,6 +288,7 @@ function NumbersTab({ deck }: { deck: Deck }) {
         </div>
       </section>
       <OpenersPanel deck={deck} />
+      <DeckBoxesPanel deck={deck} />
       <section className="panel">
         <h3>Price</h3>
         <p className="panel-big">€{cost.eur.toFixed(0)}</p>

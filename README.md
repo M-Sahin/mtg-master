@@ -31,7 +31,7 @@ Three small Python helpers (standard library only, no dependencies) do the work 
 
 ## Web app: Hundredfoldz
 
-[`web/`](web) contains **Hundredfoldz**, a Next.js app built on this skill. You pick five cards and a bracket, and Claude builds a complete Commander deck around them. It can also complete a deck you started or suggest swaps to upgrade a finished one. Progress is shown live: Scryfall searches, the list filling a 10×10 grid, and server-side validation with automatic fixes. You can export the result to Moxfield or Arena, or share it with a short link. You can also build from your own collection, keep your decks in the browser, check any decklist's bracket for free at `/bracket`, and see how often a deck's mana works from thousands of goldfished opening hands.
+[`web/`](web) contains **Hundredfoldz**, a Next.js app built on this skill. You pick five cards and a bracket, and Claude builds a complete Commander deck around them. It can also complete a deck you started or suggest swaps to upgrade a finished one. Progress is shown live: Scryfall searches, the list filling a 10×10 grid, and server-side validation with automatic fixes. You can export the result to Moxfield or Arena, or share it with a short link. You can also build from your own collection, keep your decks in the browser, check any decklist's bracket for free at `/bracket`, see how often a deck's mana works from thousands of goldfished opening hands, and check what any booster box since 2020 is worth on average.
 
 It's free and open source. Host your own copy in one click; visitors build with their own Claude API key, so the site itself needs no key:
 

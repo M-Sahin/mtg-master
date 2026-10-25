@@ -46,6 +46,8 @@ await run("5-numbers", { width: 1440, height: 1000 }, async (p) => {
   await p.waitForSelector("[data-testid=openers] .op-row", { timeout: 10000 }).catch(() => errors.push("no Opening hands panel on the Numbers tab"));
   const rows = await p.locator("[data-testid=openers] .op-row").allInnerTexts();
   console.log(`opening hands: ${rows.map((r) => r.replace(/\s+/g, " ")).join(" | ")}`);
+  const boxes = await p.locator("[data-testid=deck-boxes]").innerText({ timeout: 8000 }).catch(() => "(no panel)");
+  console.log(`singles or boxes: ${boxes.replace(/\s+/g, " ").slice(0, 400)}`);
   await p.locator("[data-testid=openers]").scrollIntoViewIfNeeded().catch(() => {});
   await p.waitForTimeout(500);
 });
@@ -259,6 +261,44 @@ await run("22-upgrade-my-deck", { width: 1440, height: 1000 }, async (p) => {
   console.log(`upgrade request: mode ${sent?.mode}, ${sent?.seeds?.length} cards, commander ${sent?.commander}, basics ${JSON.stringify(sent?.basics)}; swaps shown: ${swaps.map((s) => s.replace(/\s+/g, " ")).join(" | ")}; ${marked} card(s) marked New`);
   if (sent?.mode !== "upgrade" || !/Judith/.test(sent?.commander ?? "")) errors.push(`upgrade request looked wrong: ${JSON.stringify(sent)?.slice(0, 200)}`);
   if (swaps.length !== 1 || marked !== 1) errors.push(`upgrade view: ${swaps.length} swaps, ${marked} marked New`);
+});
+// Box EV: the list (real data from the ev-data branch), one box with a price, the phone layout
+let evFirst = "";
+await run("23-ev-index", { width: 1440, height: 1000 }, async (p) => {
+  await p.goto(`${base}/ev`, { waitUntil: "networkidle" });
+  const rows = await p.locator("[data-testid=ev-table] a.ev-row").count();
+  const sample = await p.locator("[data-testid=ev-table] a.ev-row").evaluateAll((els) => els.slice(0, 6).map((e) => e.innerText.replace(/\s+/g, " ")));
+  console.log(`box EV list: ${rows} boxes; ${sample.join(" | ")}`);
+  if (rows < 10) errors.push(`Box EV list has ${rows} boxes`);
+  evFirst = (await p.locator("[data-testid=ev-table] a.ev-row").first().getAttribute("href")) ?? "";
+  const active = await p.locator(".nav-main .nav-link.is-active").innerText().catch(() => "");
+  if (active !== "Box EV") errors.push(`navbar active item on /ev: "${active}"`);
+});
+await run("24-ev-product", { width: 1440, height: 1000 }, async (p) => {
+  await p.goto(`${base}${evFirst || "/ev/dsk-play"}`, { waitUntil: "networkidle" });
+  await p.waitForSelector("[data-testid=ev-results]", { timeout: 20000 }).catch(() => errors.push("no EV results on the product page"));
+  await p.fill("[data-testid=ev-price]", "100");
+  await p.waitForTimeout(1200);
+  const stats = await p.locator(".ev-stat").allInnerTexts();
+  console.log(`box EV product ${evFirst}: ${stats.map((x) => x.replace(/\s+/g, " ")).join(" | ")}`);
+  const chance = await p.locator("[data-testid=ev-chance]").innerText();
+  if (!/^\d+%$/.test(chance)) errors.push(`EV chance shows "${chance}"`);
+  const top = await p.locator(".ev-card").count();
+  if (top < 5) errors.push(`only ${top} top cards on the EV page`);
+});
+await run("25-mobile-ev", { width: 390, height: 844 }, async (p) => {
+  await p.goto(`${base}${evFirst || "/ev/dsk-play"}`, { waitUntil: "networkidle" });
+  const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  if (overflow > 1) errors.push(`EV page scrolls sideways on a phone (${overflow}px)`);
+});
+// the navbar on a phone: a menu button that opens all the links
+await run("26-mobile-nav", { width: 390, height: 844 }, async (p) => {
+  const visible = await p.locator(".nav-main").isVisible();
+  if (visible) errors.push("desktop nav links show on a phone");
+  await p.click("[data-testid=nav-toggle]");
+  const links = await p.locator(".nav-menu a").allInnerTexts();
+  console.log(`phone menu: ${links.join(" | ")}`);
+  if (!["Build a deck", "Bracket checker", "Box EV", "My decks", "GitHub"].every((l) => links.includes(l))) errors.push(`phone menu links: ${links.join(", ")}`);
 });
 await run("7-mobile-setup", { width: 390, height: 844 }, loadSeeds);
 await run("8-mobile-result", { width: 390, height: 844 }, toResult);

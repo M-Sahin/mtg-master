@@ -19,6 +19,8 @@ Next.js (App Router), React 19, plain CSS. No SDK dependencies beyond Next and R
 - **Own key:** visitors build with their own Claude API key and model, and see the tokens and estimated cost of each build. The key field works with password managers.
 - **Your collection:** prefer cards you own, or build only from them.
 - **Bracket checker:** paste or upload any decklist at `/bracket` to see which bracket it fits and why, with the opening-hand numbers.
+- **Box EV:** what every booster box since 2020 is worth on average at `/ev`, after selling costs, with your chance to get your price back (see [Box EV](#box-ev)). The deck view adds "Singles or boxes?": which boxes could give you the deck's cards, and what those cards cost as singles.
+- **Navbar:** Build a deck, Bracket checker, Box EV and My decks on every page, with GitHub and Support links; a menu button on phones.
 - **Saving:** "My decks" keeps your finished decks in the browser.
 - **Sharing:**
   - the "Share deck" sheet: native sharing on phones, WhatsApp, Reddit (as a link, or a ready-made Markdown post with the decklist), Telegram, X and email
@@ -30,6 +32,23 @@ Next.js (App Router), React 19, plain CSS. No SDK dependencies beyond Next and R
 ## Bracket checker
 
 `/bracket` is a free tool: paste any Commander decklist (Moxfield, Archidekt, Arena, MTGO or plain "1 Card" lines) and it shows the lowest bracket the deck fits, the cards that decide it, and a legality check. It needs no Claude and no API key: Game Changer flags and card text come from Scryfall, combos from Commander Spellbook, and the rules are in `lib/server/bracket-check.ts` (checked against Wizards' brackets on 2026-10-25). Brackets 1 and 5 depend on intent, so the result says when a deck could also be one of those.
+
+## Box EV
+
+`/ev` lists every Play, Collector, Set and Draft Booster box released since 2020 with its average card value. A box's page (`/ev/dsk-play`) lets you enter what you'd pay and shows:
+
+- **Average card value:** every card at its Cardmarket trend price, weighted by how often it's in a pack.
+- **After selling:** a 5% marketplace fee, and cards under €1 count as €0 because they aren't worth listing one by one. Both, plus a sell-below-trend discount and the pack count, can be changed.
+- **Your chance to get your price back:** from 4,000 simulated boxes (seeded, so the same box gives the same answer), with the spread and the middle box, because a few big pulls lift the average above what most boxes give.
+- **The cards that carry the value:** price, copies per box and share of the EV.
+
+The data is built once a day by `.github/workflows/ev-data.yml` (`scripts/build-ev.mjs`). It needs no secrets:
+
+- pack layouts and slot odds come from [taw/magic-sealed-data](https://github.com/taw/magic-sealed-data), the source of MTGJSON's booster data;
+- prices come from Scryfall (Cardmarket trend, EUR), looked up by set and collector number;
+- the result goes to the `ev-data` branch as one commit (no history, so the repo stays small), and Vercel doesn't deploy that branch.
+
+The site reads it from GitHub and keeps it in memory for 30 minutes. A self-hosted copy reads the same data, or set `EV_DATA_URL` to your own. Sealed box prices aren't in any free data source, which is why you enter your own price.
 
 ## Opening-hand check
 
@@ -105,6 +124,7 @@ cd web && npm ci && npm run build && npm start
 | `DONATION_URL` | no | An `https://` link (Ko-fi, GitHub Sponsors…) shown in the footer and under each finished deck, e.g. `https://ko-fi.com/yourname`. |
 | `PUBLIC_ACCESS` | no | Set it to `1` only if you really want builds open to everyone without a code. |
 | `ANTHROPIC_MODEL` | no | Defaults to `claude-sonnet-5-5`. `claude-opus-5-5` gives stronger decks but is slower and costs more. |
+| `EV_DATA_URL` | no | Where the Box EV data is read from. Defaults to this repo's `ev-data` branch on GitHub. |
 | `BUILDS_PER_HOUR_PER_IP` | no | A best-effort limit per IP, kept per server instance (default 6). |
 | `DEMO_MODE` | no | Set it to `1` to force demo mode even when a key is set. Only the value `1` switches it on. |
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | no | Turn on short share links. Set automatically when you connect Upstash for Redis on Vercel (`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` work too). |
@@ -218,6 +238,7 @@ npm run dev                  # http://localhost:3000
 | `node scripts/check-scryfall-live.mjs` | Checks double-faced, split and accented card names, and partner pairings, against the live Scryfall API |
 | `node scripts/calibrate-analysis.mjs` | Compares the role detector with Scryfall Tagger on the most-played cards per role (needs Scryfall access) |
 | `node scripts/eval.mjs check` / `run` | The engine eval (see [Running an eval](#running-an-eval)) |
+| `node scripts/build-ev.mjs --out ev-out [--only dsk-play]` | Builds the Box EV data (needs GitHub and Scryfall) |
 | `node scripts/check-openers.mjs [list.txt …]` | Opening-hand numbers for real decklists, before and after the basic-land rebalance (needs Scryfall) |
 
 CI (`.github/workflows/web.yml`) runs all of these on every push except the eval run, and also builds and tests the Docker image. The browser pass checks the share flow, link previews, a cut-off build stream, switching apps, the key form, the security policy, the bracket checker, the Opening hands panel, completing and upgrading a deck, and the phone header. A step also prints the opening-hand numbers for the sample decks. CI publishes the screenshots, logs and the lockfile it resolved to the `ci-output` branch. The eval has its own manual workflow (`.github/workflows/eval.yml`).
