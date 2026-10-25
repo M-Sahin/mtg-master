@@ -419,3 +419,19 @@ test("stream that ends without message_stop is an error", async () => {
   }
   await assert.rejects(consumeStream(ev(), {}), /ended early/);
 });
+
+test("double-faced cards resolve by full 'Front // Back' name and by front face", async () => {
+  const fake = installFakeScryfall();
+  try {
+    const { getCollection } = await import("../lib/server/scryfall");
+    const full = "Ojer Axonil, Deepest Might // Temple of Power";
+    const { found, notFound } = await getCollection([full, "Temple of Power", "Sol Ring", "Not A Real Card"]);
+    assert.deepEqual(notFound, ["Not A Real Card"]);
+    assert.equal(found.get(full.toLowerCase())?.name, full);
+    assert.equal(found.get("temple of power")?.name, full);
+    // the collection request asked for the front face, not the full name
+    assert.ok(!fake.calls.some((u) => u.includes("Temple%20of%20Power") && u.includes("collection")));
+  } finally {
+    fake.restore();
+  }
+});

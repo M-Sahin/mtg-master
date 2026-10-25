@@ -14,6 +14,7 @@ code 2 and says so; use the web-search fallback in references/lookup.md instead.
 """
 import argparse
 import json
+import re
 import sys
 import time
 import urllib.error
@@ -62,22 +63,39 @@ def get_card(name):
     return card
 
 
+def _front(name):
+    """'Front // Back' -> 'Front'. Scryfall's collection endpoint doesn't match full DFC names."""
+    return re.split(r"\s+//?\s+", name.strip())[0]
+
+
 def get_cards(names):
-    """Batch lookup. Returns (found: dict lower-name -> card, not_found: list)."""
+    """Batch lookup. Returns (found: dict lower-name -> card, not_found: list).
+
+    Every requested name ends up either as a key in `found` or in `not_found`.
+    """
     found, missing = {}, []
-    names = list(dict.fromkeys(names))
+    names = list(dict.fromkeys(n.strip() for n in names if n and n.strip()))
     for i in range(0, len(names), 75):
         chunk = names[i:i + 75]
-        res = _request("/cards/collection", {"identifiers": [{"name": n} for n in chunk]})
+        ids = list(dict.fromkeys(_front(n) for n in chunk))
+        res = _request("/cards/collection", {"identifiers": [{"name": n} for n in ids]})
         if res.get("object") == "error":
             raise NetworkBlocked(res.get("details", "collection error"))
         for c in res.get("data", []):
-            found[c["name"].lower()] = c
+            found.setdefault(c["name"].lower(), c)
             # map each face name too, so "Front Face" matches "Front // Back"
             for f in c.get("card_faces", []) or []:
                 found.setdefault(f["name"].lower(), c)
-        for nf in res.get("not_found", []):
-            missing.append(nf.get("name", str(nf)))
+        for n in chunk:
+            c = found.get(n.lower()) or found.get(_front(n).lower())
+            if not c:  # exact lookup handles "A // B" and odd spellings; then fuzzy
+                c = get_card(n)
+                if c.get("object") == "error":
+                    c = None
+            if c:
+                found.setdefault(n.lower(), c)
+            else:
+                missing.append(n)
     return found, missing
 
 

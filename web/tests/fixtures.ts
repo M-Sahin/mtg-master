@@ -44,8 +44,18 @@ export const SPECIAL: Record<string, any> = {
 
 export const UNKNOWN = new Set(["Lightnig Bolt", "Not A Real Card"]);
 
+const DFC = {
+  ...fakeCard("Ojer Axonil, Deepest Might // Temple of Power", { color_identity: ["R"], type_line: "Legendary Creature — God // Land" }),
+  card_faces: [
+    { name: "Ojer Axonil, Deepest Might", mana_cost: "{2}{R}{R}", type_line: "Legendary Creature — God", oracle_text: "Trample" },
+    { name: "Temple of Power", mana_cost: "", type_line: "Land", oracle_text: "{T}: Add {R}." },
+  ],
+};
+
 export function lookupFake(name: string) {
   if (UNKNOWN.has(name)) return null;
+  const n = name.toLowerCase();
+  if (n === DFC.name.toLowerCase() || DFC.card_faces.some((f) => f.name.toLowerCase() === n)) return DFC;
   return SPECIAL[name] ?? fakeCard(name);
 }
 
@@ -62,7 +72,7 @@ export function installFakeScryfall() {
       const data: any[] = [];
       const not_found: any[] = [];
       for (const i of ids) {
-        const c = lookupFake(i.name);
+        const c = i.name.includes(" // ") ? null : lookupFake(i.name); // real Scryfall: full DFC names don't match here
         c ? data.push(c) : not_found.push(i);
       }
       return json({ object: "list", data, not_found });

@@ -128,18 +128,22 @@ export async function getCollection(names: string[]) {
     if (hit && Date.now() - hit.at < TTL) put(hit.info, n);
     else todo.push(n);
   }
+  // Scryfall's /cards/collection doesn't match the full "Front // Back" name of double-faced
+  // cards, so ask for the front face and map the answer back to the requested name.
+  const front = (n: string) => n.split(/\s+\/\/?\s+/)[0].trim();
   for (let i = 0; i < todo.length; i += 75) {
     const chunk = todo.slice(i, i + 75);
-    const res = await request<any>("/cards/collection", { identifiers: chunk.map((name) => ({ name })) });
+    const ids = [...new Map(chunk.map((n) => [front(n).toLowerCase(), front(n)])).values()];
+    const res = await request<any>("/cards/collection", { identifiers: ids.map((name) => ({ name })) });
     if (res.object === "error") throw new ScryfallError(res.details ?? "collection error");
     for (const c of res.data ?? []) {
       const info = toCardInfo(c);
       put(info, c.name, ...(c.card_faces ?? []).map((f: any) => f.name));
     }
-    const missing = new Set((res.not_found ?? []).map((nf: any) => String(nf.name ?? "").toLowerCase()));
     for (const n of chunk) {
-      let info = found.get(n.toLowerCase());
-      if (!info && !missing.has(n.toLowerCase())) info = (await named(n, true)) ?? undefined; // answered under another spelling
+      let info = found.get(n.toLowerCase()) ?? found.get(front(n).toLowerCase());
+      // still unknown: exact lookup (handles "A // B" and odd spellings), then fuzzy
+      if (!info) info = (await named(n)) ?? undefined;
       if (info) {
         put(info, n);
         cardCache.set(n.toLowerCase(), { at: Date.now(), info });

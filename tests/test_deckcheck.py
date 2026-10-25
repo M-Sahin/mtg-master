@@ -161,6 +161,10 @@ class Online(unittest.TestCase):
         self.assertIn("Card not found on Scryfall", out)
         self.assertEqual(code, 1)
 
+    def test_dfc_full_name(self):
+        code, out = check("4 Kumano Faces Kakkazan // Etching of Kumano\n56 Mountain\n", "-f", "modern")
+        self.assertEqual(code, 0, out)
+
     def test_dfc_front_face_name(self):
         code, out = check("4 Kumano Faces Kakkazan\n56 Mountain\n", "-f", "modern")
         self.assertEqual(code, 0, out)

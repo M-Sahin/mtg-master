@@ -56,10 +56,19 @@ class Cli(unittest.TestCase):
         self.assertIn("NOT FOUND", out)
         self.assertIn("Nope Card", out)
 
+    def test_full_double_faced_name_resolves(self):
+        # The collection endpoint doesn't match "Front // Back"; we ask for the front face.
+        code, out = run_main(scryfall, ["cards", "Kumano Faces Kakkazan // Etching of Kumano", "Lightning Bolt"])
+        self.assertEqual(code, 0, out)
+        self.assertIn("[Etching of Kumano]", out)
+        self.assertNotIn("NOT FOUND", out)
+
     def test_batch_is_chunked_by_75(self):
         calls = []
 
         def counting(path, data=None):
+            if data is None:  # per-name fallback lookups for misses
+                return {"object": "error", "details": "not found"}
             calls.append(len(data["identifiers"]))
             return {"object": "list", "data": [], "not_found": data["identifiers"]}
 

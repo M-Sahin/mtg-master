@@ -32,6 +32,8 @@ jobs:
         run: npm run build
       - name: Typecheck (tests and scripts too)
         run: npm run typecheck
+      - name: Live Scryfall lookups (double-faced, split, accented names)
+        run: node scripts/check-scryfall-live.mjs
       - name: End-to-end (demo mode, real Scryfall)
         run: |
           npm start -- -p 3000 > server.log 2>&1 &
