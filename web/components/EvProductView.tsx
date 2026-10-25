@@ -5,6 +5,9 @@ import { useDeferredValue, useMemo, useState } from "react";
 import { DEFAULT_SELL, KIND_LABEL, chanceAtLeast, evPerPack, expectedPerPack, gross, net, simulateBoxes, topCards, unpricedShare, type EvProduct, type SellOptions } from "../lib/shared/ev";
 import { SiteHeader } from "./SiteHeader";
 import { SiteFooter } from "./SiteFooter";
+import { BuyLinks } from "./BuyLinks";
+import { buyBoxLinks } from "../lib/shared/buy";
+import { useSiteConfig } from "../lib/client/site-config";
 
 const eur = (x: number) => `€${Math.abs(x) >= 1000 ? Math.round(x).toLocaleString("en") : x.toFixed(2)}`;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -24,6 +27,7 @@ function NumberField({ label, value, onChange, step = 1, min = 0, suffix, hint, 
 }
 
 export default function EvProductView({ product, error }: { product: EvProduct | null; error: string | null }) {
+  const site = useSiteConfig();
   const [price, setPrice] = useState("");
   const [packs, setPacks] = useState(String(product?.packsPerBox ?? 36));
   const [fee, setFee] = useState(String(DEFAULT_SELL.fee * 100));
@@ -107,6 +111,10 @@ export default function EvProductView({ product, error }: { product: EvProduct |
             <h3>Your box</h3>
             <NumberField label="What you pay for the box" value={price} onChange={setPrice} step={1} suffix="€" hint="Put in a shop's price to see if it's worth opening." testId="ev-price" />
             <NumberField label="Packs in the box" value={packs} onChange={setPacks} hint={`A ${KIND_LABEL[product.kind]} box usually has ${product.packsPerBox}.`} />
+            <div className="ev-buy">
+              <span className="opt-label">Find this box</span>
+              <BuyLinks links={buyBoxLinks(`${product.setName} ${KIND_LABEL[product.kind]} Box`, site?.affiliates)} />
+            </div>
             <details className="ev-more">
               <summary>Selling costs</summary>
               <NumberField label="Marketplace fee" value={fee} onChange={setFee} step={0.5} suffix="%" hint="Cardmarket charges 5% on each sale." />

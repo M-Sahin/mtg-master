@@ -7,6 +7,9 @@ import { ROLE_LABELS } from "../lib/shared/types";
 import { simulateOpeners } from "../lib/shared/openers";
 import { OpenersView } from "./OpenersView";
 import { DeckBoxesPanel } from "./DeckBoxesPanel";
+import { BuyLinks } from "./BuyLinks";
+import { buyDeckLinks, cartLines } from "../lib/shared/buy";
+import { useSiteConfig } from "../lib/client/site-config";
 import { CardFace, IdentityPips, ManaCost } from "./CardFace";
 import { ShareButton } from "./ShareSheet";
 
@@ -34,6 +37,8 @@ export function DeckView({
   /** Upgrade mode: cards Claude swapped in, marked "New". */
   added?: string[];
 }) {
+  const [buying, setBuying] = useState(false);
+  const site = useSiteConfig();
   const addedSet = useMemo(() => (added?.length ? new Set(added.map((n) => n.toLowerCase())) : undefined), [added]);
   const [tab, setTab] = useState<Tab>("cards");
   const [open, setOpen] = useState<DeckCard | null>(null);
@@ -82,6 +87,9 @@ export function DeckView({
               <button type="button" className="btn" onClick={download}>
                 Download .txt
               </button>
+              <button type="button" className={`btn ${buying ? "is-on" : ""}`} onClick={() => setBuying((b) => !b)} aria-expanded={buying} data-testid="buy-toggle">
+                Buy the cards
+              </button>
               {onRebuild ? (
                 <button type="button" className="btn btn--quiet" onClick={onRebuild}>
                   Build another version
@@ -94,6 +102,7 @@ export function DeckView({
               ) : null}
             </div>
             {copied === "error" ? <p className="note">Your browser blocked the clipboard. Use Download instead.</p> : null}
+            {buying ? <BuyLinks links={buyDeckLinks(deck, site?.affiliates)} copyText={cartLines(deck).join("\n")} note={`${cartLines(deck).length} cards, basic lands left out. Each shop opens with the list filled in, so you can pick printings and see the total there.`} /> : null}
             {spend ? (
               <p className="deck-spend">
                 {spend}.

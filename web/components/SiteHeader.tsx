@@ -2,6 +2,7 @@
 // The site's navbar: the tools on the left, GitHub and Support on the right, and a menu
 // button on phones. Every page uses it.
 import { useEffect, useState, type ReactNode } from "react";
+import { loadConfig } from "../lib/client/site-config";
 
 export type NavKey = "build" | "bracket" | "ev" | "decks" | null;
 
@@ -37,10 +38,7 @@ export function SiteHeader({ active, donationUrl, extra }: { active: NavKey; don
       return;
     }
     let live = true;
-    fetch("/api/config")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((c) => live && setDonation(c?.donationUrl ?? null))
-      .catch(() => {});
+    void loadConfig().then((c) => live && setDonation(c?.donationUrl ?? null));
     return () => {
       live = false;
     };

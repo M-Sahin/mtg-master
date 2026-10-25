@@ -1,3 +1,4 @@
+import { cleanAffiliates, type Affiliates } from "../shared/buy";
 import { DEMO_SEEDS } from "./demo";
 import { SKILL_VERSION } from "../skill/content";
 import { parseEngine, type EngineOptions } from "./engine";
@@ -30,6 +31,7 @@ export function serverConfig() {
     ownKeys: apiKey ? process.env.OWN_KEYS === "1" : process.env.OWN_KEYS !== "0",
     ownKeyBuildsPerHour: Math.max(1, Number(process.env.OWN_KEY_BUILDS_PER_HOUR) || 20),
     donationUrl: /^https:\/\/[^\s"'<>]+$/.test(donation) ? donation : null,
+    affiliates: cleanAffiliates({ tcgplayer: process.env.AFFILIATE_TCGPLAYER, cardkingdom: process.env.AFFILIATE_CARDKINGDOM, cardmarket: process.env.AFFILIATE_CARDMARKET }),
     engine: engineFromEnv(demo),
     liveEngine: engineFromEnv(false),
   };
@@ -40,6 +42,8 @@ export interface PublicConfig {
   /** Visitors can build with their own Claude API key. */
   ownKeys: boolean;
   donationUrl: string | null;
+  /** Affiliate tags for the buy links (lib/shared/buy.ts). */
+  affiliates: Affiliates;
   model: string;
   skillVersion: string;
   accessCodeRequired: boolean;
@@ -53,6 +57,7 @@ export function publicConfig(): PublicConfig {
     mode: c.demo ? "demo" : "live",
     ownKeys: c.ownKeys,
     donationUrl: c.donationUrl,
+    affiliates: c.affiliates,
     model: c.demo ? "demo (scripted)" : c.model,
     skillVersion: SKILL_VERSION,
     accessCodeRequired: Boolean(c.accessCode) && !c.demo,

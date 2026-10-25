@@ -2440,3 +2440,28 @@ a.ev-row:hover {
 .ev-warn {
   color: var(--warn);
 }
+.buy {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+.buy-shops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.buy-shop small {
+  color: var(--faint);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.buy-disclosure {
+  font-size: 12px;
+}
+.ev-buy {
+  display: grid;
+  gap: 2px;
+}
+.btn.is-on {
+  border-color: var(--brass);
+}

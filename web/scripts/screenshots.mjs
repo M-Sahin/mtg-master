@@ -52,6 +52,16 @@ await run("5-numbers", { width: 1440, height: 1000 }, async (p) => {
   await p.locator("[data-testid=openers]").scrollIntoViewIfNeeded().catch(() => {});
   await p.waitForTimeout(500);
 });
+// "Buy the cards": a shop link with the deck in its cart
+await run("27-buy-cards", { width: 1440, height: 1000 }, async (p) => {
+  await toResult(p);
+  await p.click("[data-testid=buy-toggle]");
+  const shops = await p.locator("[data-testid=buy-links] .buy-shop").allInnerTexts();
+  const tcg = await p.locator("[data-testid=buy-links] a.buy-shop", { hasText: "TCGplayer" }).getAttribute("href").catch(() => "");
+  const cart = tcg ? new URL(tcg).searchParams.get("c") ?? "" : "";
+  console.log(`buy the cards: ${shops.map((s) => s.replace(/\s+/g, " ")).join(" | ")}; TCGplayer cart has ${cart.split("||").filter(Boolean).length} cards`);
+  if (shops.length !== 3 || cart.split("||").length < 60) errors.push(`buy links look wrong: ${shops.join(", ")}; ${cart.slice(0, 80)}`);
+});
 await run("6-hand", { width: 1440, height: 1000 }, async (p) => {
   await toResult(p);
   await p.click('role=tab[name="Draw a hand"]');
