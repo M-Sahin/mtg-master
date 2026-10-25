@@ -39,12 +39,12 @@ export async function GET(request: Request) {
   return new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", position: "relative", background: "#121733", color: "#eef0ff", fontFamily: "serif" }}>
-        {art && !fullCard ? <img src={art} width={ART_W} height={H} style={{ position: "absolute", top: 0, right: 0, width: ART_W, height: H, objectFit: "cover" }} /> : null}
+        {art && !fullCard ? <img src={art} width={ART_W} height={H} style={{ position: "absolute", top: 0, right: 0, width: ART_W, height: H, objectFit: "cover", opacity: 0.45 }} /> : null}
         {art && fullCard ? (
           // whole card (with its own credits) on the right instead of a background crop
           <img src={art} width={px(400)} height={px(558)} style={{ position: "absolute", top: px(36), right: px(56), width: px(400), height: px(558), borderRadius: px(20) }} />
         ) : null}
-        <div style={{ position: "absolute", top: 0, right: ART_W - px(220), width: px(220), height: H, display: "flex", backgroundImage: "linear-gradient(90deg, rgba(18,23,51,1) 0%, rgba(18,23,51,0) 100%)" }} />
+        {art && !fullCard ? <div style={{ position: "absolute", top: 0, right: ART_W - px(220), width: px(220), height: H, display: "flex", backgroundImage: "linear-gradient(90deg, rgba(18,23,51,1) 0%, rgba(18,23,51,0) 100%)" }} /> : null}
         <div style={{ position: "relative", display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: `${px(64)}px ${px(72)}px`, width: "100%", height: "100%" }}>
           <div style={{ display: "flex", gap: px(10), marginBottom: px(22) }}>
             {colors.map((c, i) => (

@@ -189,7 +189,9 @@ export async function previewArt(name: string): Promise<{ src: string; artist: s
   if (card.object === "error") return null;
   const uris = card.image_uris ?? card.card_faces?.[0]?.image_uris ?? {};
   const artist = card.artist ?? card.card_faces?.[0]?.artist ?? "";
-  for (const [url, full] of [[uris.art_crop, false], [uris.png, true]] as [string | undefined, boolean][]) {
+  // The whole card (normal size, then PNG): little photo area keeps the preview PNG small,
+  // and the card itself carries the artist and copyright line.
+  for (const [url, full] of [[uris.normal, true], [uris.png, true], [uris.art_crop, false]] as [string | undefined, boolean][]) {
     if (!url) continue;
     try {
       const res = await fetch(url, { headers: { "User-Agent": HEADERS["User-Agent"], Accept: "image/jpeg,image/png;q=0.9" }, signal: AbortSignal.timeout(10000) });
