@@ -10,14 +10,14 @@ const UP_TO = /a deck can have up to (\w+) cards named/i;
 const NUMBER_WORDS: Record<string, number> = { seven: 7, nine: 9 };
 
 // Heuristics for bracket expectations (warnings, not errors)
-const MLD = [
+export const MLD = [
   /destroy all lands/i,
   /each player sacrifices (all|that many|four|five|six|seven) lands/i,
   /lands don't untap/i,
   /exile all lands/i,
   /return all lands/i,
 ];
-const EXTRA_TURN = /take an extra turn/i;
+export const EXTRA_TURN = /take an extra turn/i;
 
 export interface SubmittedDeck {
   deck_name?: string;

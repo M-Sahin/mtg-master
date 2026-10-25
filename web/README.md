@@ -16,6 +16,7 @@ Next.js (App Router), React 19, plain CSS. No database, and no SDK dependencies 
   - copy for Moxfield/Archidekt or Arena, and a .txt download
 - **Own key:** visitors build with their own Claude API key and model, and see the tokens and estimated cost of each build.
 - **Your collection:** prefer cards you own, or build only from them.
+- **Bracket checker:** paste any decklist at `/bracket` to see which bracket it fits and why.
 - **Saving:** "My decks" keeps your finished decks in the browser.
 - **Sharing:**
   - the "Share deck" sheet: native sharing on phones, WhatsApp, Reddit (as a link, or a ready-made Markdown post with the decklist), Telegram, X and email
@@ -23,6 +24,10 @@ Next.js (App Router), React 19, plain CSS. No database, and no SDK dependencies 
   - shared links open a read-only deck page with fresh card data and the bracket check, and get a preview image (commander art, deck name) in WhatsApp, Reddit and Discord
   - with a store connected (see [Short share links](#short-share-links)), links are short: `/d/x7Kp2QaZ1`. Without one, the whole deck is compressed into the link (`/deck?d=…`, about 1.8 KB), so sharing works with no database at all
   - links always point at your public domain, never at a deployment URL that sits behind Vercel's login
+
+## Bracket checker
+
+`/bracket` is a free tool: paste any Commander decklist (Moxfield, Archidekt, Arena, MTGO or plain "1 Card" lines) and it shows the lowest bracket the deck fits, the cards that decide it, and a legality check. It needs no Claude and no API key: Game Changer flags and card text come from Scryfall, combos from Commander Spellbook, and the rules are in `lib/server/bracket-check.ts` (checked against Wizards' brackets on 2026-10-25). Brackets 1 and 5 depend on intent, so the result says when a deck could also be one of those.
 
 ## How it uses the skill
 

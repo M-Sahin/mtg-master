@@ -294,6 +294,9 @@ export default function App() {
           <Mark /> Hundredfold
         </a>
         <span className="top-meta">
+          <a className="top-link" href="/bracket">
+            Bracket checker
+          </a>
           {config ? (
             config.mode === "demo" ? (
               <span className="pill pill--demo" title="No ANTHROPIC_API_KEY set: the app replays a scripted build of one sample deck.">

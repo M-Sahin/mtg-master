@@ -166,6 +166,20 @@ await run("16-collection", { width: 1440, height: 1000 }, async (p) => {
   if (!nonce) errors.push("no Content-Security-Policy nonce on the home page");
   if (without.length) errors.push(`scripts without the CSP nonce: ${without.slice(0, 3).join(" ")}`);
 }
+// the free bracket checker on a short list with Game Changers and a known combo
+await run("17-bracket-checker", { width: 1440, height: 1000 }, async (p) => {
+  await p.goto(`${base}/bracket`, { waitUntil: "networkidle" });
+  await p.fill("[data-testid=bracket-list]", "Commander\n1 Meren of Clan Nel Toth\n\nDeck\n1 Sol Ring\n1 Demonic Tutor\n1 Bolas's Citadel\n1 Gravecrawler\n1 Phyrexian Altar\n1 Sakura-Tribe Elder\n10 Swamp\n10 Forest");
+  await p.click("text=Check the bracket");
+  await p.waitForSelector(".bracket-badge", { timeout: 60000 });
+  const badge = await p.locator(".bracket-badge strong").innerText();
+  const reasons = await p.locator(".bracket-reasons li").allInnerTexts();
+  console.log(`bracket checker: ${badge}; ${reasons.length} reason(s): ${reasons.map((r) => r.split("\n")[0].slice(0, 90)).join(" | ")}`);
+  if (!/Bracket [34]/.test(badge)) errors.push(`bracket checker gave ${badge}`);
+});
+await run("18-mobile-bracket", { width: 390, height: 844 }, async (p) => {
+  await p.goto(`${base}/bracket`, { waitUntil: "networkidle" });
+});
 await run("7-mobile-setup", { width: 390, height: 844 }, loadSeeds);
 await run("8-mobile-result", { width: 390, height: 844 }, toResult);
 
