@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { BracketReport } from "../lib/server/bracket-check";
 import { OpenersView } from "./OpenersView";
+import { SiteHeader } from "./SiteHeader";
 
 const EXAMPLE = "Commander\n1 Meren of Clan Nel Toth\n\nDeck\n1 Sol Ring\n1 Sakura-Tribe Elder\n1 Viscera Seer\n…";
 
@@ -31,19 +32,7 @@ export default function BracketChecker() {
   const t = report?.analysis?.template;
   return (
     <div className="app">
-      <header className="top">
-        <a className="wordmark" href="/" aria-label="Hundredfoldz home">
-          <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden>
-            <rect x="5" y="4" width="16" height="22" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" transform="rotate(-10 13 15)" />
-            <rect x="11" y="6" width="16" height="22" rx="2.5" fill="currentColor" opacity=".9" transform="rotate(8 19 17)" />
-          </svg>{" "}
-          Hundredfoldz
-        </a>
-        <a className="btn" href="/">
-          <span className="label-long">Build a deck from five cards</span>
-          <span className="label-short">Build a deck</span>
-        </a>
-      </header>
+      <SiteHeader active="bracket" />
       <main className="bracket-page">
         <section className="hero">
           <h1>Which bracket is my deck?</h1>

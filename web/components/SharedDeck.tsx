@@ -1,4 +1,5 @@
 "use client";
+import { SiteHeader } from "./SiteHeader";
 import { useEffect, useState } from "react";
 import type { Deck, Validation } from "../lib/shared/types";
 import { DeckView } from "./DeckView";
@@ -22,19 +23,7 @@ export default function SharedDeck({ d, missing }: { d: string; missing?: boolea
 
   return (
     <div className="app">
-      <header className="top">
-        <a className="wordmark" href="/" aria-label="Hundredfoldz home">
-          <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden>
-            <rect x="5" y="4" width="16" height="22" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" transform="rotate(-10 13 15)" />
-            <rect x="11" y="6" width="16" height="22" rx="2.5" fill="currentColor" opacity=".9" transform="rotate(8 19 17)" />
-          </svg>{" "}
-          Hundredfoldz
-        </a>
-        <a className="btn" href="/">
-          <span className="label-long">Build your own deck</span>
-          <span className="label-short">Build a deck</span>
-        </a>
-      </header>
+      <SiteHeader active={null} />
       <main>
         {!state ? <p className="loading">Loading the deck and its cards from Scryfall…</p> : null}
         {state && "error" in state ? (

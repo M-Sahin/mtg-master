@@ -10,6 +10,7 @@ import { encodeDeck } from "../lib/shared/share";
 import { CollectionPanel, type Collection } from "./CollectionPanel";
 import { KeyPanel, type KeyState } from "./KeyPanel";
 import { MyDecks } from "./MyDecks";
+import { SiteHeader } from "./SiteHeader";
 import { IdentityPips } from "./CardFace";
 import { DeckView } from "./DeckView";
 import { UpgradeSummary } from "./UpgradeSummary";
@@ -59,6 +60,7 @@ export default function App() {
   const [collection, setCollection] = useState<Collection | null>(null);
   const [usage, setUsage] = useState<{ usage: Usage; model?: string } | null>(null);
   const [decksVersion, setDecksVersion] = useState(0);
+  const [decksHash, setDecksHash] = useState(false);
 
   useEffect(() => {
     getConfig().then(setConfig).catch(() => setConfig(null));
@@ -325,6 +327,20 @@ export default function App() {
     setPhase("setup");
   };
 
+  // "My decks" in the navbar: /#my-decks opens the setup screen at the saved decks
+  useEffect(() => {
+    const onHash = () => {
+      const on = window.location.hash === "#my-decks";
+      setDecksHash(on);
+      if (!on) return;
+      setPhase((p) => (p === "forging" ? p : "setup"));
+      setTimeout(() => document.getElementById("my-decks")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+    };
+    onHash();
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
   const restart = () => {
     setPhase("setup");
     setResult(null);
@@ -334,27 +350,23 @@ export default function App() {
   const tint = tintSource.length ? tintSource : null;
   return (
     <div className="app" style={tint ? tintStyle(tint) : undefined}>
-      <header className="top">
-        <a className="wordmark" href="/" aria-label="Hundredfoldz home">
-          <Mark /> Hundredfoldz
-        </a>
-        <span className="top-meta">
-          <a className="top-link" href="/bracket">
-            Bracket checker
-          </a>
-          {config ? (
+      <SiteHeader
+        active={phase === "setup" && decksHash ? "decks" : "build"}
+        donationUrl={config ? (config.donationUrl ?? null) : undefined}
+        extra={
+          config ? (
             config.mode === "demo" && !config.ownKeys ? (
               <span className="pill pill--demo" title="No ANTHROPIC_API_KEY set: the app replays a scripted build of one sample deck.">
                 Demo mode
               </span>
             ) : (
-              <span className="pill" title={`Claude model: ${config.model}`}>
-                mtg-master skill {config.skillVersion}
+              <span className="pill nav-pill" title={`Claude model: ${config.model}`}>
+                skill {config.skillVersion}
               </span>
             )
-          ) : null}
-        </span>
-      </header>
+          ) : null
+        }
+      />
 
       {phase === "setup" ? (
         <main className="setup">
@@ -509,7 +521,7 @@ export default function App() {
               </button>
             ) : null}
           </div>
-          <MyDecks onOpen={openSaved} version={decksVersion} />
+          <MyDecks onOpen={openSaved} version={decksVersion} showEmpty={decksHash} />
         </main>
       ) : null}
 
@@ -565,14 +577,6 @@ function tintStyle(colors: Color[]) {
   return { ["--tint-a" as string]: a, ["--tint-b" as string]: b, ["--tint-c" as string]: d };
 }
 
-function Mark() {
-  return (
-    <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden>
-      <rect x="5" y="4" width="16" height="22" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" transform="rotate(-10 13 15)" />
-      <rect x="11" y="6" width="16" height="22" rx="2.5" fill="currentColor" opacity=".9" transform="rotate(8 19 17)" />
-    </svg>
-  );
-}
 
 function spendText(u: Usage, model?: string) {
   return `${formatTokens(u)}, ${formatCost(model ? costUsd(model, u) : null)}`;
