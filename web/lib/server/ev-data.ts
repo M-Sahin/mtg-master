@@ -38,6 +38,8 @@ export interface EvIndex {
 export const evIndex = (f?: typeof fetch) => get<EvIndex>("index.json", f);
 export const evProduct = (id: string, f?: typeof fetch) => (EV_ID.test(id) ? get<EvProduct>(`p/${id}.json`, f) : Promise.resolve(null));
 export const evNames = (f?: typeof fetch) => get<EvNames>("names.json", f);
+/** Card Kingdom's cheapest in-stock non-foil copy per card: name key → [USD, url path, in stock 1/0]. */
+export const evCardKingdom = (f?: typeof fetch) => get<Record<string, [number, string, number]>>("ck-prices.json", f);
 
 /** For the deck view: the boxes that could give this deck's cards, best first. */
 export async function deckBoxRows(cards: { name: string; price: number | null }[], f?: typeof fetch): Promise<DeckBoxRow[] | null> {

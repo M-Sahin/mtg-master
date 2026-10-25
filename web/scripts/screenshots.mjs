@@ -62,6 +62,15 @@ await run("27-buy-cards", { width: 1440, height: 1000 }, async (p) => {
   console.log(`buy the cards: ${shops.map((s) => s.replace(/\s+/g, " ")).join(" | ")}; TCGplayer cart has ${cart.split("||").filter(Boolean).length} cards`);
   if (shops.length !== 3 || cart.split("||").length < 60) errors.push(`buy links look wrong: ${shops.join(", ")}; ${cart.slice(0, 80)}`);
 });
+// a card's price at each shop, with buy links
+await run("28-card-offers", { width: 1440, height: 1000 }, async (p) => {
+  await toResult(p);
+  await p.locator(".role-grid .tile").nth(1).locator("button, [role=button], img").first().click();
+  await p.waitForSelector("[data-testid=card-offers] .offer", { timeout: 20000 }).catch(() => errors.push("no shop prices in the card view"));
+  const rows = await p.locator("[data-testid=card-offers] .offer").allInnerTexts();
+  console.log(`card offers: ${rows.map((r) => r.replace(/\s+/g, " ")).join(" | ")}`);
+  if (rows.length !== 3) errors.push(`card view shows ${rows.length} shops`);
+});
 await run("6-hand", { width: 1440, height: 1000 }, async (p) => {
   await toResult(p);
   await p.click('role=tab[name="Draw a hand"]');

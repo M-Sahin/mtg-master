@@ -229,3 +229,35 @@ export async function random(q: string): Promise<CardInfo | null> {
   const res = await request<any>(`/cards/random?q=${encodeURIComponent(q)}`);
   return res.object === "card" ? toCardInfo(res) : null;
 }
+
+export interface PrintPrice {
+  set: string;
+  number: string;
+  eur: number | null;
+  eurFoil: number | null;
+  usd: number | null;
+  usdFoil: number | null;
+  tcgplayer?: string;
+  cardmarket?: string;
+}
+
+/** Every paper printing of a card with its Cardmarket (EUR) and TCGplayer (USD) prices and shop links. */
+export async function printPrices(name: string): Promise<PrintPrice[]> {
+  const q = `!"${name.replace(/"/g, "")}" game:paper`;
+  const params = new URLSearchParams({ q, unique: "prints", order: "usd", dir: "asc" });
+  const num = (v: unknown) => (v == null || v === "" ? null : Number(v));
+  return cached(`prints:${params}`, async () => {
+    const res = await request<any>(`/cards/search?${params}`);
+    if (res.object === "error") return [];
+    return (res.data ?? []).slice(0, 175).map((c: any) => ({
+      set: String(c.set ?? ""),
+      number: String(c.collector_number ?? ""),
+      eur: num(c.prices?.eur),
+      eurFoil: num(c.prices?.eur_foil),
+      usd: num(c.prices?.usd),
+      usdFoil: num(c.prices?.usd_foil),
+      ...(c.purchase_uris?.tcgplayer ? { tcgplayer: String(c.purchase_uris.tcgplayer) } : {}),
+      ...(c.purchase_uris?.cardmarket ? { cardmarket: String(c.purchase_uris.cardmarket) } : {}),
+    }));
+  });
+}

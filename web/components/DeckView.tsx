@@ -3,11 +3,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { COMMANDER_TEMPLATE, bracketInfo } from "../lib/shared/bracket";
 import { MANA_COLORS, ROLE_COLORS, averageMv, byRole, byType, curve, exportText, library, pips, price, shuffle, totalCards, isLand } from "../lib/shared/deck-utils";
 import type { Color, Deck, DeckCard, Validation } from "../lib/shared/types";
-import { ROLE_LABELS } from "../lib/shared/types";
+import { ROLE_LABELS, isBasicLand } from "../lib/shared/types";
 import { simulateOpeners } from "../lib/shared/openers";
 import { OpenersView } from "./OpenersView";
 import { DeckBoxesPanel } from "./DeckBoxesPanel";
 import { BuyLinks } from "./BuyLinks";
+import { CardOffers } from "./CardOffers";
 import { buyDeckLinks, cartLines } from "../lib/shared/buy";
 import { useSiteConfig } from "../lib/client/site-config";
 import { CardFace, IdentityPips, ManaCost } from "./CardFace";
@@ -422,6 +423,7 @@ export function CardModal({ card, onClose }: { card: DeckCard; onClose: () => vo
             {i?.gameChanger ? ", Game Changer" : ""}
             {card.seed ? ", one of your seeds" : ""}
           </p>
+          {!isBasicLand(card.name) ? <CardOffers name={card.name} /> : null}
           <div className="modal-actions">
             {i?.scryfallUri ? (
               <a className="btn" href={i.scryfallUri} target="_blank" rel="noreferrer">

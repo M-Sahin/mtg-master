@@ -2465,3 +2465,41 @@ a.ev-row:hover {
 .btn.is-on {
   border-color: var(--brass);
 }
+.offers {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+.offers-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.offer {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.offer-shop {
+  font-weight: 700;
+}
+.offer-price {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.offer-price strong {
+  color: var(--ink);
+}
+.offer-price small {
+  color: var(--faint);
+}
+.btn--small {
+  padding: 5px 12px;
+  font-size: 14px;
+}

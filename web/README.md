@@ -20,7 +20,7 @@ Next.js (App Router), React 19, plain CSS. No SDK dependencies beyond Next and R
 - **Your collection:** prefer cards you own, or build only from them.
 - **Bracket checker:** paste or upload any decklist at `/bracket` to see which bracket it fits and why, with the opening-hand numbers.
 - **Box EV:** what every booster box since 2020 is worth on average at `/ev`, after selling costs, with your chance to get your price back (see [Box EV](#box-ev)). The deck view adds "Singles or boxes?": which boxes could give you the deck's cards, and what those cards cost as singles.
-- **Buy the cards:** every deck can open TCGplayer or Card Kingdom with the whole list in the cart, or copy it for a Cardmarket wants list. Box EV pages link to each shop's search for the box. Affiliate tags are optional settings (see the environment variables); tagged links are marked `sponsored` and the page says so.
+- **Buy the cards:** every deck can open TCGplayer or Card Kingdom with the whole list in the cart, or copy it for a Cardmarket wants list. Clicking a card shows its price at Cardmarket, TCGplayer and Card Kingdom (cheapest printing), each with a buy link. Box EV pages link to each shop's search for the box. Affiliate tags are optional settings (see the environment variables); tagged links are marked `sponsored` and the page says so.
 - **Navbar:** Build a deck, Bracket checker, Box EV and My decks on every page, with GitHub and Support links; a menu button on phones.
 - **Saving:** "My decks" keeps your finished decks in the browser.
 - **Sharing:**
