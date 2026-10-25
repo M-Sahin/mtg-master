@@ -1,22 +1,24 @@
 # Hundredfold
 
-**Five cards in. A hundred out.** Hundredfold is a web app that builds a complete Bracket 3 Commander deck from five seed cards. You pick the cards (one of them can be the commander), and Claude builds the deck live using the [mtg-master skill](../mtg-master): it researches on Scryfall, writes the list, and keeps fixing it until the server-side deck check passes.
+**Five cards in. A hundred out.** Hundredfold is a web app that builds a complete Commander deck from five seed cards, in the bracket you choose (1–4). It can also complete a deck you started or suggest upgrades for one you finished. You pick the cards (one of them can be the commander), and Claude builds the deck live using the [mtg-master skill](../mtg-master): it researches on Scryfall, writes the list, and keeps fixing it until the server-side deck check passes.
 
 Next.js (App Router), React 19, plain CSS. No SDK dependencies beyond Next and React, and no database required: an optional Upstash Redis store adds short share links and lets builds survive switching servers.
 
 ## What you get
 
-- **The setup:** a fanned hand of five seed cards with Scryfall autocomplete and a "Surprise me" button. You can crown a legendary creature as commander or let Claude choose. There are budget options, a free-text wish list, and the page tints itself to your color identity.
+- **The setup:** a fanned hand of five seed cards with Scryfall autocomplete and a "Surprise me" button. You can crown a legendary creature as commander or let Claude choose. There's a bracket picker (1–4), budget options, a free-text wish list, and the page tints itself to your color identity.
+- **Start from your own deck:** paste or upload a decklist. If it has fewer than 100 cards, Hundredfold asks whether to complete it: every card you have stays and Claude fills the rest. If it's complete, it offers upgrades: Claude keeps the commander and the plan and suggests up to 10 swaps, each with a reason. The result lists the swaps above the deck and marks the new cards.
 - **The live build:** Claude's notes stream in while it works, and every Scryfall search is shown with its exact query. "The Hundred", a 10×10 grid of sleeves, fills up card by card in each card's role color while Claude writes the list. The build keeps running if you switch apps or lose the connection; the page reconnects and picks up where it left off (see [Builds that survive leaving the page](#builds-that-survive-leaving-the-page)).
 - **The deck:**
   - a commander banner, strategy and win conditions, and the Bracket 3 checklist
   - cards grouped by role, with images and a click-through detail view that explains why each card is in the deck
   - a type list, a mana curve, counts against the Commander template, color demand and a price in EUR
+  - opening hands: thousands of goldfished games show how often you keep your first 7, hit your third and fourth land on time, have each color by turn 3 and cast the commander on time (see [Opening-hand check](#opening-hand-check))
   - a sample-hand drawer
   - copy for Moxfield/Archidekt or Arena, and a .txt download
 - **Own key:** visitors build with their own Claude API key and model, and see the tokens and estimated cost of each build. The key field works with password managers.
 - **Your collection:** prefer cards you own, or build only from them.
-- **Bracket checker:** paste any decklist at `/bracket` to see which bracket it fits and why.
+- **Bracket checker:** paste or upload any decklist at `/bracket` to see which bracket it fits and why, with the opening-hand numbers.
 - **Saving:** "My decks" keeps your finished decks in the browser.
 - **Sharing:**
   - the "Share deck" sheet: native sharing on phones, WhatsApp, Reddit (as a link, or a ready-made Markdown post with the decklist), Telegram, X and email
@@ -28,6 +30,17 @@ Next.js (App Router), React 19, plain CSS. No SDK dependencies beyond Next and R
 ## Bracket checker
 
 `/bracket` is a free tool: paste any Commander decklist (Moxfield, Archidekt, Arena, MTGO or plain "1 Card" lines) and it shows the lowest bracket the deck fits, the cards that decide it, and a legality check. It needs no Claude and no API key: Game Changer flags and card text come from Scryfall, combos from Commander Spellbook, and the rules are in `lib/server/bracket-check.ts` (checked against Wizards' brackets on 2026-10-25). Brackets 1 and 5 depend on intent, so the result says when a deck could also be one of those.
+
+## Opening-hand check
+
+`lib/shared/openers.ts` goldfishes a deck a few thousand times, with a seeded shuffle so a deck always gets the same numbers. It needs no API calls and runs in the browser for the deck view, and on the server for the bracket checker, the engine's review round and the eval. Each simulated game:
+
+- takes Commander mulligans: the first is free, later ones put a card on the bottom. It keeps 3–5 lands, or 2 lands with cheap ramp or two cheap spells;
+- draws every turn, turn 1 included, because nobody skips the first draw in multiplayer;
+- plays a land each turn, an untapped one that adds a missing color first;
+- casts the commander as soon as the mana and colors allow, and cheap ramp otherwise. Rocks work right away; mana creatures and land-search spells work from the next turn.
+
+It reports the keep rate, lands in the first 7, the third land on turn 3 and the fourth on turn 4, flooding, each color by turn 3, and the commander on curve and one turn later. It's an estimate of the mana, not of how the deck plays. CI prints the numbers for the sample decks in `evals/sample-decks/` (`scripts/check-openers.mjs`).
 
 ## How it uses the skill
 
@@ -150,7 +163,7 @@ The engine has two versions. Every change in `v2` is behind its own switch, so i
 | `prompt2` | Claude plans the 99 slots before searching, spends its searches on the seeds' theme and on recent cards, and skips searches for staples it already knows | Its memory is weakest on synergy pieces and new cards, which is where the deck's identity comes from |
 | `fullText` | Search results carry the full Oracle text instead of a 140-character excerpt | Less guessing from memory, fewer misread cards |
 | `strict` | The server counts lands, ramp, draw, removal and colored sources from the card text itself (`lib/shared/analysis.ts`). Big gaps are errors on the first two submits | Claude no longer grades its own role tags |
-| `review` | After the first legal deck, Claude gets the server's analysis and makes up to 10 swaps with a cheap `revise_deck` tool | Critiquing a concrete list with hard numbers is easier than getting 99 cards right in one pass |
+| `review` | After the first legal deck, Claude gets the server's analysis and opening-hand numbers and makes up to 10 swaps with a cheap `revise_deck` tool | Critiquing a concrete list with hard numbers is easier than getting 99 cards right in one pass |
 | `manabase` | The server re-splits the basic lands across colors by colored-source targets and mana symbols | Counting pips over 99 cards is arithmetic, which code does better |
 | `combos` | [Commander Spellbook](https://commanderspellbook.com) checks the deck; two-card combos it rates Ruthless are errors (unless both pieces are the user's own picks); Spicy ones are flagged | A cheap two-card combo makes it the wrong deck for a Bracket 3 table |
 | `effort` | `ENGINE=v2,effort=xhigh` sets the API's effort level (default: the model's own) | More thinking per turn, at the cost of time |
@@ -165,12 +178,22 @@ Specs combine a preset with switches: `v2`, `v2-review`, `v1+strict+fullText`, `
 
 - whether it's legal, time, token cost, and searches and submits per build;
 - objective numbers from the analysis: template roles in range, missing template cards, colored sources short of the Karsten targets, share of generic top-300 EDHREC staples, price against the budget, and too-strong combos;
+- opening hands: the fourth land on turn 4, the commander on time, and the worst color by turn 3;
 - a blind A/B judgement: Opus compares each variant's deck with the baseline's on the same hand, twice with the order swapped, and a win only counts when both orders agree.
 
 ```bash
 node scripts/eval.mjs check                          # hands resolve on Scryfall, combo service works (no key)
 ANTHROPIC_API_KEY=sk-ant-... node scripts/eval.mjs run --variants v1,v2 --hands 6 --judge claude-opus-5-5
 ```
+
+A variant can name its own builder model with `@`: `--variants v2,v2@haiku` compares Sonnet with Haiku on the same engine. `--max-usd` caps the estimated spend (the GitHub workflow defaults to $3.50 and three hands).
+
+Results so far (three hands each, so treat them as hints):
+
+| Run | Result |
+|---|---|
+| v1 against v2, Sonnet | v2 won 2, lost 0, tied 1. Fewer generic staples (32% against 39%), and the review cut too-strong combos. About $0.23 a deck against $0.19. Its Esper mana was skewed (12 Island, 4 Plains), which led to the fix in the basic-land split. |
+| v2 on Sonnet against v2 on Haiku | Every deck legal. Haiku costs about $0.017 a deck against $0.25, but lost 1 and tied 2, with weaker synergy and mana scores. Sonnet stays the default; Haiku is the budget option. |
 
 The output folder (`evals/out/<time>/`) holds `report.md`, `results.json` and every decklist with its analysis, so you can read the decks yourself too.
 
@@ -187,7 +210,7 @@ npm run dev                  # http://localhost:3000
 
 | Command | What it does |
 |---|---|
-| `npm test` | Unit tests (Node's test runner, bundled with esbuild): validation and partner rules, the SSE parser, the agent loop with scripted "Claude" turns, engine variants and the review pass, the deck analysis on real Oracle text, combos, own keys, collections, jobs and reconnects, share links, the bracket checker and the eval harness |
+| `npm test` | Unit tests (Node's test runner, bundled with esbuild): validation and partner rules, the SSE parser, the agent loop with scripted "Claude" turns, engine variants and the review pass, complete and upgrade modes, the deck analysis on real Oracle text, the opening-hand simulator, combos, own keys, collections, jobs and reconnects, share links, the bracket checker and the eval harness |
 | `npm run typecheck` | TypeScript |
 | `npm run build` | Production build |
 | `node scripts/e2e-demo.mjs` | End-to-end check against a running server in demo mode (uses real Scryfall) |
@@ -195,8 +218,9 @@ npm run dev                  # http://localhost:3000
 | `node scripts/check-scryfall-live.mjs` | Checks double-faced, split and accented card names, and partner pairings, against the live Scryfall API |
 | `node scripts/calibrate-analysis.mjs` | Compares the role detector with Scryfall Tagger on the most-played cards per role (needs Scryfall access) |
 | `node scripts/eval.mjs check` / `run` | The engine eval (see [Running an eval](#running-an-eval)) |
+| `node scripts/check-openers.mjs [list.txt …]` | Opening-hand numbers for real decklists, before and after the basic-land rebalance (needs Scryfall) |
 
-CI (`.github/workflows/web.yml`) runs all of these on every push except the eval run, and also builds and tests the Docker image. The browser pass checks the share flow, link previews, a cut-off build stream, switching apps, the key form, the security policy, the bracket checker and the phone header. CI publishes the screenshots, logs and the lockfile it resolved to the `ci-output` branch. The eval has its own manual workflow (`.github/workflows/eval.yml`).
+CI (`.github/workflows/web.yml`) runs all of these on every push except the eval run, and also builds and tests the Docker image. The browser pass checks the share flow, link previews, a cut-off build stream, switching apps, the key form, the security policy, the bracket checker, the Opening hands panel, completing and upgrading a deck, and the phone header. A step also prints the opening-hand numbers for the sample decks. CI publishes the screenshots, logs and the lockfile it resolved to the `ci-output` branch. The eval has its own manual workflow (`.github/workflows/eval.yml`).
 
 ### Layout
 

@@ -443,7 +443,10 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
           emit({ type: "tool_result", id: x.id, summary: "kept as is", ok: true });
           reviewNote = String(x.input?.notes ?? "").trim() || "Review: no changes.";
           lastDeck.review = reviewNote;
-          if (upgrading) lastDeck.swaps = [];
+          if (upgrading) {
+            lastDeck.swaps = [];
+            if (typeof x.input?.strategy === "string" && x.input.strategy.trim()) lastDeck.deck = { ...lastDeck.deck, strategy: x.input.strategy.trim().slice(0, 1200) };
+          }
           reply("ACCEPTED (unchanged).", false);
           done = true;
           continue;
@@ -549,7 +552,7 @@ async function upgradeStart(req: GenerateRequest, cards: CardInfo[], engine: Eng
     deck_name: `${req.commander}, upgraded`,
     commander: req.commander!,
     partner: req.partner ?? undefined,
-    strategy: req.theme?.trim() ? `The user's deck. Their wishes: ${req.theme.trim()}` : "The user's deck.",
+    strategy: "Your deck, with the swaps Claude suggests.",
     win_conditions: [],
     bracket_notes: "",
     cards: cards.filter((c) => !cmd.includes(c.name.toLowerCase()) && !isBasicLand(c.name)).map((c) => ({ name: c.name, role: role(c), why: "In your deck" })),

@@ -257,6 +257,7 @@ export function upgradePrompt(req: GenerateRequest, deckList: string[], report: 
     "Then find the weakest cards (off-plan, too slow, too expensive for what they do, redundant past the template) and better replacements. Use search_cards and get_cards to check every card you add: its exact name, color identity, legality and price.",
     "Fix what the server's analysis flags first (missing ramp, draw, removal or lands; mana that arrives late; cards above the bracket), then make the deck's plan stronger.",
     "When you're done, call revise_deck once with up to 10 swaps, each with a short why the user will read. Fewer swaps are fine if the deck is already strong; an empty list keeps it as it is.",
+    "Also send strategy: two or three sentences for the user on how the deck plays and wins, with your swaps in it.",
     "",
     "The deck:",
     ...deckList,
