@@ -1,0 +1,11 @@
+# docker compose up -d   (reads your keys from .env.local; copy .env.example first)
+services:
+  hundredfold:
+    build: .
+    image: hundredfold
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: .env.local
+        required: false
+    restart: unless-stopped

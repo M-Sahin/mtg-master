@@ -17,6 +17,7 @@ export interface CardInfo {
   priceUsd: number | null;
   image: string | null; // normal-size card image
   artCrop: string | null;
+  artist: string | null;
   scryfallUri: string;
   edhrecRank: number | null;
 }

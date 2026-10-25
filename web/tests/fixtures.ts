@@ -24,6 +24,7 @@ export function fakeCard(name: string, extra: Record<string, unknown> = {}) {
     legalities: { commander: "legal" },
     game_changer: false,
     prices: { eur: "0.50", usd: "0.60" },
+    artist: "Test Artist",
     image_uris: { normal: `https://img.example/${encodeURIComponent(name)}.jpg`, art_crop: `https://img.example/${encodeURIComponent(name)}-art.jpg` },
     scryfall_uri: `https://scryfall.com/card/x/1/${encodeURIComponent(name)}?utm_source=api`,
     ...extra,

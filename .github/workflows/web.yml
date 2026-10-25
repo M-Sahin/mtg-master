@@ -58,7 +58,7 @@ jobs:
             web/shots/
             web/package-lock.json
       - name: Publish screenshots, lockfile and e2e log to the ci-output branch
-        if: always() && github.event_name != 'pull_request'
+        if: always() && github.event_name != 'pull_request' && github.repository == 'M-Sahin/mtg-master'
         run: |
           set -e
           mkdir -p /tmp/out && cp -r shots /tmp/out/ 2>/dev/null || true
@@ -70,3 +70,24 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A && git commit -q -m "CI output for ${{ github.sha }}"
           git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-output
+
+  docker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the self-hosting image
+        run: docker build -t hundredfold .
+      - name: Run it in demo mode and test end to end
+        run: |
+          docker run -d --name hf -p 3001:3000 hundredfold
+          for i in $(seq 1 40); do curl -sf http://localhost:3001/api/config > /dev/null && break; sleep 1; done
+          BASE_URL=http://localhost:3001 node scripts/e2e-demo.mjs
+      - name: Container log
+        if: always()
+        run: docker logs hf || true

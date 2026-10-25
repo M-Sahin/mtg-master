@@ -31,7 +31,13 @@ Three small Python helpers (standard library only, no dependencies) do the work 
 
 ## Web app: Hundredfold
 
-[`web/`](web) contains **Hundredfold**, a Next.js app built on this skill. You pick five cards, and Claude builds a complete Bracket 3 Commander deck around them. Progress is shown live: Scryfall searches, the list filling a 10×10 grid, and server-side validation with automatic fixes. You can export the result to Moxfield or Arena. It deploys to Vercel with the root directory set to `web`; see [web/README.md](web/README.md).
+[`web/`](web) contains **Hundredfold**, a Next.js app built on this skill. You pick five cards, and Claude builds a complete Bracket 3 Commander deck around them. Progress is shown live: Scryfall searches, the list filling a 10×10 grid, and server-side validation with automatic fixes. You can export the result to Moxfield or Arena.
+
+It's free and open source, and you host it yourself with your own Claude API key:
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FM-Sahin%2Fmtg-master&root-directory=web&env=ANTHROPIC_API_KEY,ACCESS_CODE&envDescription=Your%20Claude%20API%20key%2C%20and%20an%20access%20code%20visitors%20must%20enter%20%28it%20protects%20your%20API%20credits%29.&envLink=https%3A%2F%2Fgithub.com%2FM-Sahin%2Fmtg-master%2Fblob%2Fmain%2Fweb%2FREADME.md%23environment-variables)
+
+You can also run it with Docker or plain Node.js. See [web/README.md](web/README.md#host-your-own) for all the options and the environment variables.
 
 ## Repository layout
 
@@ -177,9 +183,13 @@ The skill's reference files contain time-sensitive facts, such as Commander brac
 
 ## Credits and disclaimer
 
-Card data comes from the [Scryfall API](https://scryfall.com/docs/api); please follow its usage guidelines. The mana-source numbers are based on Frank Karsten's published analyses. Limited metrics refer to [17lands](https://www.17lands.com).
+Card data comes from the [Scryfall API](https://scryfall.com/docs/api); please follow its usage guidelines (no paywalls, credit artists, cache data, keep requests 50–100 ms apart). The mana-source numbers are based on Frank Karsten's published analyses. Limited metrics refer to [17lands](https://www.17lands.com).
 
 This is an unofficial fan project. It isn't affiliated with or endorsed by Wizards of the Coast or Scryfall. Magic: The Gathering is a trademark of Wizards of the Coast LLC.
+
+## Contributing
+
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to run the tests and what to update when Wizards changes the rules, and [SECURITY.md](SECURITY.md) for reporting security problems and keeping your API key safe.
 
 ## License
 

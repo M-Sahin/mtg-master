@@ -365,7 +365,7 @@ export default function App() {
 
       <footer className="foot">
         <p>
-          Built on the <a href="https://github.com/M-Sahin/mtg-master">mtg-master Claude skill</a>. Card data and images from <a href="https://scryfall.com">Scryfall</a>. Unofficial fan content, not affiliated with Wizards of the Coast. Magic: The Gathering is a trademark of Wizards of the Coast LLC.
+          Hundredfold is unofficial Fan Content permitted under the <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC. Card data and images via <a href="https://scryfall.com">Scryfall</a>. Free and open source: <a href="https://github.com/M-Sahin/mtg-master">built on the mtg-master Claude skill</a>.
         </p>
       </footer>
     </div>

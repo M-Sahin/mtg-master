@@ -1,0 +1,28 @@
+name: Bug report
+description: Something in the skill or the Hundredfold app doesn't work as it should
+labels: [bug]
+body:
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part?
+      options: [Hundredfold web app, mtg-master skill (instructions), Skill scripts (scryfall.py, deckcheck.py, odds.py)]
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include the exact error message. For a deck problem, paste the seed cards or the decklist.
+    validations: { required: true }
+  - type: input
+    id: where
+    attributes:
+      label: Where does it run?
+      placeholder: e.g. Vercel Hobby, Docker on a Raspberry Pi, Claude.ai, Claude Code
+  - type: checkboxes
+    id: secrets
+    attributes:
+      label: Before you post
+      options:
+        - label: I removed API keys, access codes and other secrets from logs and screenshots.
+          required: true

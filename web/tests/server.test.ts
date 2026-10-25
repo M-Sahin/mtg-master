@@ -199,6 +199,7 @@ test("end to end in demo mode: streams progress, draft cards and a valid deck", 
     assert.equal(deck.validation.total, 100);
     assert.equal(deck.deck.commander.name, "Meren of Clan Nel Toth");
     assert.ok(deck.deck.cards.every((c) => c.info?.image), "every card has Scryfall data");
+    assert.equal(deck.deck.commander.info?.artist, "Test Artist"); // needed to credit the banner art
     assert.equal(types.at(-1), "done");
   } finally {
     fake.restore();

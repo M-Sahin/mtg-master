@@ -29,7 +29,7 @@ export class ScryfallError extends Error {
 
 // Small in-memory cache of *mapped* results (warm function instances reuse it).
 const cache = new Map<string, { at: number; value: unknown }>();
-const TTL = 1000 * 60 * 60 * 6;
+const TTL = 1000 * 60 * 60 * 24; // Scryfall asks clients to cache for at least 24 hours
 async function cached<T>(key: string, fn: () => Promise<T>, keep: (v: T) => boolean = () => true): Promise<T> {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL) return hit.value as T;
@@ -102,6 +102,7 @@ export function toCardInfo(c: any): CardInfo {
     priceUsd: num(c.prices?.usd),
     image: img.normal ?? null,
     artCrop: img.art_crop ?? null,
+    artist: c.artist ?? c.card_faces?.[0]?.artist ?? null,
     scryfallUri: String(c.scryfall_uri ?? "").split("?")[0],
     edhrecRank: c.edhrec_rank ?? null,
   };

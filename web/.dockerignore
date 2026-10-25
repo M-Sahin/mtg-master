@@ -1,0 +1,9 @@
+node_modules
+.next
+.test-build
+shots
+*.log
+.env*
+!.env.example
+Dockerfile
+docker-compose.yml

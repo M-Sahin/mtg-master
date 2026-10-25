@@ -34,7 +34,7 @@ export function DeckView({ deck, validation, onRestart, onRebuild }: { deck: Dec
 
   return (
     <section className="deck">
-      <header className="deck-banner" style={{ ["--art" as string]: cmd.info?.artCrop ? `url("${cmd.info.artCrop}")` : "none" }}>
+      <header className="deck-banner" style={{ ["--art" as string]: cmd.info?.artCrop && cmd.info.artist ? `url("${cmd.info.artCrop}")` : "none" }}>
         <div className="deck-banner-inner">
           <CardFace card={cmd.info} name={cmd.name} tilt className="deck-cmd" onClick={() => setOpen(cmd)} loading="eager" />
           <div className="deck-title">
@@ -66,6 +66,11 @@ export function DeckView({ deck, validation, onRestart, onRebuild }: { deck: Dec
             {copied === "error" ? <p className="note">Your browser blocked the clipboard. Use Download instead.</p> : null}
           </div>
         </div>
+        {cmd.info?.artCrop && cmd.info.artist ? (
+          <p className="deck-art-credit">
+            Background: {cmd.info.name}, art by {cmd.info.artist}. © Wizards of the Coast
+          </p>
+        ) : null}
       </header>
 
       {!validation.ok ? (
