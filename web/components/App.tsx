@@ -335,8 +335,8 @@ export default function App() {
   return (
     <div className="app" style={tint ? tintStyle(tint) : undefined}>
       <header className="top">
-        <a className="wordmark" href="/" aria-label="Hundredfold home">
-          <Mark /> Hundredfold
+        <a className="wordmark" href="/" aria-label="Hundredfoldz home">
+          <Mark /> Hundredfoldz
         </a>
         <span className="top-meta">
           <a className="top-link" href="/bracket">
@@ -541,12 +541,12 @@ export default function App() {
 
       <footer className="foot">
         <p>
-          Hundredfold is unofficial Fan Content permitted under the <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC. Card data and images via <a href="https://scryfall.com">Scryfall</a>. Free and open source: <a href="https://github.com/M-Sahin/mtg-master">built on the mtg-master Claude skill</a>.
+          Hundredfoldz is unofficial Fan Content permitted under the <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC. Card data and images via <a href="https://scryfall.com">Scryfall</a>. Free and open source: <a href="https://github.com/M-Sahin/mtg-master">built on the mtg-master Claude skill</a>.
           {config?.donationUrl ? (
             <>
               {" "}
               <a href={config.donationUrl} target="_blank" rel="noopener noreferrer">
-                Support Hundredfold
+                Support Hundredfoldz
               </a>
               .
             </>

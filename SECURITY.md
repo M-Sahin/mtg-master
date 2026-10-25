@@ -11,10 +11,10 @@ Please report security issues privately through [GitHub's security advisories](h
 - Set a monthly spend limit in the Claude Console (Billing → Spend limits) as a safety net.
 - If a key leaks, revoke it in the Claude Console right away and create a new one.
 
-## Using your own API key on a Hundredfold site
+## Using your own API key on a Hundredfoldz site
 
 - Use a key from a Claude Console workspace made for this, with a monthly spend limit. A leaked key from that workspace can't cost more than the limit.
 - The key is kept in your browser (or only in the tab, if you untick "Remember"). It's sent over HTTPS with each build, used for that build, and not stored or logged by the server. "Forget key" removes it from the browser.
 - A Content Security Policy with a per-request nonce stops scripts that aren't part of the app from running on the page.
-- Only paste your key into a Hundredfold site you trust: whoever runs a copy controls its server code. Self-hosting your own copy removes that question.
+- Only paste your key into a Hundredfoldz site you trust: whoever runs a copy controls its server code. Self-hosting your own copy removes that question.
 - If you think a key leaked, revoke it in the Claude Console and create a new one.

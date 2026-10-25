@@ -68,7 +68,7 @@ export async function checkCombos(deck: Deck, fetchImpl: typeof fetch = fetch, t
   try {
     const res = await fetchImpl(API, {
       method: "POST",
-      headers: { "content-type": "application/json", accept: "application/json", "user-agent": "hundredfold-mtg-master/1.0 (+https://github.com/M-Sahin/mtg-master)" },
+      headers: { "content-type": "application/json", accept: "application/json", "user-agent": "hundredfoldz-mtg-master/1.0 (+https://github.com/M-Sahin/mtg-master)" },
       body: JSON.stringify({ commanders, main }),
       signal: AbortSignal.timeout(timeoutMs),
     });

@@ -7,7 +7,7 @@ const display = Alegreya({ subsets: ["latin"], weight: ["500", "700", "800"], va
 const ui = Alegreya_Sans({ subsets: ["latin"], weight: ["400", "500", "700"], variable: "--font-ui", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Hundredfold: a Commander deck from five cards",
+  title: "Hundredfoldz: a Commander deck from five cards",
   description: "Pick five Magic cards. Claude, using the mtg-master skill, builds a complete Commander deck around them in the bracket you choose, and checks every card on Scryfall. Free bracket checker included.",
 };
 

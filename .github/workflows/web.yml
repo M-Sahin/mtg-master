@@ -104,10 +104,10 @@ jobs:
         with:
           node-version: 22
       - name: Build the self-hosting image
-        run: docker build -t hundredfold .
+        run: docker build -t hundredfoldz .
       - name: Run it in demo mode and test end to end
         run: |
-          docker run -d --name hf -p 3001:3000 hundredfold
+          docker run -d --name hf -p 3001:3000 hundredfoldz
           for i in $(seq 1 40); do curl -sf http://localhost:3001/api/config > /dev/null && break; sleep 1; done
           BASE_URL=http://localhost:3001 node scripts/e2e-demo.mjs
       - name: Container log

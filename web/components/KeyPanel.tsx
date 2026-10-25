@@ -178,7 +178,7 @@ export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onCh
             Sign in to the <a href="https://platform.claude.com" target="_blank" rel="noopener noreferrer">Claude Console</a> (a separate account from a Claude.ai subscription).
           </li>
           <li>
-            Create a workspace just for this, for example &ldquo;Hundredfold&rdquo;, and give it a <strong>monthly spend limit</strong>. A key from that workspace can never cost more than the limit you chose.
+            Create a workspace just for this, for example &ldquo;Hundredfoldz&rdquo;, and give it a <strong>monthly spend limit</strong>. A key from that workspace can never cost more than the limit you chose.
           </li>
           <li>Add a little credit under Billing if your account has none.</li>
           <li>

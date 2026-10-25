@@ -136,8 +136,8 @@ test("share links use the public production domain, not the (protected) deployme
   await withEnv({ SITE_URL: undefined, VERCEL_PROJECT_PRODUCTION_URL: "deckbuilder-jet.vercel.app" }, async () => {
     assert.equal(canonicalOrigin(post({})), "https://deckbuilder-jet.vercel.app");
   });
-  await withEnv({ SITE_URL: "https://hundredfold.example/", VERCEL_PROJECT_PRODUCTION_URL: "x.vercel.app" }, async () => {
-    assert.equal(canonicalOrigin(post({})), "https://hundredfold.example");
+  await withEnv({ SITE_URL: "https://hundredfoldz.example/", VERCEL_PROJECT_PRODUCTION_URL: "x.vercel.app" }, async () => {
+    assert.equal(canonicalOrigin(post({})), "https://hundredfoldz.example");
   });
   await withEnv({ SITE_URL: undefined, VERCEL_PROJECT_PRODUCTION_URL: undefined }, async () => {
     assert.equal(canonicalOrigin(new Request("http://localhost:3000/api/share", { headers: { host: "localhost:3000" } })), "http://localhost:3000");

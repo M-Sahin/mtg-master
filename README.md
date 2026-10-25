@@ -29,9 +29,9 @@ The skill rests on one rule: **verify, don't recall**. A language model's memory
 
 Three small Python helpers (standard library only, no dependencies) do the work that shouldn't be done in Claude's head: card lookups, decklist validation and probability math.
 
-## Web app: Hundredfold
+## Web app: Hundredfoldz
 
-[`web/`](web) contains **Hundredfold**, a Next.js app built on this skill. You pick five cards and a bracket, and Claude builds a complete Commander deck around them. It can also complete a deck you started or suggest swaps to upgrade a finished one. Progress is shown live: Scryfall searches, the list filling a 10×10 grid, and server-side validation with automatic fixes. You can export the result to Moxfield or Arena, or share it with a short link. You can also build from your own collection, keep your decks in the browser, check any decklist's bracket for free at `/bracket`, and see how often a deck's mana works from thousands of goldfished opening hands.
+[`web/`](web) contains **Hundredfoldz**, a Next.js app built on this skill. You pick five cards and a bracket, and Claude builds a complete Commander deck around them. It can also complete a deck you started or suggest swaps to upgrade a finished one. Progress is shown live: Scryfall searches, the list filling a 10×10 grid, and server-side validation with automatic fixes. You can export the result to Moxfield or Arena, or share it with a short link. You can also build from your own collection, keep your decks in the browser, check any decklist's bracket for free at `/bracket`, and see how often a deck's mana works from thousands of goldfished opening hands.
 
 It's free and open source. Host your own copy in one click; visitors build with their own Claude API key, so the site itself needs no key:
 
@@ -55,7 +55,7 @@ mtg-master/                  ← the skill itself (this folder is what you insta
     ├── deckcheck.py         ← decklist validator
     └── odds.py              ← hypergeometric draw probabilities
 tests/                       ← offline unit tests (Scryfall is mocked with fixtures)
-web/                         ← Hundredfold, the Next.js deckbuilder that uses this skill
+web/                         ← Hundredfoldz, the Next.js deckbuilder that uses this skill
 .github/workflows/           ← CI: tests.yml (skill tests + package), web.yml (app build, tests, browser checks),
                                 release.yml (GitHub Release with the .skill file), eval.yml (engine eval, manual)
 ```
@@ -194,7 +194,7 @@ This is an unofficial fan project. It isn't affiliated with or endorsed by Wizar
 
 ## Contributing
 
-If Hundredfold or the skill is useful to you, you can [buy me a coffee on Ko-fi](https://ko-fi.com/msahin). It's free either way.
+If Hundredfoldz or the skill is useful to you, you can [buy me a coffee on Ko-fi](https://ko-fi.com/msahin). It's free either way.
 
 Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to run the tests and what to update when Wizards changes the rules, and [SECURITY.md](SECURITY.md) for reporting security problems and keeping your API key safe.
 

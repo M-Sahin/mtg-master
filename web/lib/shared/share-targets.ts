@@ -12,7 +12,7 @@ const enc = encodeURIComponent;
 export type ShareTarget = { id: string; label: string; href: string };
 
 export function shareTargets({ url, title }: ShareContext): ShareTarget[] {
-  const text = `${title}. Built with Hundredfold.`;
+  const text = `${title}. Built with Hundredfoldz.`;
   return [
     // https://faq.whatsapp.com — "click to chat": wa.me/?text=
     { id: "whatsapp", label: "WhatsApp", href: `https://wa.me/?text=${enc(`${text}\n${url}`)}` },
@@ -44,6 +44,6 @@ export function redditPost(deck: Deck, url: string): string {
   lines.push(`[Full list with card images](${url})`, "");
   // four-space indentation = code block in both old and new Reddit
   for (const l of exportText(deck).trim().split("\n")) lines.push(l ? `    ${l}` : "");
-  lines.push("", "^(Built with Hundredfold, the open-source Commander deckbuilder.)");
+  lines.push("", "^(Built with Hundredfoldz, the open-source Commander deckbuilder.)");
   return lines.join("\n");
 }

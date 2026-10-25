@@ -1,6 +1,6 @@
-# Hundredfold: self-hosted image.
-#   docker build -t hundredfold .
-#   docker run -p 3000:3000 -e ANTHROPIC_API_KEY=sk-ant-... -e ACCESS_CODE=choose-one hundredfold
+# Hundredfoldz: self-hosted image.
+#   docker build -t hundredfoldz .
+#   docker run -p 3000:3000 -e ANTHROPIC_API_KEY=sk-ant-... -e ACCESS_CODE=choose-one hundredfoldz
 # Without ANTHROPIC_API_KEY the app runs in demo mode.
 
 FROM node:22-alpine AS deps

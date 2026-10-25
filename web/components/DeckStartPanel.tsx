@@ -1,6 +1,6 @@
 "use client";
 // "Start from your own deck": paste or upload a decklist. If it has fewer than 100 cards,
-// ask whether Hundredfold should complete it; if it's complete, offer upgrade suggestions.
+// ask whether Hundredfoldz should complete it; if it's complete, offer upgrade suggestions.
 import { useState } from "react";
 import type { BracketReport } from "../lib/server/bracket-check";
 import { isBasicLand } from "../lib/shared/types";
@@ -57,7 +57,7 @@ export function DeckStartPanel({ onComplete, onUpgrade, onRead, blocked }: { onC
       </div>
       {!open && !report ? (
         <p className="panel-sub">
-          Half a deck already? Paste or upload it, and Hundredfold can complete it to 100 cards around what you have. A finished deck gets upgrade suggestions.{" "}
+          Half a deck already? Paste or upload it, and Hundredfoldz can complete it to 100 cards around what you have. A finished deck gets upgrade suggestions.{" "}
           <button type="button" className="link" onClick={() => setOpen(true)}>
             Add my deck
           </button>
@@ -100,7 +100,7 @@ export function DeckStartPanel({ onComplete, onUpgrade, onRead, blocked }: { onC
           {report.commanders.length && missing > 0 && !declined ? (
             <div className="deckstart-ask">
               <p>
-                <strong>Your deck has {report.total} cards. Do you want Hundredfold to complete it?</strong> Claude keeps every card you have and adds {missing} more, using the bracket, budget and wishes you set on this page.
+                <strong>Your deck has {report.total} cards. Do you want Hundredfoldz to complete it?</strong> Claude keeps every card you have and adds {missing} more, using the bracket, budget and wishes you set on this page.
               </p>
               <div className="deckstart-buttons">
                 <button
@@ -121,7 +121,7 @@ export function DeckStartPanel({ onComplete, onUpgrade, onRead, blocked }: { onC
           {report.commanders.length && missing === 0 && onUpgrade && !declined ? (
             <div className="deckstart-ask">
               <p>
-                <strong>Your deck is complete. Do you want Hundredfold to suggest upgrades?</strong> Claude keeps the plan and the commander, finds the weakest cards and suggests up to 10 swaps, each with a reason, for the bracket, budget and wishes you set on this page.
+                <strong>Your deck is complete. Do you want Hundredfoldz to suggest upgrades?</strong> Claude keeps the plan and the commander, finds the weakest cards and suggests up to 10 swaps, each with a reason, for the bracket, budget and wishes you set on this page.
               </p>
               <div className="deckstart-buttons">
                 <button type="button" className="btn btn--brass" disabled={!!blocked} onClick={() => onUpgrade(start(report))} data-testid="upgrade-deck">

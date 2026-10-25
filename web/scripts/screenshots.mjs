@@ -210,7 +210,7 @@ await run("20-complete-my-deck", { width: 1440, height: 1000 }, async (p) => {
   await p.waitForSelector("[data-testid=deck-start-result]", { timeout: 60000 });
   const ask = await p.locator(".deckstart-ask").innerText().catch(() => "");
   console.log(`complete my deck: ${ask.split("\n")[0]}`);
-  if (!/Your deck has 25 cards\. Do you want Hundredfold to complete it\?/.test(ask)) errors.push(`no completion question: ${ask}`);
+  if (!/Your deck has 25 cards\. Do you want Hundredfoldz to complete it\?/.test(ask)) errors.push(`no completion question: ${ask}`);
   // this demo deployment has no key: the button explains why it's off
   if (!(await p.locator("text=Yes, complete my deck").isDisabled())) errors.push("complete button should need an API key here");
 });
@@ -251,7 +251,7 @@ await run("22-upgrade-my-deck", { width: 1440, height: 1000 }, async (p) => {
   await p.waitForSelector("[data-testid=deck-start-result]", { timeout: 60000 });
   const ask = await p.locator(".deckstart-ask").innerText().catch(() => "");
   console.log(`upgrade my deck: ${ask.split("\n")[0]}`);
-  if (!/Your deck is complete\. Do you want Hundredfold to suggest upgrades\?/.test(ask)) errors.push(`no upgrade question: ${ask}`);
+  if (!/Your deck is complete\. Do you want Hundredfoldz to suggest upgrades\?/.test(ask)) errors.push(`no upgrade question: ${ask}`);
   await p.click("[data-testid=upgrade-deck]");
   await p.waitForSelector("[data-testid=upgrade-summary]", { timeout: 30000 }).catch(() => errors.push("no upgrade summary after the build"));
   const swaps = await p.locator(".swap").allInnerTexts();

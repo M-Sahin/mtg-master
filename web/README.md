@@ -1,13 +1,13 @@
-# Hundredfold
+# Hundredfoldz
 
-**Five cards in. A hundred out.** Hundredfold is a web app that builds a complete Commander deck from five seed cards, in the bracket you choose (1–4). It can also complete a deck you started or suggest upgrades for one you finished. You pick the cards (one of them can be the commander), and Claude builds the deck live using the [mtg-master skill](../mtg-master): it researches on Scryfall, writes the list, and keeps fixing it until the server-side deck check passes.
+**Five cards in. A hundred out.** Hundredfoldz is a web app that builds a complete Commander deck from five seed cards, in the bracket you choose (1–4). It can also complete a deck you started or suggest upgrades for one you finished. You pick the cards (one of them can be the commander), and Claude builds the deck live using the [mtg-master skill](../mtg-master): it researches on Scryfall, writes the list, and keeps fixing it until the server-side deck check passes.
 
 Next.js (App Router), React 19, plain CSS. No SDK dependencies beyond Next and React, and no database required: an optional Upstash Redis store adds short share links and lets builds survive switching servers.
 
 ## What you get
 
 - **The setup:** a fanned hand of five seed cards with Scryfall autocomplete and a "Surprise me" button. You can crown a legendary creature as commander or let Claude choose. There's a bracket picker (1–4), budget options, a free-text wish list, and the page tints itself to your color identity.
-- **Start from your own deck:** paste or upload a decklist. If it has fewer than 100 cards, Hundredfold asks whether to complete it: every card you have stays and Claude fills the rest. If it's complete, it offers upgrades: Claude keeps the commander and the plan and suggests up to 10 swaps, each with a reason. The result lists the swaps above the deck and marks the new cards.
+- **Start from your own deck:** paste or upload a decklist. If it has fewer than 100 cards, Hundredfoldz asks whether to complete it: every card you have stays and Claude fills the rest. If it's complete, it offers upgrades: Claude keeps the commander and the plan and suggests up to 10 swaps, each with a reason. The result lists the swaps above the deck and marks the new cards.
 - **The live build:** Claude's notes stream in while it works, and every Scryfall search is shown with its exact query. "The Hundred", a 10×10 grid of sleeves, fills up card by card in each card's role color while Claude writes the list. The build keeps running if you switch apps or lose the connection; the page reconnects and picks up where it left off (see [Builds that survive leaving the page](#builds-that-survive-leaving-the-page)).
 - **The deck:**
   - a commander banner, strategy and win conditions, and the Bracket 3 checklist
@@ -60,7 +60,7 @@ After editing the skill, run `npm run sync-skill` and commit `lib/skill/content.
 
 ## Host your own
 
-Hundredfold is free and open source, and a copy needs no API key of its own: visitors build with their own Claude API key (see [Own API keys](#own-api-keys)). You can also give your copy a server key behind an access code, for yourself and your friends.
+Hundredfoldz is free and open source, and a copy needs no API key of its own: visitors build with their own Claude API key (see [Own API keys](#own-api-keys)). You can also give your copy a server key behind an access code, for yourself and your friends.
 
 ### Option 1: Deploy to Vercel (easiest)
 
@@ -82,8 +82,8 @@ docker compose up -d            # http://localhost:3000
 Or without compose (here with a server key; leave both variables out to run on visitors' own keys):
 
 ```bash
-docker build -t hundredfold .
-docker run -p 3000:3000 -e ANTHROPIC_API_KEY=sk-ant-... -e ACCESS_CODE=choose-one hundredfold
+docker build -t hundredfoldz .
+docker run -p 3000:3000 -e ANTHROPIC_API_KEY=sk-ant-... -e ACCESS_CODE=choose-one hundredfoldz
 ```
 
 Put it behind a reverse proxy with HTTPS (Caddy, Traefik, nginx) if other people will use it. The proxy must not buffer responses, so the live build view keeps streaming; Caddy and Traefik don't buffer by default.
@@ -246,4 +246,4 @@ tests/                  unit tests and Scryfall fixtures
 - Bracket 3 rules for the builder were checked on 2026-10-24 against Wizards' Commander format page and the Commander Brackets updates of October 2025 and February 2026. They're in `lib/shared/bracket.ts`. The bracket checker's rules for all brackets were checked on 2026-10-25 and are in `lib/server/bracket-check.ts`. Update both when Wizards changes the brackets.
 - Model prices for the cost estimate were checked on 2026-10-25 and are in `lib/shared/models.ts`.
 - Prices are Scryfall's Cardmarket (EUR) trend prices and change daily.
-- Hundredfold is unofficial Fan Content permitted under the [Fan Content Policy](https://company.wizards.com/en/legal/fancontentpolicy). Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC. Card data and images come from [Scryfall](https://scryfall.com) and follow its [API rules](https://scryfall.com/docs/api): it's free to use, with no paywall, and artists are credited.
+- Hundredfoldz is unofficial Fan Content permitted under the [Fan Content Policy](https://company.wizards.com/en/legal/fancontentpolicy). Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC. Card data and images come from [Scryfall](https://scryfall.com) and follow its [API rules](https://scryfall.com/docs/api): it's free to use, with no paywall, and artists are credited.

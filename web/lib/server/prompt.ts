@@ -42,7 +42,7 @@ export function skillContext(): string {
 
 const ADAPTER_V1 = (BRACKET: BracketInfo) => `
 <app_adapter>
-You are running inside "Hundredfold", a web app that builds a complete Commander deck from five seed cards.
+You are running inside "Hundredfoldz", a web app that builds a complete Commander deck from five seed cards.
 Follow the mtg-master skill above, with these adaptations for this app:
 
 TOOLS (they replace the skill's scripts — you have no shell):
@@ -74,7 +74,7 @@ EFFICIENCY (the user is watching a live progress screen; keep total time to a fe
 // weakest) instead of on staples it already knows, and expect the stricter server checks.
 const ADAPTER_V2 = (e: EngineOptions, BRACKET: BracketInfo) => `
 <app_adapter>
-You are running inside "Hundredfold", a web app that builds a complete Commander deck from five seed cards.
+You are running inside "Hundredfoldz", a web app that builds a complete Commander deck from five seed cards.
 Follow the mtg-master skill above, with these adaptations for this app:
 
 TOOLS (they replace the skill's scripts — you have no shell):

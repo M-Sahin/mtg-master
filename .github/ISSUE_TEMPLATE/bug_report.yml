@@ -1,12 +1,12 @@
 name: Bug report
-description: Something in the skill or the Hundredfold app doesn't work as it should
+description: Something in the skill or the Hundredfoldz app doesn't work as it should
 labels: [bug]
 body:
   - type: dropdown
     id: part
     attributes:
       label: Which part?
-      options: [Hundredfold web app, mtg-master skill (instructions), Skill scripts (scryfall.py, deckcheck.py, odds.py)]
+      options: [Hundredfoldz web app, mtg-master skill (instructions), Skill scripts (scryfall.py, deckcheck.py, odds.py)]
     validations: { required: true }
   - type: textarea
     id: what

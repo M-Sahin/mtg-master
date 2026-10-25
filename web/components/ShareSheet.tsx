@@ -94,7 +94,7 @@ function ShareSheet({ deck, shareD, onClose }: { deck: Deck; shareD?: string; on
           <button
             type="button"
             className="btn sheet-native"
-            onClick={() => navigator.share({ title, text: `${title}. Built with Hundredfold.`, url }).catch(() => {})}
+            onClick={() => navigator.share({ title, text: `${title}. Built with Hundredfoldz.`, url }).catch(() => {})}
           >
             <ShareIcon /> Share with an app on this device
           </button>

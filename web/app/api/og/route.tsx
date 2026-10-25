@@ -15,7 +15,7 @@ const ART_W = 470; // the art covers the right part only: less photo = a smaller
 // Link-preview image for shared decks (WhatsApp, Reddit, Discord, ...).
 export async function GET(request: Request) {
   const d = new URL(request.url).searchParams.get("d") ?? "";
-  let title = "Hundredfold";
+  let title = "Hundredfoldz";
   let sub = "Five cards in. A hundred out.";
   let art: string | null = null;
   let fullCard = false;
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
           <div style={{ fontSize: px(76), fontWeight: 700, lineHeight: 1.02, maxWidth: px(fullCard ? 640 : 900) }}>{title}</div>
           <div style={{ fontSize: px(32), marginTop: px(18), color: "#c9cdf0", maxWidth: px(fullCard ? 640 : 900) }}>{sub}</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: px(44), fontSize: px(24), color: "#e2b04a" }}>
-            <span>Built with Hundredfold</span>
+            <span>Built with Hundredfoldz</span>
             {/* the full card already shows artist and copyright */}
             {fullCard ? null : <span style={{ fontSize: px(17), color: "rgba(238,240,255,0.75)" }}>{credit}</span>}
           </div>

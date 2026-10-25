@@ -99,7 +99,7 @@ export function DeckView({
                 {donationUrl ? (
                   <>
                     {" "}
-                    Hundredfold is free;{" "}
+                    Hundredfoldz is free;{" "}
                     <a href={donationUrl} target="_blank" rel="noopener noreferrer">
                       buy the maker a coffee
                     </a>{" "}

@@ -252,6 +252,8 @@ export async function checkKey(key: string): Promise<{ id: string; name: string 
   return j.models ?? [];
 }
 
+// Browser storage keys keep the name from before the rename to Hundredfoldz, so saved keys,
+// decks and settings survive it.
 const KEY_NAME = "hundredfold:api-key";
 /** Where the key lives: this device (localStorage) or this tab only (sessionStorage). Never on our server. */
 export const keyStore = {

@@ -32,12 +32,12 @@ export default function BracketChecker() {
   return (
     <div className="app">
       <header className="top">
-        <a className="wordmark" href="/" aria-label="Hundredfold home">
+        <a className="wordmark" href="/" aria-label="Hundredfoldz home">
           <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden>
             <rect x="5" y="4" width="16" height="22" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" transform="rotate(-10 13 15)" />
             <rect x="11" y="6" width="16" height="22" rx="2.5" fill="currentColor" opacity=".9" transform="rotate(8 19 17)" />
           </svg>{" "}
-          Hundredfold
+          Hundredfoldz
         </a>
         <a className="btn" href="/">
           <span className="label-long">Build a deck from five cards</span>
@@ -167,7 +167,7 @@ export default function BracketChecker() {
       </main>
       <footer className="foot">
         <p>
-          Hundredfold is unofficial Fan Content permitted under the <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC. Card data via <a href="https://scryfall.com">Scryfall</a>, combos via <a href="https://commanderspellbook.com">Commander Spellbook</a>.
+          Hundredfoldz is unofficial Fan Content permitted under the <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC. Card data via <a href="https://scryfall.com">Scryfall</a>, combos via <a href="https://commanderspellbook.com">Commander Spellbook</a>.
         </p>
       </footer>
     </div>

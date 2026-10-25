@@ -20,7 +20,7 @@ async function lookup(props: Props): Promise<string | null> {
 export async function generateMetadata(props: Props): Promise<Metadata> {
   const d = await lookup(props);
   const { id } = await props.params;
-  return d ? deckMetadata(d, `/d/${id}`) : { title: "Shared deck · Hundredfold" };
+  return d ? deckMetadata(d, `/d/${id}`) : { title: "Shared deck · Hundredfoldz" };
 }
 
 export default async function Page(props: Props) {

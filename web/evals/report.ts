@@ -7,7 +7,7 @@ export function renderReport(r: { meta: { model: string; judge: string; variants
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   const s = (ms: number) => `${Math.round(ms / 1000)}s`;
   const lines: string[] = [
-    `# Hundredfold engine eval`,
+    `# Hundredfoldz engine eval`,
     "",
     `${meta.date.slice(0, 16).replace("T", " ")} UTC · builder ${meta.model} · judge ${meta.judge} · ${meta.hands.length} hands × ${meta.variants.length} variants × ${meta.repeat}${meta.spentUsd != null ? ` · estimated spend $${meta.spentUsd.toFixed(2)}` : ""}`,
     "",

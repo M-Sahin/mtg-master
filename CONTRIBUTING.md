@@ -5,7 +5,7 @@ Thanks for helping out. This repository has two parts:
 | Part | Folder | Language | Tests |
 |---|---|---|---|
 | The mtg-master Claude skill | `mtg-master/` | Markdown + Python (standard library only) | `python -m unittest discover -s tests` |
-| Hundredfold, the web app | `web/` | Next.js / TypeScript | `cd web && npm test && npm run typecheck` |
+| Hundredfoldz, the web app | `web/` | Next.js / TypeScript | `cd web && npm test && npm run typecheck` |
 
 ## Run the app locally
 

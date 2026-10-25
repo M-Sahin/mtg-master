@@ -1,8 +1,8 @@
 # docker compose up -d   (reads your keys from .env.local; copy .env.example first)
 services:
-  hundredfold:
+  hundredfoldz:
     build: .
-    image: hundredfold
+    image: hundredfoldz
     ports:
       - "3000:3000"
     env_file:

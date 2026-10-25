@@ -26,6 +26,6 @@ export async function deckMetadata(d: string, pagePath: string): Promise<Metadat
       twitter: { card: "summary_large_image", title, description, images: [image] },
     };
   } catch {
-    return { title: "Shared deck · Hundredfold" };
+    return { title: "Shared deck · Hundredfoldz" };
   }
 }
