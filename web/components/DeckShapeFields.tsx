@@ -1,6 +1,7 @@
 "use client";
 // "Deck shape (optional)": min and max counts for creatures, lands, ramp, draw, removal and
 // wipes, and a cap on the average mana value. Empty fields mean "no limit".
+import { useState } from "react";
 import { SHAPE_KEYS, SHAPE_LABELS, SHAPE_TYPICAL, cleanShape, type DeckShape, type ShapeKey } from "../lib/shared/shape";
 
 export type ShapeDraft = Record<ShapeKey, { min: string; max: string }> & { maxAvgMv: string };
@@ -15,9 +16,11 @@ export function draftToShape(d: ShapeDraft): DeckShape | undefined | string {
 export function DeckShapeFields({ value, onChange }: { value: ShapeDraft; onChange: (v: ShapeDraft) => void }) {
   const parsed = draftToShape(value);
   const active = typeof parsed === "object" && parsed ? Object.keys(parsed).length : 0;
+  // open while editing, also while a limit is invalid (the error must stay visible)
+  const [open, setOpen] = useState(active > 0);
   const set = (k: ShapeKey, side: "min" | "max", v: string) => onChange({ ...value, [k]: { ...value[k], [side]: v.replace(/[^\d]/g, "").slice(0, 2) } });
   return (
-    <details className="opt shape" open={active > 0} data-testid="deck-shape">
+    <details className="opt shape" open={open || typeof parsed === "string"} onToggle={(e) => setOpen(e.currentTarget.open)} data-testid="deck-shape">
       <summary className="opt-label">
         Deck shape <span className="pill pill--quiet">{active ? `${active} limit${active === 1 ? "" : "s"}` : "optional"}</span>
       </summary>
