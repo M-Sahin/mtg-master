@@ -116,7 +116,7 @@ test("upgrade my deck: one review round of swaps on the user's deck; only revise
       if (turn === 1) {
         const c0 = params.messages[0].content;
         seen.prompt = typeof c0 === "string" ? c0 : c0.map((b: any) => b.text ?? "").join("\n");
-        seen.tools = params.tools.map((t: any) => t.name);
+        seen.tools = (params.tools ?? []).map((t: any) => t.name);
       }
       const last = params.messages.at(-1);
       if (Array.isArray(last.content)) for (const r of last.content) if (r.type === "tool_result") seen.results.push(String(r.content));
