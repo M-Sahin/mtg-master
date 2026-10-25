@@ -121,13 +121,16 @@ for (const setCode of [...new Set(chosen.map((b) => b.code.split("-")[0]))]) {
     if (p.category !== "booster_box") continue;
     const kind = String(p.subtype ?? "").toLowerCase();
     if (!KINDS.includes(kind)) continue;
-    // the box holds packs: either listed as sealed products with a count, or as pack entries
+    // the box holds its booster packs (e.g. 30 × "… Play Booster Pack"), sometimes with a box
+    // topper or promo pack next to them: take the biggest count of real booster packs
     let packs = 0;
-    for (const x of p.contents?.sealed ?? []) {
+    const extra = /topper|promo|sample|bonus|prerelease|gift/i;
+    for (const x of [...(p.contents?.sealed ?? []), ...(p.contents?.pack ?? [])]) {
       const inner = byUuid.get(x.uuid);
-      if (!inner || inner.category === "booster_pack") packs += Number(x.count ?? 1);
+      const name = String(x.name ?? inner?.name ?? "");
+      if (extra.test(name) || (inner && inner.category && inner.category !== "booster_pack")) continue;
+      packs = Math.max(packs, Number(x.count ?? 1));
     }
-    for (const x of p.contents?.pack ?? []) packs += Number(x.count ?? 1);
     if (!packs && Number(p.productSize) > 0) packs = Number(p.productSize);
     if (probe > 0) {
       console.log(`  probe ${setCode} ${kind}: ${JSON.stringify({ name: p.name, subtype: p.subtype, productSize: p.productSize, contents: p.contents }).slice(0, 700)}`);
