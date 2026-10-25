@@ -2,19 +2,19 @@
 
 **Five cards in. A hundred out.** Hundredfold is a web app that builds a complete Bracket 3 Commander deck from five seed cards. You pick the cards (one of them can be the commander), and Claude builds the deck live using the [mtg-master skill](../mtg-master): it researches on Scryfall, writes the list, and keeps fixing it until the server-side deck check passes.
 
-Next.js (App Router), React 19, plain CSS. No database, and no SDK dependencies beyond Next and React.
+Next.js (App Router), React 19, plain CSS. No SDK dependencies beyond Next and React, and no database required: an optional Upstash Redis store adds short share links and lets builds survive switching servers.
 
 ## What you get
 
 - **The setup:** a fanned hand of five seed cards with Scryfall autocomplete and a "Surprise me" button. You can crown a legendary creature as commander or let Claude choose. There are budget options, a free-text wish list, and the page tints itself to your color identity.
-- **The live build:** Claude's notes stream in while it works, and every Scryfall search is shown with its exact query. "The Hundred", a 10×10 grid of sleeves, fills up card by card in each card's role color while Claude writes the list.
+- **The live build:** Claude's notes stream in while it works, and every Scryfall search is shown with its exact query. "The Hundred", a 10×10 grid of sleeves, fills up card by card in each card's role color while Claude writes the list. The build keeps running if you switch apps or lose the connection; the page reconnects and picks up where it left off (see [Builds that survive leaving the page](#builds-that-survive-leaving-the-page)).
 - **The deck:**
   - a commander banner, strategy and win conditions, and the Bracket 3 checklist
   - cards grouped by role, with images and a click-through detail view that explains why each card is in the deck
   - a type list, a mana curve, counts against the Commander template, color demand and a price in EUR
   - a sample-hand drawer
   - copy for Moxfield/Archidekt or Arena, and a .txt download
-- **Own key:** visitors build with their own Claude API key and model, and see the tokens and estimated cost of each build.
+- **Own key:** visitors build with their own Claude API key and model, and see the tokens and estimated cost of each build. The key field works with password managers.
 - **Your collection:** prefer cards you own, or build only from them.
 - **Bracket checker:** paste any decklist at `/bracket` to see which bracket it fits and why.
 - **Saving:** "My decks" keeps your finished decks in the browser.
@@ -62,11 +62,11 @@ Prefer to do it by hand? In Vercel, choose **Add New → Project**, import your 
 ```bash
 git clone https://github.com/M-Sahin/mtg-master.git
 cd mtg-master/web
-cp .env.example .env.local      # fill in ANTHROPIC_API_KEY and ACCESS_CODE
+cp .env.example .env.local      # optional: a server key (ANTHROPIC_API_KEY + ACCESS_CODE), Upstash, DONATION_URL
 docker compose up -d            # http://localhost:3000
 ```
 
-Or without compose:
+Or without compose (here with a server key; leave both variables out to run on visitors' own keys):
 
 ```bash
 docker build -t hundredfold .
@@ -105,13 +105,16 @@ On Vercel, store `ANTHROPIC_API_KEY` and `ACCESS_CODE` as the **Secret** type. R
 On the setup screen, visitors can paste their own Claude API key. The page walks them through making one: a Claude Console workspace with a monthly spend limit, a little credit, and a key from that workspace.
 
 - **The key stays in the browser.** It's kept in this device's storage, or for the tab only if the visitor prefers. It's sent with each build in a header, used only for that build, and never written to logs, the job store or share links. A strict Content Security Policy (`proxy.ts`, a fresh nonce per request) stops injected scripts from reading it.
+- **Password managers.** The key field is a login-style form (a hidden "Claude API key" username and a password field), so Chrome, Safari, 1Password and Bitwarden offer to save the key and fill it in later, also after clearing the cache and on other devices. The setup steps tell people to save it right away, because the Console shows a key only once, and how to replace a lost one.
+- **The key is checked first** with Anthropic's model list (`/api/key/check`), which also fills the model picker. The result is cached per tab, so reloading doesn't re-check.
 - **Model choice.** The picker offers Sonnet 5.5 (default), Opus 5.5 and Haiku 5.5, plus every other model the key can use under "Show all".
 - **Cost.** The live build and the finished deck show the tokens used and an estimated cost (prices in `lib/shared/models.ts`).
 - **Clear errors.** "Out of credit", "spend limit reached", "key not accepted", "model not available" and "rate limited" each say what to do.
+- **Limits.** Builds are limited per key (`OWN_KEY_BUILDS_PER_HOUR`, default 20) and key checks per IP and key, so people behind one shared address don't block each other.
 
 ### Build from your collection
 
-Visitors can load their collection: a CSV export (Moxfield, Archidekt, ManaBox, Deckbox and others with a Name column) or a plain list. "Prefer my cards" marks owned cards in Claude's search results and asks it to use them. "Only my cards" also has the server reject unowned cards (seeds and basic lands are always allowed). The collection stays in the browser and is sent with the build.
+Visitors can load their collection: a CSV export (Moxfield, Archidekt, ManaBox, Deckbox, Dragon Shield and others with a Name column) or a plain list, up to 5,000 different cards. "Prefer my cards" marks owned cards in Claude's search results and asks it to use them. "Only my cards" also has the server reject unowned cards (seeds and basic lands are always allowed). The collection stays in the browser and is sent with the build.
 
 ### My decks
 
@@ -121,11 +124,20 @@ Finished decks are kept in the browser (up to 30) as compact share payloads, and
 
 Shared decks are stored for a year (renewed whenever someone opens the link) in Upstash Redis, which has a free tier. On Vercel: **Storage → Create Database → Upstash for Redis** (or the Marketplace), connect it to this project, and redeploy. The integration adds `KV_REST_API_URL` and `KV_REST_API_TOKEN` for you. Elsewhere, create a free database at upstash.com and set those two variables yourself. The same deck always gets the same link, and links fall back to the long form if the store is unreachable.
 
+### Builds that survive leaving the page
+
+Phones pause or drop connections when you switch apps, so a build doesn't depend on the browser's connection:
+
+- `POST /api/generate` starts the build as a job (kept running with Next's `after()`) and streams its events, each with an index. A heartbeat every 5 seconds lets the page tell a quiet connection from a dead one.
+- When the stream drops, or the page comes back after more than a moment in the background, the page reconnects with `GET /api/generate?job=<id>&from=<n>` and continues from the last event it saw. A reload mid-build picks the build up again from `sessionStorage`.
+- "Stop building" calls `POST /api/generate/stop`; closing the connection no longer stops a build.
+- Events are kept in memory, which is enough for Docker and Node. On Vercel a reconnect can reach a different server instance, so with Upstash connected the events are also batched into Redis (about 150–200 commands per build) and any instance can serve the reconnect.
+
 **Why did a shared link ask for a Vercel login?** Vercel's default Deployment Protection puts a login in front of deployment URLs (`yourproject-abc123-you.vercel.app`, the "Visit" button in the dashboard). Only the production domain is public. Share links now always use the production domain (or `SITE_URL`), so this can't happen anymore.
 
 **Cost:** each build is one Claude conversation of about 4–8 turns, paid from your own API account. The skill prompt and the growing conversation are prompt-cached. Set a monthly spend limit in the Claude Console (Billing → Spend limits) as an extra guard.
 
-**Function duration:** a build usually takes 1–3 minutes. On Vercel, `app/api/generate/route.ts` sets `maxDuration = 300`, which is the Hobby maximum on Fluid compute. The agent submits by about 3½ minutes and stops at about 4½ minutes with the best deck it has, so it finishes inside the limit. On Pro you can raise `maxDuration` (the maximum is 800). Docker and Node.js have no such limit.
+**Function duration:** a build usually takes 1–3 minutes. On Vercel, `app/api/generate/route.ts` sets `maxDuration = 300`, which is the Hobby maximum on Fluid compute. The agent submits by about 3½ minutes and stops at about 4½ minutes with the best deck it has (it keeps 25 seconds after each Claude call to check the deck), so it finishes inside the limit. On Pro you can raise `maxDuration` (the maximum is 800). Docker and Node.js have no such limit.
 
 **Keeping your copy up to date:** use **Sync fork** on GitHub (or `git pull` for Docker). Vercel redeploys automatically when your copy changes.
 
@@ -169,36 +181,45 @@ In GitHub, add the repository secret `ANTHROPIC_API_KEY` (preferably from a Cons
 ```bash
 cd web
 npm install
-cp .env.example .env.local   # add your key, or leave it empty for demo mode
+cp .env.example .env.local   # optional: leave it empty and paste your own key in the page, or watch the demo
 npm run dev                  # http://localhost:3000
 ```
 
 | Command | What it does |
 |---|---|
-| `npm test` | Server unit tests (Node's test runner, bundled with esbuild): validation, the SSE parser, the draft scanner, the agent loop with scripted "Claude" turns, rate limiting, partner rules, deadlines |
+| `npm test` | Unit tests (Node's test runner, bundled with esbuild): validation and partner rules, the SSE parser, the agent loop with scripted "Claude" turns, engine variants and the review pass, the deck analysis on real Oracle text, combos, own keys, collections, jobs and reconnects, share links, the bracket checker and the eval harness |
 | `npm run typecheck` | TypeScript |
 | `npm run build` | Production build |
 | `node scripts/e2e-demo.mjs` | End-to-end check against a running server in demo mode (uses real Scryfall) |
 | `node scripts/screenshots.mjs` | Screenshots of every screen (needs `playwright`) |
-| `node scripts/check-scryfall-live.mjs` | Checks double-faced, split and accented card names against the live Scryfall API |
+| `node scripts/check-scryfall-live.mjs` | Checks double-faced, split and accented card names, and partner pairings, against the live Scryfall API |
+| `node scripts/calibrate-analysis.mjs` | Compares the role detector with Scryfall Tagger on the most-played cards per role (needs Scryfall access) |
+| `node scripts/eval.mjs check` / `run` | The engine eval (see [Running an eval](#running-an-eval)) |
 
-CI (`.github/workflows/web.yml`) runs all of these on every push, and also builds and tests the Docker image. It publishes the screenshots, the e2e log and the lockfile it resolved to the `ci-output` branch.
+CI (`.github/workflows/web.yml`) runs all of these on every push except the eval run, and also builds and tests the Docker image. The browser pass checks the share flow, link previews, a cut-off build stream, switching apps, the key form, the security policy, the bracket checker and the phone header. CI publishes the screenshots, logs and the lockfile it resolved to the `ci-output` branch. The eval has its own manual workflow (`.github/workflows/eval.yml`).
 
 ### Layout
 
 ```
-app/                    Next.js routes: page, layout, CSS, /api/generate, /api/config, /api/cards/*
-components/             App (flow and state), SeedHand, CardSearch, ForgeView (live build), DeckView, CardFace
-lib/server/             agent loop, engine variants, Claude streaming client, Scryfall client, validation, combo check, prompt, demo
-lib/shared/             types, bracket rules, deck analysis, deck statistics and export
-evals/                  eval hands, runner, scorecard, blind judge, report
+app/                    pages: / (builder), /bracket, /deck?d= and /d/<id> (shared decks); layout, CSS
+app/api/                generate (+ reconnect, stop), key/check, bracket, share, deck/resolve, og, config, cards/*
+proxy.ts                Content Security Policy with a per-request nonce
+components/             App (flow and state), SeedHand, CardSearch, ForgeView (live build), DeckView, CardFace,
+                        KeyPanel, CollectionPanel, MyDecks, ShareSheet, SharedDeck, BracketChecker
+lib/server/             agent loop, engine variants, Claude client, Scryfall client, validation, combo check,
+                        prompt, jobs (reconnectable builds), store (Upstash), share links, bracket check, demo
+lib/shared/             types, bracket rules, deck analysis, models and prices, collection and decklist parsers,
+                        share payloads, deck statistics and export
+lib/client/             browser API: builds with reconnect, key storage, My decks
 lib/skill/content.ts    generated from ../mtg-master
-scripts/                sync-skill, test runner, e2e, screenshots
+evals/                  eval hands, runner, scorecard, blind judge, report
+scripts/                sync-skill, test runner, e2e, screenshots, live Scryfall checks, calibration, eval
 tests/                  unit tests and Scryfall fixtures
 ```
 
 ## Notes
 
-- Bracket 3 rules were checked on 2026-10-24 against Wizards' Commander format page and the Commander Brackets updates of October 2025 and February 2026. They're in `lib/shared/bracket.ts`; update them when Wizards changes the brackets.
+- Bracket 3 rules for the builder were checked on 2026-10-24 against Wizards' Commander format page and the Commander Brackets updates of October 2025 and February 2026. They're in `lib/shared/bracket.ts`. The bracket checker's rules for all brackets were checked on 2026-10-25 and are in `lib/server/bracket-check.ts`. Update both when Wizards changes the brackets.
+- Model prices for the cost estimate were checked on 2026-10-25 and are in `lib/shared/models.ts`.
 - Prices are Scryfall's Cardmarket (EUR) trend prices and change daily.
 - Hundredfold is unofficial Fan Content permitted under the [Fan Content Policy](https://company.wizards.com/en/legal/fancontentpolicy). Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC. Card data and images come from [Scryfall](https://scryfall.com) and follow its [API rules](https://scryfall.com/docs/api): it's free to use, with no paywall, and artists are credited.

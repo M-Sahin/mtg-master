@@ -31,7 +31,7 @@ Three small Python helpers (standard library only, no dependencies) do the work 
 
 ## Web app: Hundredfold
 
-[`web/`](web) contains **Hundredfold**, a Next.js app built on this skill. You pick five cards, and Claude builds a complete Bracket 3 Commander deck around them. Progress is shown live: Scryfall searches, the list filling a 10×10 grid, and server-side validation with automatic fixes. You can export the result to Moxfield or Arena.
+[`web/`](web) contains **Hundredfold**, a Next.js app built on this skill. You pick five cards, and Claude builds a complete Bracket 3 Commander deck around them. Progress is shown live: Scryfall searches, the list filling a 10×10 grid, and server-side validation with automatic fixes. You can export the result to Moxfield or Arena, or share it with a short link. You can also build from your own collection, keep your decks in the browser, and check any decklist's bracket for free at `/bracket`.
 
 It's free and open source. Host your own copy in one click; visitors build with their own Claude API key, so the site itself needs no key:
 
@@ -56,7 +56,8 @@ mtg-master/                  ← the skill itself (this folder is what you insta
     └── odds.py              ← hypergeometric draw probabilities
 tests/                       ← offline unit tests (Scryfall is mocked with fixtures)
 web/                         ← Hundredfold, the Next.js deckbuilder that uses this skill
-.github/workflows/tests.yml  ← CI: runs the tests and packages the skill
+.github/workflows/           ← CI: tests.yml (skill tests + package), web.yml (app build, tests, browser checks),
+                                release.yml (GitHub Release with the .skill file), eval.yml (engine eval, manual)
 ```
 
 ## Installation
@@ -164,7 +165,7 @@ Add `--json` to any command, before or after it, to get raw JSON. Batch lookups 
 python3 -m unittest discover -s tests -v
 ```
 
-The 45 tests run fully offline. Scryfall is replaced by fixture cards in `tests/fixtures/cards.json`. Those cards are shaped like real Scryfall objects, but their legalities are simplified for testing, so don't use them as a reference. The probability tests are checked against values from `scipy`, exhaustive enumeration and a Monte Carlo simulation. CI runs the tests on Python 3.8 and 3.12 and packages the skill.
+The 47 tests run fully offline. Scryfall is replaced by fixture cards in `tests/fixtures/cards.json`. Those cards are shaped like real Scryfall objects, but their legalities are simplified for testing, so don't use them as a reference. The probability tests are checked against values from `scipy`, exhaustive enumeration and a Monte Carlo simulation. CI runs the tests on Python 3.8 and 3.12 and packages the skill.
 
 The skill's reference files contain time-sensitive facts, such as Commander brackets and recent rules changes. The skill always tells Claude to verify these, but the files themselves still need updating now and then.
 
