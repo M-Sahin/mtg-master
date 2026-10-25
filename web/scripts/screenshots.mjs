@@ -96,19 +96,23 @@ await run("12-mobile-share", { width: 390, height: 844 }, async (p) => {
   await p.click("text=Share deck");
   await p.waitForTimeout(800);
 });
-// the phone switches apps mid-build: the connection drops, the page reconnects and the deck still arrives
-await run("13-offline-reconnect", { width: 390, height: 844 }, async (p) => {
+// the phone switches apps mid-build: the stream breaks off, the page reconnects and the deck still arrives
+await run("13-dropped-stream", { width: 390, height: 844 }, async (p) => {
+  await p.route("**/api/generate", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    const resp = await route.fetch();
+    const lines = (await resp.text()).split("\n");
+    await route.fulfill({ response: resp, body: lines.slice(0, 40).join("\n") + "\n" }); // cut off mid-build, no "done"
+  });
+  const reconnects = [];
+  p.on("request", (r) => r.method() === "GET" && r.url().includes("/api/generate?job=") && reconnects.push(r.url()));
   await loadSeeds(p);
   await p.click("text=Build my deck");
-  await p.waitForFunction(() => document.querySelectorAll(".cell.is-in").length > 5 || document.querySelector(".log"), null, { timeout: 60000 });
-  await p.context().setOffline(true);
-  await p.waitForTimeout(3000);
-  await p.context().setOffline(false);
   await p.waitForSelector(".deck", { timeout: 120000 });
   const body = await p.locator("body").innerText();
-  const reconnected = /Reconnecting to the build/.test(body) || (await p.evaluate(() => document.body.innerHTML.includes("Reconnecting")));
-  console.log(`offline mid-build: deck arrived; reconnect shown in the log: ${reconnected}`);
-  if (/connection to the build was lost|isn't running anymore|connection dropped/i.test(body)) errors.push("build was lost after going offline");
+  console.log(`dropped stream: deck arrived after ${reconnects.length} reconnect(s): ${reconnects.map((u) => u.split("&")[1]).join(", ")}`);
+  if (!reconnects.length) errors.push("the page never reconnected after the stream was cut");
+  if (/connection to the build was lost|isn't running anymore|connection dropped/i.test(body)) errors.push("build was lost after the stream dropped");
 });
 await run("7-mobile-setup", { width: 390, height: 844 }, loadSeeds);
 await run("8-mobile-result", { width: 390, height: 844 }, toResult);
