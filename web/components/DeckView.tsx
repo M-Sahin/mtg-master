@@ -5,10 +5,25 @@ import { MANA_COLORS, ROLE_COLORS, averageMv, byRole, byType, curve, exportText,
 import type { Color, Deck, DeckCard, Validation } from "../lib/shared/types";
 import { ROLE_LABELS } from "../lib/shared/types";
 import { CardFace, IdentityPips, ManaCost } from "./CardFace";
+import { ShareButton } from "./ShareSheet";
 
 type Tab = "cards" | "list" | "numbers" | "hand";
 
-export function DeckView({ deck, validation, onRestart, onRebuild }: { deck: Deck; validation: Validation; onRestart: () => void; onRebuild?: () => void }) {
+export function DeckView({
+  deck,
+  validation,
+  onRestart,
+  onRebuild,
+  shared = false,
+  shareD,
+}: {
+  deck: Deck;
+  validation: Validation;
+  onRestart?: () => void;
+  onRebuild?: () => void;
+  shared?: boolean; // viewing someone else's deck from a share link
+  shareD?: string; // the link payload, when we already have it
+}) {
   const [tab, setTab] = useState<Tab>("cards");
   const [open, setOpen] = useState<DeckCard | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -39,13 +54,15 @@ export function DeckView({ deck, validation, onRestart, onRebuild }: { deck: Dec
           <CardFace card={cmd.info} name={cmd.name} tilt className="deck-cmd" onClick={() => setOpen(cmd)} loading="eager" />
           <div className="deck-title">
             <p className="deck-kicker">
-              <IdentityPips colors={deck.colorIdentity} /> Bracket {BRACKET.number} Commander deck led by {cmd.name}
+              <IdentityPips colors={deck.colorIdentity} /> {shared ? "Shared with you: a " : ""}
+              {shared ? "b" : "B"}racket {BRACKET.number} Commander deck led by {cmd.name}
               {deck.partner ? ` and ${deck.partner.name}` : ""}
             </p>
             <h2>{deck.name}</h2>
             <p className="deck-strategy">{deck.strategy}</p>
             <div className="deck-actions">
-              <button type="button" className="btn btn--brass" onClick={() => copy("moxfield")}>
+              <ShareButton deck={deck} shareD={shareD} />
+              <button type="button" className="btn" onClick={() => copy("moxfield")}>
                 {copied === "moxfield" ? "Copied" : "Copy list"}
               </button>
               <button type="button" className="btn" onClick={() => copy("arena")}>
@@ -59,9 +76,11 @@ export function DeckView({ deck, validation, onRestart, onRebuild }: { deck: Dec
                   Build another version
                 </button>
               ) : null}
-              <button type="button" className="btn btn--quiet" onClick={onRestart}>
-                New seeds
-              </button>
+              {onRestart ? (
+                <button type="button" className="btn btn--quiet" onClick={onRestart}>
+                  New seeds
+                </button>
+              ) : null}
             </div>
             {copied === "error" ? <p className="note">Your browser blocked the clipboard. Use Download instead.</p> : null}
           </div>

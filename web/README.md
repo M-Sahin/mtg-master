@@ -15,6 +15,11 @@ Next.js (App Router), React 19, plain CSS. No database, and no SDK dependencies 
   - a sample-hand drawer
   - copy for Moxfield/Archidekt or Arena, and a .txt download
 - **Saving:** the last deck is kept in your browser.
+- **Sharing:**
+  - the "Share deck" sheet: native sharing on phones, WhatsApp, Reddit (as a link, or a ready-made Markdown post with the decklist), Telegram, X and email
+  - "Open in Moxfield/Archidekt", which copies the list and opens their importer
+  - shared links open a read-only deck page with fresh card data and the bracket check, and get a preview image (commander art, deck name) in WhatsApp, Reddit and Discord
+  - the whole deck is compressed into the link (`/deck?d=…`, about 1.8 KB), so there's no database and self-hosted copies share the same way
 
 ## How it uses the skill
 
