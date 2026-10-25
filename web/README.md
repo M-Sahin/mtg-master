@@ -14,7 +14,9 @@ Next.js (App Router), React 19, plain CSS. No database, and no SDK dependencies 
   - a type list, a mana curve, counts against the Commander template, color demand and a price in EUR
   - a sample-hand drawer
   - copy for Moxfield/Archidekt or Arena, and a .txt download
-- **Saving:** the last deck is kept in your browser.
+- **Own key:** visitors build with their own Claude API key and model, and see the tokens and estimated cost of each build.
+- **Your collection:** prefer cards you own, or build only from them.
+- **Saving:** "My decks" keeps your finished decks in the browser.
 - **Sharing:**
   - the "Share deck" sheet: native sharing on phones, WhatsApp, Reddit (as a link, or a ready-made Markdown post with the decklist), Telegram, X and email
   - "Open in Moxfield/Archidekt", which copies the list and opens their importer
@@ -40,13 +42,13 @@ After editing the skill, run `npm run sync-skill` and commit `lib/skill/content.
 
 ## Host your own
 
-Hundredfold is free and open source. Run your own copy with your own Claude API key; there's no shared server and nothing to sign up for.
+Hundredfold is free and open source, and a copy needs no API key of its own: visitors build with their own Claude API key (see [Own API keys](#own-api-keys)). You can also give your copy a server key behind an access code, for yourself and your friends.
 
 ### Option 1: Deploy to Vercel (easiest)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FM-Sahin%2Fmtg-master&root-directory=web&env=ANTHROPIC_API_KEY,ACCESS_CODE&envDescription=Your%20Claude%20API%20key%2C%20and%20an%20access%20code%20visitors%20must%20enter%20%28it%20protects%20your%20API%20credits%29.&envLink=https%3A%2F%2Fgithub.com%2FM-Sahin%2Fmtg-master%2Fblob%2Fmain%2Fweb%2FREADME.md%23environment-variables)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FM-Sahin%2Fmtg-master&root-directory=web)
 
-The button copies this repository to your GitHub account, sets the root directory to `web`, and asks for the two required environment variables. That's all you need. Vercel's free Hobby plan is enough.
+The button copies this repository to your GitHub account and sets the root directory to `web`. No environment variables are required: the site starts with own-key builds and the demo. Vercel's free Hobby plan is enough.
 
 Prefer to do it by hand? In Vercel, choose **Add New → Project**, import your copy of the repository, set **Root Directory** to `web`, add the variables below, and deploy.
 
@@ -78,8 +80,11 @@ cd web && npm ci && npm run build && npm start
 
 | Variable | Required | What it does |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | for real builds | Your Claude API key, created at [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys). Without it the app runs in **demo mode**, which replays one scripted Meren deck. |
-| `ACCESS_CODE` | yes, with a key | Visitors have to enter this code to start a build. Without it, anyone who has the URL spends your credits, so the app refuses to run until you set it. |
+| `ANTHROPIC_API_KEY` | no | A server key for builds without a visitor key, created at [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys). Without it, builds run on visitors' own keys, and without a key at all the app replays one scripted demo deck. |
+| `ACCESS_CODE` | yes, with a server key | Visitors have to enter this code to build on the server key. Without it, anyone who has the URL spends your credits, so server-key builds are refused until you set it. Own-key builds don't need it. |
+| `OWN_KEYS` | no | Set to `0` to stop visitors from using their own Claude API keys (default: allowed). |
+| `OWN_KEY_BUILDS_PER_HOUR` | no | Own-key builds per IP per hour (default 20), to protect Scryfall and the server. |
+| `DONATION_URL` | no | An `https://` link (Ko-fi, GitHub Sponsors…) shown in the footer and under each finished deck. |
 | `PUBLIC_ACCESS` | no | Set it to `1` only if you really want builds open to everyone without a code. |
 | `ANTHROPIC_MODEL` | no | Defaults to `claude-sonnet-5-5`. `claude-opus-5-5` gives stronger decks but is slower and costs more. |
 | `BUILDS_PER_HOUR_PER_IP` | no | A best-effort limit per IP, kept per server instance (default 6). |
@@ -89,6 +94,23 @@ cd web && npm ci && npm run build && npm start
 | `ENGINE` | no | The deckbuilding engine: `v1` (default) or `v2`. See [Engine quality and evals](#engine-quality-and-evals). |
 
 On Vercel, store `ANTHROPIC_API_KEY` and `ACCESS_CODE` as the **Secret** type. Redeploy after changing a variable, because changes only apply to new deployments.
+
+### Own API keys
+
+On the setup screen, visitors can paste their own Claude API key. The page walks them through making one: a Claude Console workspace with a monthly spend limit, a little credit, and a key from that workspace.
+
+- **The key stays in the browser.** It's kept in this device's storage, or for the tab only if the visitor prefers. It's sent with each build in a header, used only for that build, and never written to logs, the job store or share links. A strict Content Security Policy (`proxy.ts`, a fresh nonce per request) stops injected scripts from reading it.
+- **Model choice.** The picker offers Sonnet 5.5 (default), Opus 5.5 and Haiku 5.5, plus every other model the key can use under "Show all".
+- **Cost.** The live build and the finished deck show the tokens used and an estimated cost (prices in `lib/shared/models.ts`).
+- **Clear errors.** "Out of credit", "spend limit reached", "key not accepted", "model not available" and "rate limited" each say what to do.
+
+### Build from your collection
+
+Visitors can load their collection: a CSV export (Moxfield, Archidekt, ManaBox, Deckbox and others with a Name column) or a plain list. "Prefer my cards" marks owned cards in Claude's search results and asks it to use them. "Only my cards" also has the server reject unowned cards (seeds and basic lands are always allowed). The collection stays in the browser and is sent with the build.
+
+### My decks
+
+Finished decks are kept in the browser (up to 30) as compact share payloads, and reopen with fresh card data.
 
 ### Short share links
 

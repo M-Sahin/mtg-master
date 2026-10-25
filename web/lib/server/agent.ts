@@ -9,7 +9,7 @@ import * as scry from "./scryfall";
 import { buildDeck, namesInSubmission, rebalanceBasics, repairCount, strictProblems, validateDeck, type SubmittedDeck } from "./validate";
 import { analysisReport, analyzeDeck, type DeckAnalysis } from "../shared/analysis";
 import type { CardInfo, Deck, GenerateRequest, Role, StreamEvent, Usage, Validation } from "../shared/types";
-import { ROLES, isBasicLand } from "../shared/types";
+import { ROLES, isBasicLand, nameKey } from "../shared/types";
 
 export interface AgentOptions {
   model: string;
@@ -40,7 +40,7 @@ function excerpt(t: string, n = 140) {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
-function cardLine(c: CardInfo, text: "none" | "excerpt" | "full" = "excerpt") {
+function cardLine(c: CardInfo, text: "none" | "excerpt" | "full" = "excerpt", owned?: Set<string>) {
   const bits = [
     c.name,
     c.manaCost || "—",
@@ -50,6 +50,7 @@ function cardLine(c: CardInfo, text: "none" | "excerpt" | "full" = "excerpt") {
   ];
   if (c.gameChanger) bits.push("GAME CHANGER");
   if (c.legalCommander !== "legal") bits.push(`commander:${c.legalCommander}`);
+  if (owned?.has(nameKey(c.name))) bits.push("OWNED");
   if (text === "none" || !c.oracleText) return bits.join(" | ");
   return bits.join(" | ") + ` :: ${text === "full" ? excerpt(c.oracleText, 700) : excerpt(c.oracleText)}`;
 }
@@ -213,6 +214,15 @@ async function checkSubmission(sub: SubmittedDeck, attempt: number, req: Generat
   }
   const analysis = analyzeDeck(deck, { budget: req.budget, seeds: seedNames });
   const problems: string[] = [];
+  if (req.collection?.mode === "only" && req.collection.names.length) {
+    const own = new Set(req.collection.names.map(nameKey));
+    const exempt = new Set(seedNames.map(nameKey));
+    const missing = [deck.commander, ...(deck.partner ? [deck.partner] : []), ...deck.cards]
+      .filter((c) => !isBasicLand(c.name) && !own.has(nameKey(c.name)) && !exempt.has(nameKey(c.name)))
+      .map((c) => c.name);
+    const msg = `${missing.length} card(s) aren't in the user's collection: ${missing.slice(0, 20).join(", ")}${missing.length > 20 ? ", …" : ""}. Replace them with owned cards (search results mark them OWNED) or basic lands.`;
+    if (missing.length) (attempt <= 3 ? problems : validation.warnings).push(attempt <= 3 ? msg : `Not in your collection: ${missing.join(", ")}.`);
+  }
   // The stricter checks only block the first attempts, so a heuristic miss can't sink a build.
   if (engine.strict && attempt <= 2) problems.push(...strictProblems(analysis));
   let combos: ComboReport | undefined;
@@ -261,6 +271,7 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
     req = { ...req, commander: c.name };
   }
   const seedNames = seeds.map((s) => s.name);
+  const owned = req.collection?.names.length ? new Set(req.collection.names.map(nameKey)) : undefined;
 
   const system = [{ type: "text", text: systemPrompt(engine), cache_control: { type: "ephemeral" } }];
   const tools = toolsFor(engine);
@@ -326,7 +337,7 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
     usage.cacheRead += u.cache_read_input_tokens ?? 0;
     usage.cacheWrite += u.cache_creation_input_tokens ?? 0;
     usage.output += u.output_tokens ?? 0;
-    emit({ type: "usage", usage: { ...usage } });
+    emit({ type: "usage", usage: { ...usage }, model: opts.model });
 
     if (msg.stop_reason === "refusal") {
       emit({ type: "error", message: "Claude declined to build this deck. Try different seeds or wording." });
@@ -365,7 +376,7 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
           results.set(x.id, { type: "tool_result", tool_use_id: x.id, is_error: true, content: `Skipped: at most ${MAX_PARALLEL_TOOLS} lookups per turn.` });
           return;
         }
-        results.set(x.id, await runLookup(x, emit, engine));
+        results.set(x.id, await runLookup(x, emit, engine, owned));
       }),
     );
 
@@ -493,12 +504,12 @@ function asBlocks(c: any): any[] {
   return typeof c === "string" ? [{ type: "text", text: c }] : c;
 }
 
-async function runLookup(u: ContentBlock & { type: "tool_use" }, emit: (e: StreamEvent) => void, engine: EngineOptions) {
+async function runLookup(u: ContentBlock & { type: "tool_use" }, emit: (e: StreamEvent) => void, engine: EngineOptions, owned?: Set<string>) {
   try {
     if (u.name === "search_cards") {
       const r = await scry.search(String(u.input.query ?? ""), u.input.order ?? "edhrec", Math.min(Number(u.input.limit ?? 20) || 20, 40));
       emit({ type: "tool_result", id: u.id, summary: r.error ? "0 results" : `${r.total} matches`, ok: !r.error });
-      const body = r.error ? `No results: ${r.error}` : `${r.total} total matches; showing ${r.cards.length}:\n${r.cards.map((c) => cardLine(c, engine.fullText ? "full" : "excerpt")).join("\n")}`;
+      const body = r.error ? `No results: ${r.error}` : `${r.total} total matches; showing ${r.cards.length}:\n${r.cards.map((c) => cardLine(c, engine.fullText ? "full" : "excerpt", owned)).join("\n")}`;
       return { type: "tool_result", tool_use_id: u.id, content: body };
     }
     if (u.name === "get_cards") {
@@ -506,7 +517,7 @@ async function runLookup(u: ContentBlock & { type: "tool_use" }, emit: (e: Strea
       const { found, notFound } = await scry.getCollection(names);
       const cards = [...new Map([...found.values()].map((c) => [c.name, c])).values()];
       emit({ type: "tool_result", id: u.id, summary: `${cards.length} cards${notFound.length ? `, ${notFound.length} not found` : ""}`, ok: !notFound.length });
-      const body = cards.map((c) => `${cardLine(c, "none")}\n  ${c.oracleText.replace(/\n/g, "\n  ")}`).join("\n") + (notFound.length ? `\nNOT FOUND: ${notFound.join("; ")}` : "");
+      const body = cards.map((c) => `${cardLine(c, "none", owned)}\n  ${c.oracleText.replace(/\n/g, "\n  ")}`).join("\n") + (notFound.length ? `\nNOT FOUND: ${notFound.join("; ")}` : "");
       return { type: "tool_result", tool_use_id: u.id, content: body || "No cards." };
     }
     emit({ type: "tool_result", id: u.id, summary: "unknown tool", ok: false });

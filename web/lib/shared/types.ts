@@ -96,6 +96,15 @@ export interface GenerateRequest {
   commander: string | null; // one of the seeds, or null = let Claude choose
   budget: Budget;
   theme?: string;
+  /** Cards the user owns: "prefer" them, or build "only" from them (plus basics and the seeds). */
+  collection?: { names: string[]; mode: "prefer" | "only" };
+}
+
+export const MAX_COLLECTION = 5000;
+
+/** Card name key for comparing collections with deck lists: front face, no accents, lower case. */
+export function nameKey(name: string): string {
+  return name.split(/\s+\/\/?\s+/)[0].normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 /** Events streamed from /api/generate as newline-delimited JSON. */
@@ -109,7 +118,7 @@ export type StreamEvent =
   | { type: "draft_meta"; commander?: string; deckName?: string }
   | { type: "validation"; validation: Validation; attempt: number }
   | { type: "deck"; deck: Deck; validation: Validation; analysis?: DeckAnalysis; review?: string }
-  | { type: "usage"; usage: Usage }
+  | { type: "usage"; usage: Usage; model?: string }
   | { type: "job"; id: string }
   | { type: "error"; message: string }
   | { type: "done"; ms: number };

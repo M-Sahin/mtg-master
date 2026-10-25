@@ -2,8 +2,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BRACKET } from "../lib/shared/bracket";
 import { MANA_COLORS } from "../lib/shared/deck-utils";
-import type { Budget, Color, Deck, GenerateRequest, StreamEvent, Validation } from "../lib/shared/types";
-import { cardByName, generate, getConfig, randomCard, runningBuild, stopBuild, storage, type PublicConfig } from "../lib/client/api";
+import type { Budget, Color, Deck, GenerateRequest, StreamEvent, Usage, Validation } from "../lib/shared/types";
+import { cardByName, generate, getConfig, keyStore, myDecks, randomCard, resolveDeck, runningBuild, stopBuild, storage, type PublicConfig, type SavedDeck } from "../lib/client/api";
+import { costUsd, formatCost, formatTokens, modelInfo } from "../lib/shared/models";
+import { encodeDeck } from "../lib/shared/share";
+import { CollectionPanel, type Collection } from "./CollectionPanel";
+import { KeyPanel, type KeyState } from "./KeyPanel";
+import { MyDecks } from "./MyDecks";
 import { IdentityPips } from "./CardFace";
 import { DeckView } from "./DeckView";
 import { ForgeView, type DraftCell, type LogItem } from "./ForgeView";
@@ -13,6 +18,8 @@ type Phase = "setup" | "forging" | "result";
 interface Result {
   deck: Deck;
   validation: Validation;
+  usage?: Usage;
+  model?: string;
 }
 
 const lastDeck = storage<Result>("hundredfold:last-deck");
@@ -43,6 +50,10 @@ export default function App() {
   const [surprising, setSurprising] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const jobId = useRef<string | undefined>(undefined);
+  const [key, setKey] = useState<KeyState>({ key: "", model: "" });
+  const [collection, setCollection] = useState<Collection | null>(null);
+  const [usage, setUsage] = useState<{ usage: Usage; model?: string } | null>(null);
+  const [decksVersion, setDecksVersion] = useState(0);
 
   useEffect(() => {
     getConfig().then(setConfig).catch(() => setConfig(null));
@@ -69,7 +80,9 @@ export default function App() {
 
   const problems = filledSeeds.map(seedProblem).filter(Boolean) as string[];
   const ready = filledSeeds.length === 5 && filledSeeds.every((s) => s.info && !s.loading) && problems.length === 0;
-  const needCode = config?.accessCodeRequired && !accessCode.trim();
+  const needCode = config?.accessCodeRequired && !accessCode.trim() && !key.key;
+  // without a key (yours or the server's) only the scripted demo deck can be built
+  const demoOnly = config?.mode === "demo" && !key.key;
   const blocked = config?.setupProblem ?? null;
 
   const pick = useCallback(async (slot: number, name: string) => {
@@ -131,7 +144,13 @@ export default function App() {
   const build = async () => {
     if (!ready) return;
     savedCode.set(accessCode.trim() || null);
-    await run({ seeds: filledSeeds.map((s) => s.info!.name), commander, budget, theme });
+    await run({
+      seeds: filledSeeds.map((s) => s.info!.name),
+      commander,
+      budget,
+      theme,
+      ...(collection && !demoOnly ? { collection: { names: collection.names, mode: collection.mode } } : {}),
+    });
   };
 
   /** Start a build, or (with `resume`) reattach to one that was running before a reload. */
@@ -147,14 +166,21 @@ export default function App() {
     setFilled(0);
     setError(null);
     setResult(null);
+    setUsage(null);
     const start = resume ? (runningBuild.get()?.at ?? Date.now()) : Date.now();
     setElapsed(Date.now() - start);
     const timer = setInterval(() => setElapsed(Date.now() - start), 250);
     let got: Result | null = null;
+    let spent: { usage: Usage; model?: string } | null = null;
+    const own = keyStore.get()?.key ?? key.key;
     try {
-      for await (const ev of generate(req, accessCode.trim(), ctl.signal, resume)) {
+      for await (const ev of generate(req, { accessCode, apiKey: own || undefined, model: key.model || undefined }, ctl.signal, resume)) {
         if (!jobId.current) jobId.current = runningBuild.get()?.job;
         handle(ev);
+        if (ev.type === "usage") {
+          spent = { usage: ev.usage, model: ev.model };
+          setUsage(spent);
+        }
         if (ev.type === "deck") got = { deck: ev.deck, validation: ev.validation };
         if (ev.type === "error") setError(ev.message);
       }
@@ -165,10 +191,12 @@ export default function App() {
     }
     if (ctl.signal.aborted) return;
     if (got) {
+      if (spent && spent.model !== "demo") Object.assign(got, spent);
       setFilled(100);
       setResult(got);
       lastDeck.set(got);
       setSaved(got);
+      void saveToMyDecks(got);
       // let the grid finish its last fill before revealing the deck
       setTimeout(() => {
         setPhase("result");
@@ -176,6 +204,37 @@ export default function App() {
       }, 900);
     } else {
       setPhase("setup");
+    }
+  };
+
+  const saveToMyDecks = async (r: Result) => {
+    try {
+      const d = await encodeDeck(r.deck);
+      myDecks.add({
+        id: d.slice(-12) + Date.now().toString(36),
+        at: Date.now(),
+        name: r.deck.name,
+        commander: r.deck.commander.name,
+        partner: r.deck.partner?.name,
+        colors: r.deck.colorIdentity,
+        d,
+        ...(r.usage && r.model ? { usage: r.usage, model: r.model } : {}),
+      });
+      setDecksVersion((v) => v + 1);
+    } catch {
+      /* the deck is still shown; it just isn't added to My decks */
+    }
+  };
+
+  const openSaved = async (s: SavedDeck) => {
+    setError(null);
+    try {
+      const r = await resolveDeck(s.d);
+      setResult({ ...r, usage: s.usage, model: s.model });
+      setPhase("result");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e) {
+      setError((e as Error).message);
     }
   };
 
@@ -320,7 +379,7 @@ export default function App() {
               <span className="opt-label">Anything else?</span>
               <input className="field" value={theme} maxLength={300} onChange={(e) => setTheme(e.target.value)} placeholder="For example: lots of tokens, no infinite combos, flavor over power" />
             </label>
-            {config?.accessCodeRequired ? (
+            {config?.accessCodeRequired && !key.key ? (
               <label className="opt">
                 <span className="opt-label">Access code</span>
                 <input className="field" type="password" value={accessCode} onChange={(e) => setAccessCode(e.target.value)} placeholder="Ask the person who runs this app" autoComplete="off" />
@@ -328,20 +387,31 @@ export default function App() {
             ) : null}
           </section>
 
+          <div className="panels">
+            {config?.ownKeys ? <KeyPanel value={key} onChange={setKey} serverKey={config.mode === "live"} /> : null}
+            <CollectionPanel value={collection} onChange={setCollection} />
+          </div>
+
           <div className="go">
-            <button type="button" className="btn btn--big btn--brass" onClick={build} disabled={!ready || !!needCode || !!blocked}>
+            <button type="button" className="btn btn--big btn--brass" onClick={build} disabled={!ready || !!needCode || (!!blocked && !key.key)}>
               Build my deck
             </button>
             <p className="go-hint">
-              {blocked
+              {blocked && !key.key
                 ? blocked
                 : !ready
                 ? problems.length
                   ? problems[0]
                   : `Add ${5 - filledSeeds.length} more card${5 - filledSeeds.length === 1 ? "" : "s"} to start.`
                 : needCode
-                  ? "Enter the access code to start."
-                  : "Takes one to three minutes. You can watch every step."}
+                  ? config?.ownKeys
+                    ? "Enter the access code, or use your own Claude API key, to start."
+                    : "Enter the access code to start."
+                  : demoOnly
+                    ? config?.ownKeys
+                      ? "Without an API key this builds the demo deck only: load the demo seeds, or add your Claude API key above."
+                      : "Demo mode: load the demo seeds to watch a scripted build."
+                    : "Takes one to three minutes. You can watch every step, and leave the page while it builds."}
             </p>
             {error ? (
               <p className="error" role="alert">
@@ -361,12 +431,13 @@ export default function App() {
               </button>
             ) : null}
           </div>
+          <MyDecks onOpen={openSaved} version={decksVersion} />
         </main>
       ) : null}
 
       {phase === "forging" ? (
         <main>
-          <ForgeView log={log} draft={draft} commander={draftCmd} filled={filled} elapsed={elapsed} onCancel={cancel} />
+          <ForgeView log={log} draft={draft} commander={draftCmd} filled={filled} elapsed={elapsed} onCancel={cancel} spend={usage && usage.model !== "demo" ? spendText(usage.usage, usage.model) : undefined} />
           {error ? (
             <p className="error" role="alert">
               {error}
@@ -377,13 +448,29 @@ export default function App() {
 
       {phase === "result" && result ? (
         <main>
-          <DeckView deck={result.deck} validation={result.validation} onRestart={restart} onRebuild={ready ? build : undefined} />
+          <DeckView
+            deck={result.deck}
+            validation={result.validation}
+            onRestart={restart}
+            onRebuild={ready ? build : undefined}
+            spend={result.usage && result.model ? `Built with ${modelInfo(result.model)?.label ?? result.model}: ${spendText(result.usage, result.model)}` : undefined}
+            donationUrl={config?.donationUrl ?? undefined}
+          />
         </main>
       ) : null}
 
       <footer className="foot">
         <p>
           Hundredfold is unofficial Fan Content permitted under the <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC. Card data and images via <a href="https://scryfall.com">Scryfall</a>. Free and open source: <a href="https://github.com/M-Sahin/mtg-master">built on the mtg-master Claude skill</a>.
+          {config?.donationUrl ? (
+            <>
+              {" "}
+              <a href={config.donationUrl} target="_blank" rel="noopener noreferrer">
+                Support Hundredfold
+              </a>
+              .
+            </>
+          ) : null}
         </p>
       </footer>
     </div>
@@ -405,4 +492,8 @@ function Mark() {
       <rect x="11" y="6" width="16" height="22" rx="2.5" fill="currentColor" opacity=".9" transform="rotate(8 19 17)" />
     </svg>
   );
+}
+
+function spendText(u: Usage, model?: string) {
+  return `${formatTokens(u)}, ${formatCost(model ? costUsd(model, u) : null)}`;
 }

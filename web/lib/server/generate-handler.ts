@@ -1,10 +1,15 @@
 // Framework-independent handler for POST /api/generate (used by the Next.js route and tests).
-import { anthropicCaller, type ModelCaller } from "./anthropic";
+import { anthropicCaller, friendlyModelError, listModels, type ModelCaller } from "./anthropic";
+import { DEFAULT_MODEL, MODEL_ID } from "../shared/models";
 import { JOB_ID, JobNotFound, jobExists, newJobId, startJob, stopJob, tailJob } from "./jobs";
 import { runAgent } from "./agent";
 import { serverConfig } from "./config";
 import { DEMO_SEEDS, demoCaller } from "./demo";
 import type { Budget, GenerateRequest, StreamEvent } from "../shared/types";
+import { MAX_COLLECTION } from "../shared/types";
+
+/** Claude API keys look like sk-ant-…; anything else is rejected before it reaches Anthropic. */
+export const KEY_PATTERN = /^sk-ant-[A-Za-z0-9_-]{20,200}$/;
 
 export function parseRequest(body: any): GenerateRequest | string {
   if (!body || typeof body !== "object") return "Invalid request body.";
@@ -16,7 +21,13 @@ export function parseRequest(body: any): GenerateRequest | string {
   if (commander && !seeds.some((s: string) => s.toLowerCase() === commander.toLowerCase())) return "The commander must be one of the seeds.";
   const budget: Budget = ["any", "mid", "budget"].includes(body.budget) ? body.budget : "any";
   const theme = typeof body.theme === "string" ? body.theme.slice(0, 300) : undefined;
-  return { seeds, commander, budget, theme };
+  let collection: GenerateRequest["collection"];
+  if (body.collection && Array.isArray(body.collection.names)) {
+    const names = [...new Set((body.collection.names as unknown[]).map((n) => String(n ?? "").trim().slice(0, 150)).filter(Boolean))];
+    if (names.length > MAX_COLLECTION) return `Collections can have up to ${MAX_COLLECTION} different cards.`;
+    if (names.length) collection = { names, mode: body.collection.mode === "only" ? "only" : "prefer" };
+  }
+  return { seeds, commander, budget, theme, ...(collection ? { collection } : {}) };
 }
 
 // Per-instance rate limit (best effort: each warm Vercel instance keeps its own counts).
@@ -100,14 +111,20 @@ export async function handleStop(request: Request): Promise<Response> {
 
 export async function handleGenerate(request: Request, override?: GenerateOverride): Promise<Response> {
   const cfg = serverConfig();
-  if (!cfg.demo && !override?.callModel) {
+  const ip = (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || request.headers.get("x-real-ip") || "unknown";
+  // the visitor's own key: used for this build only, never stored or logged
+  const userKey = (request.headers.get("x-anthropic-key") ?? "").trim();
+  if (userKey) {
+    if (!cfg.ownKeys) return Response.json({ error: "This site doesn't accept personal API keys." }, { status: 403 });
+    if (!KEY_PATTERN.test(userKey)) return Response.json({ error: "That doesn't look like a Claude API key (they start with sk-ant-)." }, { status: 400 });
+    if (rateLimited(`own:${ip}`, cfg.ownKeyBuildsPerHour)) return Response.json({ error: `You've started ${cfg.ownKeyBuildsPerHour} builds in the last hour. Try again later.` }, { status: 429 });
+  } else if (!cfg.demo && !override?.callModel) {
     if (!cfg.accessCode && !cfg.publicAccess) {
       return Response.json({ error: "This deployment has an API key but no ACCESS_CODE. Set ACCESS_CODE (or PUBLIC_ACCESS=1) in the Vercel project settings." }, { status: 503 });
     }
     if (cfg.accessCode && request.headers.get("x-access-code") !== cfg.accessCode) {
       return Response.json({ error: "Wrong or missing access code." }, { status: 401 });
     }
-    const ip = (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || request.headers.get("x-real-ip") || "unknown";
     if (rateLimited(ip, cfg.buildsPerHour)) {
       return Response.json({ error: `You've built ${cfg.buildsPerHour} decks in the last hour. Try again later.` }, { status: 429 });
     }
@@ -121,27 +138,56 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
   const req = parseRequest(body);
   if (typeof req === "string") return Response.json({ error: req }, { status: 400 });
 
-  if (cfg.demo && !override?.callModel) {
+  const demo = cfg.demo && !userKey;
+  if (demo && !override?.callModel) {
     const same = req.seeds.map((s) => s.toLowerCase()).sort().join("|") === DEMO_SEEDS.map((s) => s.toLowerCase()).sort().join("|");
     if (!same) {
-      return Response.json({ error: "Demo mode only builds the sample Meren deck. Load the demo seeds, or set ANTHROPIC_API_KEY for real builds." }, { status: 400 });
+      return Response.json(
+        { error: cfg.ownKeys ? "Without an API key, only the demo deck can be built. Add your own Claude API key to build any deck." : "Demo mode only builds the sample Meren deck. Load the demo seeds, or set ANTHROPIC_API_KEY for real builds." },
+        { status: 400 },
+      );
     }
     req.commander = "Meren of Clan Nel Toth";
   }
-
-  const callModel = override?.callModel ?? (cfg.demo ? demoCaller(override?.demoSpeed ?? 1) : anthropicCaller(cfg.apiKey));
+  const wanted = typeof (body as any)?.model === "string" ? String((body as any).model).trim() : "";
+  const model = userKey ? (MODEL_ID.test(wanted) ? wanted : DEFAULT_MODEL) : cfg.model;
+  const callModel = override?.callModel ?? (userKey ? anthropicCaller(userKey) : demo ? demoCaller(override?.demoSpeed ?? 1) : anthropicCaller(cfg.apiKey));
+  const engine = demo ? cfg.engine : cfg.liveEngine;
   const id = newJobId();
   const started = Date.now();
   const run = startJob(id, async (emit, signal) => {
     try {
-      const result = await runAgent(req, { model: cfg.model, callModel, emit, signal, engine: cfg.engine });
+      const result = await runAgent(req, { model: demo ? "demo" : model, callModel, emit, signal, engine });
       if (result) emit({ type: "deck", deck: result.deck, validation: result.validation, analysis: result.analysis, review: result.review });
     } catch (e) {
-      emit({ type: "error", message: (e as Error).message || "Something went wrong." });
+      emit({ type: "error", message: friendlyModelError(e) || "Something went wrong." });
     } finally {
       emit({ type: "done", ms: Date.now() - started });
     }
   });
   override?.waitUntil?.(run);
   return tailResponse(id, 0, { type: "job", id });
+}
+
+/** POST /api/key/check {key}: does this key work, and which models can it use? The key isn't stored. */
+const checks = new Map<string, number[]>();
+export async function handleKeyCheck(request: Request): Promise<Response> {
+  const cfg = serverConfig();
+  if (!cfg.ownKeys) return Response.json({ error: "This site doesn't accept personal API keys." }, { status: 403 });
+  const ip = (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+  const now = Date.now();
+  const recent = (checks.get(ip) ?? []).filter((t) => now - t < 3_600_000);
+  recent.push(now);
+  checks.set(ip, recent);
+  if (checks.size > 5000) checks.delete(checks.keys().next().value as string);
+  if (recent.length > 30) return Response.json({ error: "Too many key checks. Try again later." }, { status: 429 });
+  const body = await request.json().catch(() => ({}));
+  const key = typeof body?.key === "string" ? body.key.trim() : "";
+  if (!KEY_PATTERN.test(key)) return Response.json({ error: "That doesn't look like a Claude API key. Keys start with sk-ant-." }, { status: 400 });
+  try {
+    const models = await listModels(key);
+    return Response.json({ ok: true, models }, { headers: { "Cache-Control": "no-store" } });
+  } catch (e) {
+    return Response.json({ error: friendlyModelError(e) }, { status: 400 });
+  }
 }

@@ -1590,3 +1590,161 @@ button.card {
     transform: none !important;
   }
 }
+
+/* ---------- own key, collection, my decks ---------- */
+.panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 28px;
+}
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px 18px;
+  background: rgba(8, 11, 30, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.panel-head h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 19px;
+}
+.panel-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+.panel-sub code {
+  color: var(--ink);
+}
+.pill--ok {
+  border-color: color-mix(in oklab, var(--ok) 60%, transparent);
+  color: var(--ok);
+}
+.pill--warn {
+  border-color: color-mix(in oklab, var(--warn) 60%, transparent);
+  color: var(--warn);
+}
+.pill--quiet {
+  color: var(--muted);
+}
+.keysteps {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 15px;
+  display: grid;
+  gap: 4px;
+}
+.keysteps strong {
+  color: var(--ink);
+}
+.keyrow {
+  display: flex;
+  gap: 8px;
+}
+.keyrow .field {
+  flex: 1;
+  min-width: 0;
+}
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+.opt-hint {
+  color: var(--muted);
+  font-size: 14px;
+}
+select.field {
+  appearance: auto;
+  color: var(--ink);
+}
+select.field option {
+  background: #121733;
+}
+.seg--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.collection-input {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.collection-input textarea {
+  font-family: ui-monospace, monospace;
+  font-size: 14px;
+}
+.mydecks {
+  margin-top: 28px;
+}
+.mydecks-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.mydecks-list li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.mydecks-open {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  align-items: center;
+  text-align: left;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 12px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.mydecks-open:hover {
+  border-color: var(--line-strong);
+}
+.mydecks-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mydecks-meta {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.forge-spend,
+.deck-spend {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+@media (max-width: 860px) {
+  .panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .keyrow {
+    flex-direction: column;
+  }
+}

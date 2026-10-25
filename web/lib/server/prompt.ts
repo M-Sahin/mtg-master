@@ -143,6 +143,7 @@ export function userPrompt(req: GenerateRequest, seeds: CardInfo[]): string {
       : "",
     `Budget: ${BUDGET_TEXT[req.budget]}`,
     req.theme?.trim() ? `Theme / wishes from the user: ${req.theme.trim().slice(0, 300)}` : "",
+    req.collection?.names.length ? collectionText(req.collection) : "",
   ]
     .filter((l) => l !== "")
     .join("\n");
@@ -239,4 +240,12 @@ export const REVISE_TOOL = {
 
 export function toolsFor(engine?: EngineOptions): readonly any[] {
   return engine?.review ? [...TOOLS, REVISE_TOOL] : TOOLS;
+}
+
+function collectionText(c: NonNullable<GenerateRequest["collection"]>): string {
+  const rule =
+    c.mode === "only"
+      ? "Build ONLY from cards in this collection, plus basic lands and the seeds. The server rejects any other card, so search with your usual queries and pick the results marked OWNED."
+      : "Prefer cards from this collection when they fit the plan about as well as the alternative; cards the user doesn't own are fine where they're clearly better. Search results mark owned cards with OWNED.";
+  return `\nCOLLECTION: the user owns these ${c.names.length} cards. ${rule}\n<collection>\n${c.names.join("\n")}\n</collection>`;
 }

@@ -137,6 +137,35 @@ await run("14-switch-apps", { width: 390, height: 844 }, async (p) => {
   console.log(`switch apps: reconnected ${first ? `${first - back} ms` : "never"} after coming back (build still running then: ${running})`);
   if (running && (!first || first - back > 3000)) errors.push(`slow or no reconnect after coming back (${first ? first - back : "none"} ms)`);
 });
+// own key panel: a made-up key is refused by Anthropic with a readable message
+await run("15-own-key", { width: 1440, height: 1000 }, async (p) => {
+  await p.fill("[data-testid=api-key]", "sk-ant-api03-" + "x".repeat(60));
+  await p.click("text=Use this key");
+  await p.waitForSelector(".keypanel .error", { timeout: 20000 });
+  const msg = await p.locator(".keypanel .error").innerText();
+  console.log(`own key with a fake key: "${msg}"`);
+  if (!/didn't accept this API key|Key check failed/.test(msg)) errors.push(`unexpected key error: ${msg}`);
+});
+// collection panel: paste a list
+await run("16-collection", { width: 1440, height: 1000 }, async (p) => {
+  await p.click("text=Add my collection");
+  await p.fill("textarea[aria-label='Paste your collection']", "1 Sol Ring\n1x Arcane Signet (CMR) 297\nMeren of Clan Nel Toth");
+  await p.click("text=Use this list");
+  await p.waitForSelector("text=3 cards", { timeout: 5000 });
+  await p.click("text=Only my cards");
+});
+// the security policy: a fresh nonce per request on every script
+{
+  const res = await fetch(base);
+  const csp = res.headers.get("content-security-policy") ?? "";
+  const html = await res.text();
+  const nonce = csp.match(/'nonce-([^']+)'/)?.[1];
+  const scripts = [...html.matchAll(/<script\b[^>]*>/g)].map((m) => m[0]);
+  const without = scripts.filter((t) => !nonce || !t.includes(`nonce="${nonce}"`));
+  console.log(`CSP: ${csp ? "set" : "MISSING"}; ${scripts.length} script tags, ${without.length} without the nonce`);
+  if (!nonce) errors.push("no Content-Security-Policy nonce on the home page");
+  if (without.length) errors.push(`scripts without the CSP nonce: ${without.slice(0, 3).join(" ")}`);
+}
 await run("7-mobile-setup", { width: 390, height: 844 }, loadSeeds);
 await run("8-mobile-result", { width: 390, height: 844 }, toResult);
 

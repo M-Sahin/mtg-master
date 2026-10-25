@@ -1,5 +1,5 @@
 "use client";
-import type { CardInfo, GenerateRequest, StreamEvent } from "../shared/types";
+import type { CardInfo, Color, GenerateRequest, StreamEvent, Usage } from "../shared/types";
 import type { PublicConfig } from "../server/config";
 
 export type { PublicConfig };
@@ -106,7 +106,15 @@ export const runningBuild = {
  * - a connection that stays silent for 12 s while the page is visible is treated as dead;
  * - each reconnect continues from the last event seen.
  */
-export async function* generate(req: GenerateRequest, accessCode: string, signal: AbortSignal, resume?: string): AsyncGenerator<StreamEvent> {
+export interface BuildAuth {
+  accessCode?: string;
+  /** The visitor's own Claude API key; sent with this build only. */
+  apiKey?: string;
+  model?: string;
+}
+
+export async function* generate(req: GenerateRequest, auth: BuildAuth, signal: AbortSignal, resume?: string): AsyncGenerator<StreamEvent> {
+  const accessCode = auth.accessCode?.trim() ?? "";
   let job = resume ?? "";
   let next = 0;
   let failures = 0;
@@ -135,8 +143,11 @@ export async function* generate(req: GenerateRequest, accessCode: string, signal
         res = starting
           ? await fetch("/api/generate", {
               method: "POST",
-              headers: { "content-type": "application/json", ...(accessCode ? { "x-access-code": accessCode } : {}) },
-              body: JSON.stringify(req),
+              headers: {
+                "content-type": "application/json",
+                ...(auth.apiKey ? { "x-anthropic-key": auth.apiKey } : accessCode ? { "x-access-code": accessCode } : {}),
+              },
+              body: JSON.stringify({ ...req, ...(auth.apiKey && auth.model ? { model: auth.model } : {}) }),
               signal: attempt.signal,
             })
           : await fetch(`/api/generate?job=${encodeURIComponent(job)}&from=${next}`, { signal: attempt.signal, cache: "no-store" });
@@ -229,4 +240,89 @@ export function storage<T>(key: string) {
       } catch {}
     },
   };
+}
+
+// ---- own API key -------------------------------------------------------------
+
+/** Check a key with Anthropic (through our server, which doesn't keep it) and list its models. */
+export async function checkKey(key: string): Promise<{ id: string; name: string }[]> {
+  const r = await fetch("/api/key/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error ?? `Key check failed (${r.status})`);
+  return j.models ?? [];
+}
+
+const KEY_NAME = "hundredfold:api-key";
+/** Where the key lives: this device (localStorage) or this tab only (sessionStorage). Never on our server. */
+export const keyStore = {
+  get(): { key: string; remember: boolean } | null {
+    try {
+      const local = localStorage.getItem(KEY_NAME);
+      if (local) return { key: local, remember: true };
+      const session = sessionStorage.getItem(KEY_NAME);
+      return session ? { key: session, remember: false } : null;
+    } catch {
+      return null;
+    }
+  },
+  set(key: string, remember: boolean) {
+    try {
+      localStorage.removeItem(KEY_NAME);
+      sessionStorage.removeItem(KEY_NAME);
+      (remember ? localStorage : sessionStorage).setItem(KEY_NAME, key);
+    } catch {}
+  },
+  forget() {
+    try {
+      localStorage.removeItem(KEY_NAME);
+      sessionStorage.removeItem(KEY_NAME);
+    } catch {}
+  },
+};
+
+// ---- my decks ------------------------------------------------------------------
+
+/** A deck kept in this browser: the compact share payload plus what the list shows. */
+export interface SavedDeck {
+  id: string;
+  at: number;
+  name: string;
+  commander: string;
+  partner?: string;
+  colors: Color[];
+  d: string;
+  model?: string;
+  usage?: Usage;
+}
+
+const DECKS = "hundredfold:my-decks";
+const MAX_DECKS = 30;
+export const myDecks = {
+  list(): SavedDeck[] {
+    try {
+      const v = JSON.parse(localStorage.getItem(DECKS) ?? "[]");
+      return Array.isArray(v) ? v : [];
+    } catch {
+      return [];
+    }
+  },
+  add(deck: SavedDeck) {
+    const rest = myDecks.list().filter((x) => x.d !== deck.d);
+    try {
+      localStorage.setItem(DECKS, JSON.stringify([deck, ...rest].slice(0, MAX_DECKS)));
+    } catch {}
+  },
+  remove(id: string) {
+    try {
+      localStorage.setItem(DECKS, JSON.stringify(myDecks.list().filter((x) => x.id !== id)));
+    } catch {}
+  },
+};
+
+/** Rebuild a saved or shared deck with fresh card data. */
+export async function resolveDeck(d: string) {
+  const r = await fetch("/api/deck/resolve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ d }) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error ?? "Couldn't load this deck.");
+  return j as { deck: import("../shared/types").Deck; validation: import("../shared/types").Validation };
 }

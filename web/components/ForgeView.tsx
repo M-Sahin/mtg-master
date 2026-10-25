@@ -24,6 +24,7 @@ export function ForgeView({
   filled,
   elapsed,
   onCancel,
+  spend,
 }: {
   log: LogItem[];
   draft: DraftCell[];
@@ -31,6 +32,7 @@ export function ForgeView({
   filled: number;
   elapsed: number;
   onCancel: () => void;
+  spend?: string; // tokens and estimated cost so far, on the visitor's key
 }) {
   const logRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -49,6 +51,7 @@ export function ForgeView({
           <h2>Claude is building your deck</h2>
           <span className="forge-time">{formatTime(elapsed)}</span>
         </div>
+        {spend ? <p className="forge-spend">So far: {spend}</p> : null}
         <div className="forge-log" ref={logRef}>
           {log.map((item, i) => {
             if (item.kind === "text") return <p key={i} className="log-text">{item.text}</p>;

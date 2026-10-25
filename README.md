@@ -33,9 +33,9 @@ Three small Python helpers (standard library only, no dependencies) do the work 
 
 [`web/`](web) contains **Hundredfold**, a Next.js app built on this skill. You pick five cards, and Claude builds a complete Bracket 3 Commander deck around them. Progress is shown live: Scryfall searches, the list filling a 10×10 grid, and server-side validation with automatic fixes. You can export the result to Moxfield or Arena.
 
-It's free and open source, and you host it yourself with your own Claude API key:
+It's free and open source. Host your own copy in one click; visitors build with their own Claude API key, so the site itself needs no key:
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FM-Sahin%2Fmtg-master&root-directory=web&env=ANTHROPIC_API_KEY,ACCESS_CODE&envDescription=Your%20Claude%20API%20key%2C%20and%20an%20access%20code%20visitors%20must%20enter%20%28it%20protects%20your%20API%20credits%29.&envLink=https%3A%2F%2Fgithub.com%2FM-Sahin%2Fmtg-master%2Fblob%2Fmain%2Fweb%2FREADME.md%23environment-variables)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FM-Sahin%2Fmtg-master&root-directory=web)
 
 You can also run it with Docker or plain Node.js. See [web/README.md](web/README.md#host-your-own) for all the options and the environment variables.
 

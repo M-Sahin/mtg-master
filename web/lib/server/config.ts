@@ -14,7 +14,9 @@ function engineFromEnv(demo: boolean): EngineOptions {
 
 export function serverConfig() {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim() || "";
+  // without a server key, builds run on the visitor's own key, or the scripted demo
   const demo = process.env.DEMO_MODE === "1" || !apiKey;
+  const donation = process.env.DONATION_URL?.trim() || "";
   return {
     apiKey,
     demo,
@@ -23,12 +25,20 @@ export function serverConfig() {
     // Without an access code, anyone with the URL spends your API credits. Opt in explicitly.
     publicAccess: process.env.PUBLIC_ACCESS === "1",
     buildsPerHour: Math.max(1, Number(process.env.BUILDS_PER_HOUR_PER_IP) || 6),
+    // visitors may use their own Claude API key (on unless OWN_KEYS=0)
+    ownKeys: process.env.OWN_KEYS !== "0",
+    ownKeyBuildsPerHour: Math.max(1, Number(process.env.OWN_KEY_BUILDS_PER_HOUR) || 20),
+    donationUrl: /^https:\/\/[^\s"'<>]+$/.test(donation) ? donation : null,
     engine: engineFromEnv(demo),
+    liveEngine: engineFromEnv(false),
   };
 }
 
 export interface PublicConfig {
   mode: "live" | "demo";
+  /** Visitors can build with their own Claude API key. */
+  ownKeys: boolean;
+  donationUrl: string | null;
   model: string;
   skillVersion: string;
   accessCodeRequired: boolean;
@@ -40,6 +50,8 @@ export function publicConfig(): PublicConfig {
   const c = serverConfig();
   return {
     mode: c.demo ? "demo" : "live",
+    ownKeys: c.ownKeys,
+    donationUrl: c.donationUrl,
     model: c.demo ? "demo (scripted)" : c.model,
     skillVersion: SKILL_VERSION,
     accessCodeRequired: Boolean(c.accessCode) && !c.demo,

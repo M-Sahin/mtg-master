@@ -171,3 +171,42 @@ export function anthropicCaller(apiKey: string): ModelCaller {
     throw lastErr;
   };
 }
+
+/**
+ * A readable explanation for Claude API errors, mostly for people using their own key.
+ * The raw message is kept at the end for anything we don't recognise.
+ */
+export function friendlyModelError(e: unknown): string {
+  const status = e instanceof ModelError ? e.status : 0;
+  const raw = (e as Error)?.message ?? String(e);
+  const m = raw.toLowerCase();
+  if (/credit balance is too low|purchase credits|billing/.test(m))
+    return "Your Claude API account is out of credit. Add credit in the Claude Console (Billing), then try again.";
+  if (/usage limit|spend limit|specified api usage limits/.test(m))
+    return "This key has reached its spend limit. Raise the workspace's limit in the Claude Console, or wait for it to reset.";
+  if (status === 401 || /invalid x-api-key|authentication_error|invalid api key/.test(m))
+    return "Claude didn't accept this API key. Check that it was copied completely, or create a new one in the Claude Console.";
+  if (status === 403 || /permission/.test(m)) return "This API key isn't allowed to use that model. Pick another model, or check the key's workspace in the Claude Console.";
+  if (status === 404 || /not_found_error|model:/.test(m)) return "That model isn't available to this API key. Pick another model.";
+  if (status === 429) return "Your API key hit Claude's rate limit. Wait a minute and try again.";
+  if (status === 529 || /overloaded/.test(m)) return "Claude is overloaded right now. Try again in a few minutes.";
+  return raw;
+}
+
+/** The models this key can use (also proves the key works). */
+export async function listModels(apiKey: string): Promise<{ id: string; name: string }[]> {
+  const res = await fetch("https://api.anthropic.com/v1/models?limit=100", {
+    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    signal: AbortSignal.timeout(10000),
+  });
+  const text = await res.text().catch(() => "");
+  if (!res.ok) {
+    let message = text;
+    try {
+      message = JSON.parse(text).error?.message ?? text;
+    } catch {}
+    throw new ModelError(`Claude API ${res.status}: ${message}`.slice(0, 300), res.status);
+  }
+  const j = JSON.parse(text);
+  return (j.data ?? []).map((m: any) => ({ id: String(m.id), name: String(m.display_name ?? m.id) }));
+}

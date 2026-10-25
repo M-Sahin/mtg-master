@@ -10,6 +10,9 @@ export const metadata: Metadata = {
   description: "Pick five Magic cards. Claude, using the mtg-master skill, builds a complete Bracket 3 Commander deck around them and checks every card on Scryfall.",
 };
 
+// every page gets a per-request CSP nonce (proxy.ts), so pages render per request
+export const dynamic = "force-dynamic";
+
 export const viewport: Viewport = { themeColor: "#121733", width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

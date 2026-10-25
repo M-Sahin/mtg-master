@@ -16,6 +16,8 @@ export function DeckView({
   onRebuild,
   shared = false,
   shareD,
+  spend,
+  donationUrl,
 }: {
   deck: Deck;
   validation: Validation;
@@ -23,6 +25,8 @@ export function DeckView({
   onRebuild?: () => void;
   shared?: boolean; // viewing someone else's deck from a share link
   shareD?: string; // the link payload, when we already have it
+  spend?: string; // model, tokens and estimated cost of this build
+  donationUrl?: string;
 }) {
   const [tab, setTab] = useState<Tab>("cards");
   const [open, setOpen] = useState<DeckCard | null>(null);
@@ -83,6 +87,21 @@ export function DeckView({
               ) : null}
             </div>
             {copied === "error" ? <p className="note">Your browser blocked the clipboard. Use Download instead.</p> : null}
+            {spend ? (
+              <p className="deck-spend">
+                {spend}.
+                {donationUrl ? (
+                  <>
+                    {" "}
+                    Hundredfold is free;{" "}
+                    <a href={donationUrl} target="_blank" rel="noopener noreferrer">
+                      buy the maker a coffee
+                    </a>{" "}
+                    if you like it.
+                  </>
+                ) : null}
+              </p>
+            ) : null}
           </div>
         </div>
         {cmd.info?.artCrop && cmd.info.artist ? (
