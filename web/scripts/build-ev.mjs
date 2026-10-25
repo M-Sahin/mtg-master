@@ -9,6 +9,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -103,7 +104,43 @@ for (let i = 0; i < retry.length; i += 75) {
 const unresolved = todo.filter((c) => !found.has(key(c.set, c.number)));
 console.log(`priced: ${found.size}/${want.size}; not on Scryfall: ${unresolved.length}${unresolved.length ? ` (e.g. ${unresolved.slice(0, 12).map((c) => key(c.set, c.number)).join(", ")})` : ""}`);
 
-// ---- 3. products
+// ---- 3. packs per box from MTGJSON's sealed products (booster boxes differ: 36, 30, 24, 12, 4…)
+const boxSize = new Map(); // "dsk-play" → packs
+const probe = Number(args.probe ?? 0);
+for (const setCode of [...new Set(chosen.map((b) => b.code.split("-")[0]))]) {
+  let json = null;
+  try {
+    const res = await fetch(`https://mtgjson.com/api/v5/${setCode.toUpperCase()}.json.gz`, { headers: { "User-Agent": UA["User-Agent"] } });
+    if (res.ok) json = JSON.parse(gunzipSync(Buffer.from(await res.arrayBuffer())).toString("utf8"));
+  } catch (e) {
+    console.log(`  MTGJSON ${setCode}: ${e.message}`);
+  }
+  const products = json?.data?.sealedProduct ?? [];
+  const byUuid = new Map(products.map((p) => [p.uuid, p]));
+  for (const p of products) {
+    if (p.category !== "booster_box") continue;
+    const kind = String(p.subtype ?? "").toLowerCase();
+    if (!KINDS.includes(kind)) continue;
+    // the box holds packs: either listed as sealed products with a count, or as pack entries
+    let packs = 0;
+    for (const x of p.contents?.sealed ?? []) {
+      const inner = byUuid.get(x.uuid);
+      if (!inner || inner.category === "booster_pack") packs += Number(x.count ?? 1);
+    }
+    for (const x of p.contents?.pack ?? []) packs += Number(x.count ?? 1);
+    if (!packs && Number(p.productSize) > 0) packs = Number(p.productSize);
+    if (probe > 0) {
+      console.log(`  probe ${setCode} ${kind}: ${JSON.stringify({ name: p.name, subtype: p.subtype, productSize: p.productSize, contents: p.contents }).slice(0, 700)}`);
+    }
+    const id = `${setCode}-${kind}`;
+    // several box products (a Japanese box, a case): keep the first plain one
+    if (packs > 0 && packs <= 60 && !boxSize.has(id) && !/japanese|\bjp\b|case/i.test(p.name ?? "")) boxSize.set(id, packs);
+  }
+  if (probe > 0) probe--;
+}
+console.log(`box sizes from MTGJSON: ${boxSize.size} (${[...boxSize].slice(0, 30).map(([k, v]) => `${k} ${v}`).join(", ")})`);
+
+// ---- 4. products
 const num = (x) => (x == null || x === "" ? null : Number(x));
 const RARITY = { common: "c", uncommon: "u", rare: "r", mythic: "m", special: "s", bonus: "b" };
 const image = (card) => card.image_uris?.small ?? card.card_faces?.[0]?.image_uris?.small;
@@ -145,7 +182,7 @@ for (const b of chosen) {
     setName: b.set_name,
     released: s?.released_at ?? "",
     kind,
-    packsPerBox: PACKS_PER_BOX[kind],
+    packsPerBox: boxSize.get(b.code) ?? PACKS_PER_BOX[kind],
     pricedAt,
     ...(s?.icon_svg_uri ? { icon: s.icon_svg_uri } : {}),
     cards,

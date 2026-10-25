@@ -12,6 +12,12 @@ on:
       since:
         description: "Include sets released on or after this date"
         default: "2020-01-01"
+      only:
+        description: "Only these products, comma-separated (a test run: nothing is published)"
+        default: ""
+      probe:
+        description: "Log MTGJSON's box records for this many sets"
+        default: "0"
 
 permissions:
   contents: write
@@ -38,11 +44,13 @@ jobs:
       - name: Build the data
         env:
           SINCE: ${{ inputs.since || '2020-01-01' }}
+          ONLY: ${{ inputs.only }}
+          PROBE: ${{ inputs.probe || '0' }}
         run: |
           set -o pipefail
-          node scripts/build-ev.mjs --out ev-out --since "$SINCE" 2>&1 | tee ev-build.log
+          node scripts/build-ev.mjs --out ev-out --since "$SINCE" ${ONLY:+--only "$ONLY"} --probe "$PROBE" 2>&1 | tee ev-build.log
       - name: Publish to the ev-data branch
-        if: github.repository == 'M-Sahin/mtg-master'
+        if: github.repository == 'M-Sahin/mtg-master' && !inputs.only
         run: |
           rm -rf /tmp/ev-data && mkdir -p /tmp/ev-data/ev /tmp/ev-data/web
           cp -r ev-out/. /tmp/ev-data/ev/
