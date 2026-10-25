@@ -1,11 +1,15 @@
 // The deckbuilding agent: Claude + the mtg-master skill + Scryfall tools + server-side validation.
+// Engine variants (lib/server/engine.ts) switch the quality improvements on and off.
 import type { ModelCaller, ContentBlock } from "./anthropic";
+import { checkCombos, comboErrors, comboNotes, type ComboReport } from "./combos";
 import { DraftScanner } from "./draft-scanner";
-import { TOOLS, systemPrompt, userPrompt } from "./prompt";
+import { parseEngine, type EngineOptions } from "./engine";
+import { systemPrompt, toolsFor, userPrompt } from "./prompt";
 import * as scry from "./scryfall";
-import { buildDeck, namesInSubmission, repairCount, validateDeck, type SubmittedDeck } from "./validate";
-import type { CardInfo, Deck, GenerateRequest, Role, StreamEvent, Validation } from "../shared/types";
-import { ROLES } from "../shared/types";
+import { buildDeck, namesInSubmission, rebalanceBasics, repairCount, strictProblems, validateDeck, type SubmittedDeck } from "./validate";
+import { analysisReport, analyzeDeck, type DeckAnalysis } from "../shared/analysis";
+import type { CardInfo, Deck, GenerateRequest, Role, StreamEvent, Usage, Validation } from "../shared/types";
+import { ROLES, isBasicLand } from "../shared/types";
 
 export interface AgentOptions {
   model: string;
@@ -15,16 +19,28 @@ export interface AgentOptions {
   maxTurns?: number;
   timeBudgetMs?: number; // soft deadline: after this Claude is told to submit
   hardDeadlineMs?: number; // stop and return the best deck so far
+  engine?: EngineOptions;
+}
+
+export interface AgentResult {
+  deck: Deck;
+  validation: Validation;
+  analysis: DeckAnalysis;
+  combos?: ComboReport;
+  /** What the review pass changed, if it ran. */
+  review?: string;
 }
 
 const MAX_SUBMITS = 4;
+const MAX_REVISES = 2;
+const REVIEW_NEEDS_MS = 75_000; // time left needed to start a review round
 
 function excerpt(t: string, n = 140) {
   const s = t.replace(/\s+/g, " ").trim();
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
-function cardLine(c: CardInfo, withText = true) {
+function cardLine(c: CardInfo, text: "none" | "excerpt" | "full" = "excerpt") {
   const bits = [
     c.name,
     c.manaCost || "—",
@@ -34,7 +50,8 @@ function cardLine(c: CardInfo, withText = true) {
   ];
   if (c.gameChanger) bits.push("GAME CHANGER");
   if (c.legalCommander !== "legal") bits.push(`commander:${c.legalCommander}`);
-  return bits.join(" | ") + (withText && c.oracleText ? ` :: ${excerpt(c.oracleText)}` : "");
+  if (text === "none" || !c.oracleText) return bits.join(" | ");
+  return bits.join(" | ") + ` :: ${text === "full" ? excerpt(c.oracleText, 700) : excerpt(c.oracleText)}`;
 }
 
 function toolLabel(name: string, input: any): string {
@@ -44,6 +61,7 @@ function toolLabel(name: string, input: any): string {
     return n.length <= 3 ? n.join(", ") : `${n.slice(0, 3).join(", ")} +${n.length - 3}`;
   }
   if (name === "submit_deck") return "Validating the full deck";
+  if (name === "revise_deck") return `${(input?.swaps ?? []).length} swap(s)`;
   return name;
 }
 
@@ -75,18 +93,138 @@ function withCacheBreakpoint(messages: any[]): any[] {
   return out;
 }
 
-/** Keep only blocks the API accepts back: non-empty text, tool_use with real input, thinking with signature. */
-function cleanAssistant(content: ContentBlock[]): ContentBlock[] {
-  return content.filter((b: any) => (b.type === "text" ? b.text?.trim() : b.type === "tool_use" ? !b.input?.__invalid_json : b.type === "thinking" ? !!b.signature : false));
+/**
+ * Blocks to send back. Thinking and redacted_thinking blocks go back exactly as received
+ * (the API rejects a rebuilt message); empty text and tool calls with broken JSON are dropped.
+ */
+export function cleanAssistant(content: ContentBlock[]): ContentBlock[] {
+  return content.filter((b: any) =>
+    b.type === "text" ? b.text?.trim() : b.type === "tool_use" ? !b.input?.__invalid_json : b.type === "thinking" ? !!b.signature : b.type === "redacted_thinking",
+  );
 }
 
-export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promise<{ deck: Deck; validation: Validation } | null> {
+export function emptyUsage(): Usage {
+  return { calls: 0, input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
+}
+
+/** The accepted deck as a submission again, so the review pass can swap cards in it. */
+export function toSubmission(deck: Deck): SubmittedDeck {
+  return {
+    deck_name: deck.name,
+    commander: deck.commander.name,
+    partner: deck.partner?.name,
+    strategy: deck.strategy,
+    win_conditions: deck.winConditions,
+    bracket_notes: deck.bracketNotes,
+    cards: deck.cards.filter((c) => !isBasicLand(c.name)).map((c) => ({ name: c.name, role: c.role, why: c.why })),
+    basics: Object.fromEntries(deck.cards.filter((c) => isBasicLand(c.name)).map((c) => [c.name, c.qty])),
+  };
+}
+
+export interface Swap {
+  out: string;
+  in: string;
+  role?: string;
+  why?: string;
+}
+
+/** Apply swaps to a submission. Returns the problems (unknown "out" cards etc.); applies nothing if any. */
+export function applySwaps(sub: SubmittedDeck, swaps: Swap[], protect: string[] = []): { sub: SubmittedDeck; problems: string[] } {
+  const next: SubmittedDeck = { ...sub, cards: sub.cards.map((c) => ({ ...c })), basics: { ...(sub.basics ?? {}) } };
+  const problems: string[] = [];
+  const keep = new Set(protect.map((p) => p.toLowerCase()));
+  for (const s of swaps) {
+    const out = String(s.out ?? "").trim();
+    const inn = String(s.in ?? "").trim();
+    if (!out || !inn) {
+      problems.push("Each swap needs an \"out\" and an \"in\" card.");
+      continue;
+    }
+    if (keep.has(out.toLowerCase())) {
+      problems.push(`${out} is a seed card or the commander and has to stay.`);
+      continue;
+    }
+    const basicKey = Object.keys(next.basics!).find((k) => k.toLowerCase() === out.toLowerCase());
+    const idx = next.cards.findIndex((c) => c.name.toLowerCase() === out.toLowerCase());
+    if (isBasicLand(out) && basicKey && next.basics![basicKey] > 0) next.basics![basicKey]--;
+    else if (idx >= 0) next.cards.splice(idx, 1);
+    else {
+      problems.push(`"${out}" isn't in the deck (use the exact name from your list).`);
+      continue;
+    }
+    if (isBasicLand(inn)) {
+      const k = Object.keys(next.basics!).find((x) => x.toLowerCase() === inn.toLowerCase()) ?? inn;
+      next.basics![k] = (next.basics![k] ?? 0) + 1;
+    } else next.cards.push({ name: inn, role: s.role ?? "utility", why: s.why ?? "" });
+  }
+  return { sub: problems.length ? sub : next, problems };
+}
+
+interface Checked {
+  deck: Deck;
+  validation: Validation;
+  analysis: DeckAnalysis;
+  combos?: ComboReport;
+}
+
+/** Look up, build, (re)balance and validate a submission with every check the engine enables. */
+async function checkSubmission(sub: SubmittedDeck, attempt: number, req: GenerateRequest, seedNames: string[], engine: EngineOptions): Promise<Checked> {
+  const { found, notFound } = await scry.getCollection(namesInSubmission(sub));
+  const deck = buildDeck(sub, found, seedNames);
+  const notes: string[] = [];
+  const fillInfo = async () => {
+    const missing = deck.cards.filter((c) => !c.info).map((c) => c.name);
+    if (!missing.length) return;
+    const extra = await scry.getCollection(missing);
+    for (const c of deck.cards) if (!c.info) c.info = extra.found.get(c.name.toLowerCase());
+  };
+  if (engine.manabase) {
+    const note = rebalanceBasics(deck);
+    if (note) {
+      notes.push(note);
+      await fillInfo();
+    }
+  }
+  const opts = { commander: req.commander };
+  let validation = validateDeck(deck, notFound, seedNames, opts);
+  // After a couple of tries, fix pure count problems ourselves.
+  if (!validation.ok && attempt >= 2 && validation.errors.every((e) => e.startsWith("Deck has "))) {
+    const note = repairCount(deck);
+    if (note) {
+      await fillInfo();
+      notes.push(note);
+      validation = validateDeck(deck, notFound, seedNames, opts);
+    }
+  }
+  const analysis = analyzeDeck(deck, { budget: req.budget, seeds: seedNames });
+  // The stricter checks only block the first attempts, so a heuristic miss can't sink a build.
+  if (engine.strict && attempt <= 2) validation.errors.push(...strictProblems(analysis));
+  let combos: ComboReport | undefined;
+  if (engine.combos && validation.errors.every((e) => !e.startsWith("Deck has "))) {
+    combos = await checkCombos(deck);
+    const chosen = new Set([...seedNames, deck.commander.name, deck.partner?.name ?? ""].map((n) => n.toLowerCase()));
+    // a combo made only of the user's own picks is their call: warn, don't reject
+    const forced = combos.tooStrong.filter((c) => c.cards.every((n) => chosen.has(n.toLowerCase())));
+    const blocking = { ...combos, tooStrong: combos.tooStrong.filter((c) => !forced.includes(c)) };
+    if (attempt <= 3) validation.errors.push(...comboErrors(blocking));
+    else validation.warnings.push(...comboErrors(blocking));
+    for (const c of forced) validation.warnings.push(`${c.cards.join(" + ")} is a strong two-card combo made of your own picks; Bracket 3 tables may not expect it.`);
+    if (!combos.checked) validation.warnings.push(combos.error ?? "Combo check unavailable.");
+  }
+  validation.ok = validation.errors.length === 0;
+  validation.warnings.unshift(...notes);
+  return { deck, validation, analysis, combos };
+}
+
+export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promise<AgentResult | null> {
   const { emit } = opts;
+  const engine = opts.engine ?? parseEngine();
   const started = Date.now();
   const soft = opts.timeBudgetMs ?? 200_000; // after this, Claude is told to submit now
   const hard = opts.hardDeadlineMs ?? 268_000; // before Vercel's 300 s limit, with room to send the result
-  const maxTurns = opts.maxTurns ?? 14;
+  const maxTurns = opts.maxTurns ?? (engine.review ? 16 : 14);
   const left = () => hard - (Date.now() - started);
+  const usage = emptyUsage();
 
   emit({ type: "status", text: "Reading your five seed cards" });
   const { seeds, problems } = await resolveSeeds(req.seeds);
@@ -104,12 +242,17 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
   }
   const seedNames = seeds.map((s) => s.name);
 
-  const system = [{ type: "text", text: systemPrompt(), cache_control: { type: "ephemeral" } }];
+  const system = [{ type: "text", text: systemPrompt(engine), cache_control: { type: "ephemeral" } }];
+  const tools = toolsFor(engine);
   const messages: any[] = [{ role: "user", content: userPrompt(req, seeds) }];
+  const baseTokens = engine.prompt === 2 ? 32000 : 16000;
   let submits = 0;
+  let revises = 0;
   let nudged = false;
   let truncated = 0;
-  let lastDeck: { deck: Deck; validation: Validation } | null = null;
+  let reviewing = false; // a legal deck is waiting for its review swaps
+  let reviewNote: string | undefined;
+  let lastDeck: AgentResult | null = null;
 
   emit({ type: "status", text: "Claude is studying the seeds with the mtg-master skill" });
 
@@ -122,7 +265,14 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
     let msg;
     try {
       msg = await opts.callModel(
-        { model: opts.model, max_tokens: truncated ? 32000 : 16000, system, messages: withCacheBreakpoint(messages), tools: TOOLS },
+        {
+          model: opts.model,
+          max_tokens: truncated ? baseTokens * 2 : baseTokens,
+          system,
+          messages: withCacheBreakpoint(messages),
+          tools,
+          ...(engine.effort ? { output_config: { effort: engine.effort } } : {}),
+        },
         {
           onText: (d) => emit({ type: "text", delta: d }),
           onToolStart: (_i, _id, name) => {
@@ -147,6 +297,13 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
       if (timeout.aborted) break; // out of time
       throw e;
     }
+    const u = msg.usage ?? {};
+    usage.calls++;
+    usage.input += u.input_tokens ?? 0;
+    usage.cacheRead += u.cache_read_input_tokens ?? 0;
+    usage.cacheWrite += u.cache_creation_input_tokens ?? 0;
+    usage.output += u.output_tokens ?? 0;
+    emit({ type: "usage", usage: { ...usage } });
 
     if (msg.stop_reason === "refusal") {
       emit({ type: "error", message: "Claude declined to build this deck. Try different seeds or wording." });
@@ -174,39 +331,109 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
     messages.push({ role: "assistant", content });
 
     const late = Date.now() - started > soft;
-    const lookups = uses.filter((u) => u.name !== "submit_deck");
-    const submissions = uses.filter((u) => u.name === "submit_deck");
+    const lookups = uses.filter((x) => x.name !== "submit_deck" && x.name !== "revise_deck");
+    const finals = uses.filter((x) => x.name === "submit_deck" || x.name === "revise_deck");
     const results = new Map<string, any>();
 
     await Promise.all(
-      lookups.map(async (u, k) => {
+      lookups.map(async (x, k) => {
         if (k >= MAX_PARALLEL_TOOLS) {
-          emit({ type: "tool_result", id: u.id, summary: "skipped", ok: false });
-          results.set(u.id, { type: "tool_result", tool_use_id: u.id, is_error: true, content: `Skipped: at most ${MAX_PARALLEL_TOOLS} lookups per turn.` });
+          emit({ type: "tool_result", id: x.id, summary: "skipped", ok: false });
+          results.set(x.id, { type: "tool_result", tool_use_id: x.id, is_error: true, content: `Skipped: at most ${MAX_PARALLEL_TOOLS} lookups per turn.` });
           return;
         }
-        results.set(u.id, await runLookup(u, emit));
+        results.set(x.id, await runLookup(x, emit, engine));
       }),
     );
 
-    let accepted = false;
-    for (const [k, u] of submissions.entries()) {
-      if (k > 0 || accepted) {
-        results.set(u.id, { type: "tool_result", tool_use_id: u.id, is_error: true, content: "Only one submit_deck per turn; this one was ignored." });
+    let done = false;
+    for (const [k, x] of finals.entries()) {
+      const reply = (content: string, isError = true) => results.set(x.id, { type: "tool_result", tool_use_id: x.id, is_error: isError || undefined, content });
+      if (k > 0 || done) {
+        reply("Only one submit_deck or revise_deck per turn; this one was ignored.");
         continue;
       }
+      if (x.name === "revise_deck") {
+        if (!reviewing || !lastDeck) {
+          reply("revise_deck is only for the review round after an accepted deck. Use submit_deck.");
+          continue;
+        }
+        revises++;
+        const swaps: Swap[] = Array.isArray(x.input?.swaps) ? x.input.swaps.slice(0, 10) : [];
+        if (!swaps.length) {
+          emit({ type: "tool_result", id: x.id, summary: "kept as is", ok: true });
+          reviewNote = String(x.input?.notes ?? "").trim() || "Review: no changes.";
+          lastDeck.review = reviewNote;
+          reply("ACCEPTED (unchanged).", false);
+          done = true;
+          continue;
+        }
+        const protect = [...seedNames, lastDeck.deck.commander.name, lastDeck.deck.partner?.name ?? ""].filter(Boolean);
+        const base = toSubmission(lastDeck.deck);
+        if (typeof x.input?.strategy === "string" && x.input.strategy.trim()) base.strategy = x.input.strategy.trim();
+        const { sub, problems } = applySwaps(base, swaps, protect);
+        let checked: Checked | null = null;
+        if (!problems.length) {
+          emit({ type: "status", text: `Checking ${swaps.length} review swap(s)` });
+          try {
+            checked = await checkSubmission(sub, 1, req, seedNames, engine);
+          } catch (e) {
+            problems.push(`Couldn't check the swaps: ${(e as Error).message}`);
+          }
+        }
+        const errs = checked ? checked.validation.errors : problems;
+        if (checked && checked.validation.ok) {
+          emit({ type: "tool_result", id: x.id, summary: `${swaps.length} swap(s) accepted`, ok: true });
+          emit({ type: "validation", validation: checked.validation, attempt: submits + revises });
+          reviewNote = String(x.input?.notes ?? "").trim() || `Review: ${swaps.map((s) => `${s.out} → ${s.in}`).join(", ")}.`;
+          lastDeck = { ...checked, review: reviewNote };
+          reply("ACCEPTED", false);
+          done = true;
+        } else if (revises >= MAX_REVISES) {
+          emit({ type: "tool_result", id: x.id, summary: "swaps rejected; kept the checked deck", ok: false });
+          reply("The swaps didn't pass; keeping the deck that was already accepted.", false);
+          done = true;
+        } else {
+          emit({ type: "tool_result", id: x.id, summary: `${errs.length} problem(s)`, ok: false });
+          reply(`REJECTED — the swapped deck has problems. Send revise_deck again with corrected swaps (relative to the accepted deck), or an empty list to keep it:\n- ${errs.join("\n- ")}`);
+        }
+        continue;
+      }
+      // submit_deck
       submits++;
-      const r = await runSubmit(u, submits, req, seedNames, emit);
-      if (r.deck) lastDeck = r.deck;
-      accepted = r.final;
-      results.set(u.id, r.result);
+      const r = await runSubmit(x, submits, req, seedNames, emit, engine);
+      results.set(x.id, r.result);
+      if (!r.checked) continue;
+      const final = r.checked.validation.ok || submits >= MAX_SUBMITS;
+      if (!final) {
+        if (!reviewing) lastDeck = r.checked; // best effort so far
+        continue;
+      }
+      if (reviewing && !r.checked.validation.ok) {
+        // a failed resubmission during the review keeps the accepted deck
+        r.result.content = "The resubmitted deck didn't pass; keeping the deck that was already accepted.";
+        r.result.is_error = undefined;
+        done = true;
+        continue;
+      }
+      lastDeck = r.checked;
+      const canReview = engine.review && !reviewing && r.checked.validation.ok && left() > REVIEW_NEEDS_MS && !late;
+      if (canReview) {
+        reviewing = true;
+        emit({ type: "status", text: "Deck is legal; Claude is reviewing it" });
+        r.result.content = reviewRequest(r.checked);
+      } else {
+        r.result.content = "ACCEPTED";
+        r.result.is_error = undefined;
+        done = true;
+      }
     }
-    if (accepted && lastDeck) return lastDeck;
+    if (done && lastDeck) return lastDeck;
 
-    const blocks = uses.map((u) => results.get(u.id));
+    const blocks = uses.map((x) => results.get(x.id));
     if (late && blocks.length) {
       const b = blocks[blocks.length - 1];
-      b.content = `${b.content}\n\nTIME IS ALMOST UP: submit the complete deck with submit_deck in your next message.`;
+      b.content = `${b.content}\n\nTIME IS ALMOST UP: ${reviewing ? "send revise_deck now (or an empty list)" : "submit the complete deck with submit_deck"} in your next message.`;
     }
     messages.push({ role: "user", content: blocks });
   }
@@ -215,16 +442,31 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
   return null;
 }
 
+function reviewRequest(c: Checked): string {
+  const parts = [
+    "ACCEPTED — the deck is legal. One review round before it goes to the user.",
+    "Independent analysis from the server:",
+    analysisReport(c.analysis),
+  ];
+  if (c.combos) parts.push(comboNotes(c.combos));
+  if (c.validation.warnings.length) parts.push(`Warnings: ${c.validation.warnings.join(" ")}`);
+  parts.push(
+    "Review the list as a strong Bracket 3 player would. Fix template gaps the counts show; swap generic staples and weak or off-plan cards for cards that make the seeds better; check the curve and the mana. Seeds and the commander stay.",
+    "Then call revise_deck with up to 10 swaps (each removes one card and adds one), or with an empty swaps list if the deck is already right. Don't resubmit the whole deck.",
+  );
+  return parts.join("\n");
+}
+
 function asBlocks(c: any): any[] {
   return typeof c === "string" ? [{ type: "text", text: c }] : c;
 }
 
-async function runLookup(u: ContentBlock & { type: "tool_use" }, emit: (e: StreamEvent) => void) {
+async function runLookup(u: ContentBlock & { type: "tool_use" }, emit: (e: StreamEvent) => void, engine: EngineOptions) {
   try {
     if (u.name === "search_cards") {
       const r = await scry.search(String(u.input.query ?? ""), u.input.order ?? "edhrec", Math.min(Number(u.input.limit ?? 20) || 20, 40));
       emit({ type: "tool_result", id: u.id, summary: r.error ? "0 results" : `${r.total} matches`, ok: !r.error });
-      const body = r.error ? `No results: ${r.error}` : `${r.total} total matches; showing ${r.cards.length}:\n${r.cards.map((c) => cardLine(c)).join("\n")}`;
+      const body = r.error ? `No results: ${r.error}` : `${r.total} total matches; showing ${r.cards.length}:\n${r.cards.map((c) => cardLine(c, engine.fullText ? "full" : "excerpt")).join("\n")}`;
       return { type: "tool_result", tool_use_id: u.id, content: body };
     }
     if (u.name === "get_cards") {
@@ -232,7 +474,7 @@ async function runLookup(u: ContentBlock & { type: "tool_use" }, emit: (e: Strea
       const { found, notFound } = await scry.getCollection(names);
       const cards = [...new Map([...found.values()].map((c) => [c.name, c])).values()];
       emit({ type: "tool_result", id: u.id, summary: `${cards.length} cards${notFound.length ? `, ${notFound.length} not found` : ""}`, ok: !notFound.length });
-      const body = cards.map((c) => `${cardLine(c, false)}\n  ${c.oracleText.replace(/\n/g, "\n  ")}`).join("\n") + (notFound.length ? `\nNOT FOUND: ${notFound.join("; ")}` : "");
+      const body = cards.map((c) => `${cardLine(c, "none")}\n  ${c.oracleText.replace(/\n/g, "\n  ")}`).join("\n") + (notFound.length ? `\nNOT FOUND: ${notFound.join("; ")}` : "");
       return { type: "tool_result", tool_use_id: u.id, content: body || "No cards." };
     }
     emit({ type: "tool_result", id: u.id, summary: "unknown tool", ok: false });
@@ -243,37 +485,22 @@ async function runLookup(u: ContentBlock & { type: "tool_use" }, emit: (e: Strea
   }
 }
 
-async function runSubmit(u: ContentBlock & { type: "tool_use" }, attempt: number, req: GenerateRequest, seedNames: string[], emit: (e: StreamEvent) => void) {
+async function runSubmit(u: ContentBlock & { type: "tool_use" }, attempt: number, req: GenerateRequest, seedNames: string[], emit: (e: StreamEvent) => void, engine: EngineOptions) {
   const sub = u.input as SubmittedDeck;
   if (!sub || !Array.isArray(sub.cards) || typeof sub.commander !== "string" || sub.cards.length > 150) {
-    return { final: false, deck: null, result: { type: "tool_result", tool_use_id: u.id, is_error: true, content: "Invalid submission: a commander and a cards[] list (max 150 entries) are required." } };
+    return { checked: null, result: { type: "tool_result", tool_use_id: u.id, is_error: true as boolean | undefined, content: "Invalid submission: a commander and a cards[] list (max 150 entries) are required." } };
   }
   try {
     emit({ type: "status", text: `Checking the deck with Scryfall (attempt ${attempt})` });
-    const { found, notFound } = await scry.getCollection(namesInSubmission(sub));
-    const deck = buildDeck(sub, found, seedNames);
-    const opts = { commander: req.commander };
-    let validation = validateDeck(deck, notFound, seedNames, opts);
-    // After a couple of tries, fix pure count problems ourselves.
-    if (!validation.ok && attempt >= 2 && validation.errors.every((e) => e.startsWith("Deck has "))) {
-      const note = repairCount(deck);
-      if (note) {
-        const basics = deck.cards.filter((c) => !c.info).map((c) => c.name);
-        if (basics.length) {
-          const extra = await scry.getCollection(basics);
-          for (const c of deck.cards) if (!c.info) c.info = extra.found.get(c.name.toLowerCase());
-        }
-        validation = validateDeck(deck, notFound, seedNames, opts);
-        validation.warnings.unshift(note);
-      }
-    }
+    const checked = await checkSubmission(sub, attempt, req, seedNames, engine);
+    const { validation } = checked;
     emit({ type: "validation", validation, attempt });
     const final = validation.ok || attempt >= MAX_SUBMITS;
     const content = final
       ? "ACCEPTED"
       : `REJECTED — fix these and resubmit the whole deck:\n- ${validation.errors.join("\n- ")}${validation.warnings.length ? `\nWarnings (optional): ${validation.warnings.join(" ")}` : ""}`;
-    return { final, deck: { deck, validation }, result: { type: "tool_result", tool_use_id: u.id, is_error: !final || undefined, content } };
+    return { checked, result: { type: "tool_result", tool_use_id: u.id, is_error: (!final || undefined) as boolean | undefined, content } };
   } catch (e) {
-    return { final: false, deck: null, result: { type: "tool_result", tool_use_id: u.id, is_error: true, content: `Couldn't check the deck: ${(e as Error).message}. Resubmit it.` } };
+    return { checked: null, result: { type: "tool_result", tool_use_id: u.id, is_error: true as boolean | undefined, content: `Couldn't check the deck: ${(e as Error).message}. Resubmit it.` } };
   }
 }

@@ -38,4 +38,14 @@ if (!deck.validation.ok) fail(`demo deck does not validate against real Scryfall
 if (deck.validation.total !== 100) fail(`total ${deck.validation.total}`);
 const missingImg = deck.deck.cards.filter((c) => !c.info?.image).map((c) => c.name);
 if (missingImg.length) fail(`cards without Scryfall data: ${missingImg.join(", ")}`);
+// Calibration of the Oracle-text role detector against the demo deck's hand-written roles
+if (deck.analysis) {
+  const a = deck.analysis;
+  console.log(`analysis: lands ${a.lands} (+${a.mdfcLands} MDFC), tapped ${a.tappedLands}; counts ${JSON.stringify(a.counts)}; avg MV ${a.avgMv}; curve ${a.curve.join("/")}`);
+  console.log(`analysis colors: ${a.colors.map((c) => `${c.color} ${c.sources}/${c.target} (${c.hardest})`).join(", ")}; staples ${a.staples.length} (${Math.round(a.stapleShare * 100)}%); €${a.priceEur}`);
+  console.log(`tagged but not detected (${a.unverifiedTags.length}): ${a.unverifiedTags.map((u) => `${u.name} [${u.role}]`).join(", ") || "none"}`);
+  const roleOf = Object.fromEntries(deck.deck.cards.map((c) => [c.name, c.role]));
+  const extra = Object.entries(a.byCard).filter(([n, f]) => f.length && !f.includes(roleOf[n])).map(([n, f]) => `${n} [${roleOf[n]} → ${f.join("+")}]`);
+  console.log(`detected beyond the tag (${extra.length}): ${extra.join(", ") || "none"}`);
+} else fail("deck event has no analysis");
 console.log(`E2E OK: "${deck.deck.name}", ${deck.validation.total} cards, Game Changers: ${deck.validation.gameChangers.join(", ") || "none"}; warnings: ${deck.validation.warnings.join(" | ") || "none"}`);

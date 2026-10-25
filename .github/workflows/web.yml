@@ -34,6 +34,11 @@ jobs:
         run: npm run typecheck
       - name: Live Scryfall lookups (double-faced, split, accented names)
         run: node scripts/check-scryfall-live.mjs
+      - name: Eval hands resolve on Scryfall; Commander Spellbook probe
+        continue-on-error: true # third-party service; the eval workflow runs this check strictly
+        run: |
+          set -o pipefail
+          node scripts/eval.mjs check 2>&1 | tee eval-check.log
       - name: End-to-end (demo mode, real Scryfall)
         run: |
           npm start -- -p 3000 > server.log 2>&1 &
@@ -62,7 +67,9 @@ jobs:
         run: |
           set -e
           mkdir -p /tmp/out && cp -r shots /tmp/out/ 2>/dev/null || true
-          cp package-lock.json e2e.log server.log /tmp/out/ 2>/dev/null || true
+          cp package-lock.json e2e.log server.log eval-check.log /tmp/out/ 2>/dev/null || true
+          # keep earlier eval reports (published by the eval workflow)
+          (cd "$GITHUB_WORKSPACE" && git fetch -q origin ci-output && git archive FETCH_HEAD evals | tar -x -C /tmp/out) 2>/dev/null || true
           echo "${{ github.sha }} ${{ github.ref_name }} $(date -u +%FT%TZ)" > /tmp/out/SOURCE
           cd /tmp/out
           git init -q -b ci-output

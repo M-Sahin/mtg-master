@@ -60,7 +60,10 @@ export function lookupFake(name: string) {
   return SPECIAL[name] ?? fakeCard(name);
 }
 
-/** Install a fake global fetch that answers Scryfall endpoints from the fixtures. */
+/** What the fake Commander Spellbook answers (tests can replace it). */
+export const spellbook: { body: any; status: number } = { body: { results: { included: [] } }, status: 200 };
+
+/** Install a fake global fetch that answers Scryfall (and Commander Spellbook) endpoints from the fixtures. */
 export function installFakeScryfall() {
   const calls: string[] = [];
   const original = globalThis.fetch;
@@ -78,6 +81,7 @@ export function installFakeScryfall() {
       }
       return json({ object: "list", data, not_found });
     }
+    if (url.includes("commanderspellbook.com/find-my-combos")) return json(typeof spellbook.body === "function" ? spellbook.body(JSON.parse(init.body)) : spellbook.body, spellbook.status);
     if (url.includes("/cards/search")) {
       const q = new URL(url).searchParams.get("q") ?? "";
       if (q.includes("nothingmatches")) return json({ object: "error", details: "Your query didn't match any cards." }, 404);

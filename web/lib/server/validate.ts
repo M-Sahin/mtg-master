@@ -3,6 +3,7 @@
 import { BRACKET, COMMANDER_TEMPLATE } from "../shared/bracket";
 import type { CardInfo, Color, Deck, DeckCard, Role, Validation } from "../shared/types";
 import { BASIC_FOR_COLOR, ROLES, isBasicLand } from "../shared/types";
+import { type DeckAnalysis, isLand, isMdfcLand, landColors, pips, sourceTarget } from "../shared/analysis";
 
 const ANY_NUMBER = /a deck can have any number of cards named/i;
 const UP_TO = /a deck can have up to (\w+) cards named/i;
@@ -215,4 +216,103 @@ export function repairCount(deck: Deck): string | null {
     }
   }
   return note;
+}
+
+/**
+ * Stricter checks from the objective analysis (engine flag "strict"). Thresholds sit well
+ * below the template so a heuristic miss rarely blocks a reasonable deck; the template itself
+ * stays a warning.
+ */
+export function strictProblems(a: DeckAnalysis): string[] {
+  const out: string[] = [];
+  const named = (fn: string) => Object.entries(a.byCard).filter(([, f]) => (f as string[]).includes(fn)).map(([n]) => n);
+  const landEq = a.lands + a.mdfcLands * 0.5;
+  if (landEq < 33) out.push(`Only ${a.lands} lands${a.mdfcLands ? ` (+${a.mdfcLands} MDFC land backs)` : ""}: a Bracket 3 deck needs about 35–38. Add ${Math.ceil(35 - landEq)} lands.`);
+  if (a.lands > 41) out.push(`${a.lands} lands is too many; the usual range is 35–38. Cut ${a.lands - 38}.`);
+  const mins: [string, string, number, string][] = [
+    ["ramp", "ramp", 7, "mana rocks and dorks, land-fetching spells, Treasure makers"],
+    ["draw", "card draw", 7, "cards that draw, impulse-draw or make Clues"],
+    ["removal", "targeted removal/interaction", 5, "destroy/exile/counter/damage/edict/bounce effects that target"],
+  ];
+  for (const [fn, label, min, what] of mins) {
+    const have = a.counts[fn as keyof typeof a.counts];
+    if (have < min) {
+      const list = named(fn);
+      out.push(`The card text shows only ${have} ${label} card(s)${list.length ? ` (${list.join(", ")})` : ""}; the template wants ${a.template[fn].want[0]}–${a.template[fn].want[1]}. Add at least ${min - have} (counted: ${what}).`);
+    }
+  }
+  const multi = a.colors.length >= 3;
+  for (const c of a.colors) {
+    if (!c.target) continue;
+    const floor = Math.max(8, Math.round(c.target * (multi ? 0.5 : 0.6)));
+    if (c.sources < floor) out.push(`Only ${c.sources} lands make or fetch ${c.color} mana, but ${c.hardest} wants about ${c.target} ${c.color} sources. Get to at least ${floor} with duals, fetches or more ${BASIC_FOR_COLOR[c.color]}s.`);
+  }
+  return out;
+}
+
+/**
+ * Re-split the basic lands across the deck's colors (engine flag "manabase"): each basic goes to
+ * the color furthest below its colored-source target, then by share of colored pips.
+ * Keeps the total number of basics. Returns a note when it changed something.
+ */
+export function rebalanceBasics(deck: Deck): string | null {
+  const colors = deck.colorIdentity;
+  const basics = deck.cards.filter((c) => isBasicLand(c.name) && !/^wastes$/i.test(c.name));
+  const total = basics.reduce((n, c) => n + c.qty, 0);
+  if (!colors.length || !total) return null;
+  const snow = basics.some((c) => /^snow-covered /i.test(c.name));
+  const before = Object.fromEntries(basics.map((c) => [c.name, c.qty]));
+
+  const sources: Record<string, number> = {};
+  const pipShare: Record<string, number> = {};
+  const target: Record<string, number> = {};
+  for (const col of colors) [sources[col], pipShare[col], target[col]] = [0, 0, 0];
+  const basicsAll = new Set<Color>(colors);
+  for (const c of deck.cards) {
+    const i = c.info;
+    if (!i || isBasicLand(c.name)) continue;
+    if (isLand(i) || isMdfcLand(i)) for (const col of landColors(i, colors, basicsAll)) sources[col] += c.qty;
+    if (isLand(i)) continue;
+    const p = pips(i.manaCost);
+    for (const col of colors) {
+      pipShare[col] += p[col] * c.qty;
+      if (p[col] > 0 && i.cmc <= 4) target[col] = Math.max(target[col], sourceTarget(p[col], i.cmc));
+    }
+  }
+  for (const cmd of [deck.commander, deck.partner]) {
+    const i = cmd?.info;
+    if (!i) continue;
+    const p = pips(i.manaCost);
+    for (const col of colors) {
+      pipShare[col] += p[col] * 3; // the commander is cast every game
+      if (p[col] > 0) target[col] = Math.max(target[col], sourceTarget(p[col], Math.min(i.cmc, 6)));
+    }
+  }
+  const demand = colors.filter((col) => pipShare[col] > 0 || target[col] > 0);
+  const use = demand.length ? demand : colors;
+  const pipsTotal = use.reduce((n, col) => n + pipShare[col], 0) || 1;
+  const alloc: Record<string, number> = Object.fromEntries(use.map((col) => [col, 0]));
+  for (let k = 0; k < total; k++) {
+    const pick = [...use].sort((x, y) => {
+      const gx = target[x] ? (target[x] - sources[x] - alloc[x]) / target[x] : -1;
+      const gy = target[y] ? (target[y] - sources[y] - alloc[y]) / target[y] : -1;
+      if (gx > 0 || gy > 0) return gy - gx;
+      // all targets met: follow the share of colored pips
+      return pipShare[y] / pipsTotal - alloc[y] / total - (pipShare[x] / pipsTotal - alloc[x] / total);
+    })[0];
+    alloc[pick]++;
+  }
+  const name = (col: Color) => (snow ? `Snow-Covered ${BASIC_FOR_COLOR[col]}` : BASIC_FOR_COLOR[col]);
+  const after: Record<string, number> = {};
+  for (const col of use) if (alloc[col]) after[name(col as Color)] = alloc[col];
+  const same = Object.keys(before).length === Object.keys(after).length && Object.entries(after).every(([n, q]) => before[n] === q);
+  if (same) return null;
+  // replace the basics in place
+  for (const b of basics) deck.cards.splice(deck.cards.indexOf(b), 1);
+  for (const [n, q] of Object.entries(after)) {
+    const old = basics.find((b) => b.name === n);
+    deck.cards.push({ name: n, qty: q, role: "land", why: "Basic land", info: old?.info });
+  }
+  const fmt = (m: Record<string, number>) => Object.entries(m).map(([n, q]) => `${q} ${n}`).join(", ");
+  return `Re-split the ${total} basic lands to ${fmt(after)} (was ${fmt(before)}) to match colored-source needs.`;
 }

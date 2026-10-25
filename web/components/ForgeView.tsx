@@ -15,7 +15,7 @@ export interface DraftCell {
   role: Role;
 }
 
-const TOOL_VERB: Record<string, string> = { search_cards: "Searched Scryfall", get_cards: "Read card text", submit_deck: "Checked deck" };
+const TOOL_VERB: Record<string, string> = { search_cards: "Searched Scryfall", get_cards: "Read card text", submit_deck: "Checked deck", revise_deck: "Reviewed deck" };
 
 export function ForgeView({
   log,

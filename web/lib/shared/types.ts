@@ -1,4 +1,5 @@
 // Types shared by the server (route handlers) and the client UI.
+import type { DeckAnalysis } from "./analysis";
 
 export type Color = "W" | "U" | "B" | "R" | "G";
 
@@ -20,6 +21,7 @@ export interface CardInfo {
   artist: string | null;
   scryfallUri: string;
   edhrecRank: number | null;
+  producedMana?: string[]; // Scryfall produced_mana (W U B R G C)
 }
 
 export const ROLES = [
@@ -79,6 +81,15 @@ export interface Validation {
 
 export type Budget = "any" | "mid" | "budget";
 
+/** Token usage of one build, summed over all model calls. */
+export interface Usage {
+  calls: number;
+  input: number; // uncached input tokens
+  cacheRead: number;
+  cacheWrite: number;
+  output: number; // includes thinking tokens
+}
+
 export interface GenerateRequest {
   seeds: string[]; // exactly 5 card names
   commander: string | null; // one of the seeds, or null = let Claude choose
@@ -96,7 +107,8 @@ export type StreamEvent =
   | { type: "draft_card"; name: string; role: Role }
   | { type: "draft_meta"; commander?: string; deckName?: string }
   | { type: "validation"; validation: Validation; attempt: number }
-  | { type: "deck"; deck: Deck; validation: Validation }
+  | { type: "deck"; deck: Deck; validation: Validation; analysis?: DeckAnalysis; review?: string }
+  | { type: "usage"; usage: Usage }
   | { type: "error"; message: string }
   | { type: "done"; ms: number };
 

@@ -1,5 +1,16 @@
 import { DEMO_SEEDS } from "./demo";
 import { SKILL_VERSION } from "../skill/content";
+import { parseEngine, type EngineOptions } from "./engine";
+
+function engineFromEnv(demo: boolean): EngineOptions {
+  if (demo) return parseEngine("v1"); // the scripted demo follows the original flow
+  try {
+    return parseEngine(process.env.ENGINE);
+  } catch (e) {
+    console.warn(`${(e as Error).message} Falling back to v1.`);
+    return parseEngine("v1");
+  }
+}
 
 export function serverConfig() {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim() || "";
@@ -12,6 +23,7 @@ export function serverConfig() {
     // Without an access code, anyone with the URL spends your API credits. Opt in explicitly.
     publicAccess: process.env.PUBLIC_ACCESS === "1",
     buildsPerHour: Math.max(1, Number(process.env.BUILDS_PER_HOUR_PER_IP) || 6),
+    engine: engineFromEnv(demo),
   };
 }
 

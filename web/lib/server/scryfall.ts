@@ -105,6 +105,7 @@ export function toCardInfo(c: any): CardInfo {
     artist: c.artist ?? c.card_faces?.[0]?.artist ?? null,
     scryfallUri: String(c.scryfall_uri ?? "").split("?")[0],
     edhrecRank: c.edhrec_rank ?? null,
+    producedMana: Array.isArray(c.produced_mana) ? c.produced_mana : [],
   };
 }
 

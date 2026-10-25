@@ -406,7 +406,7 @@ test("agent: parallel submits in one turn are handled one at a time, extra looku
     const byId = Object.fromEntries(seen.map((r: any) => [r.tool_use_id, r]));
     assert.match(byId.q7.content, /Skipped/);
     assert.match(byId.bad.content, /REJECTED/);
-    assert.match(byId.good.content, /Only one submit_deck per turn/);
+    assert.match(byId.good.content, /Only one submit_deck or revise_deck per turn/);
     assert.equal(seen.length, 10); // every tool_use got exactly one result
   } finally {
     fake.restore();

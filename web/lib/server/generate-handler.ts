@@ -84,8 +84,8 @@ export async function handleGenerate(request: Request, override?: { callModel?: 
       // keep proxies from closing an idle connection while Claude thinks
       const ping = setInterval(() => emit({ type: "status", text: "" }), 15000);
       try {
-        const result = await runAgent(req, { model: cfg.model, callModel, emit, signal: ctl.signal });
-        if (result) emit({ type: "deck", deck: result.deck, validation: result.validation });
+        const result = await runAgent(req, { model: cfg.model, callModel, emit, signal: ctl.signal, engine: cfg.engine });
+        if (result) emit({ type: "deck", deck: result.deck, validation: result.validation, analysis: result.analysis, review: result.review });
       } catch (e) {
         emit({ type: "error", message: (e as Error).message || "Something went wrong." });
       } finally {

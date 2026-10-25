@@ -83,6 +83,7 @@ cd web && npm ci && npm run build && npm start
 | `ANTHROPIC_MODEL` | no | Defaults to `claude-sonnet-5-5`. `claude-opus-5-5` gives stronger decks but is slower and costs more. |
 | `BUILDS_PER_HOUR_PER_IP` | no | A best-effort limit per IP, kept per server instance (default 6). |
 | `DEMO_MODE` | no | Set it to `1` to force demo mode even when a key is set. Only the value `1` switches it on. |
+| `ENGINE` | no | The deckbuilding engine: `v1` (default) or `v2`. See [Engine quality and evals](#engine-quality-and-evals). |
 
 On Vercel, store `ANTHROPIC_API_KEY` and `ACCESS_CODE` as the **Secret** type. Redeploy after changing a variable, because changes only apply to new deployments.
 
@@ -91,6 +92,41 @@ On Vercel, store `ANTHROPIC_API_KEY` and `ACCESS_CODE` as the **Secret** type. R
 **Function duration:** a build usually takes 1–3 minutes. On Vercel, `app/api/generate/route.ts` sets `maxDuration = 300`, which is the Hobby maximum on Fluid compute. The agent submits by about 3½ minutes and stops at about 4½ minutes with the best deck it has, so it finishes inside the limit. On Pro you can raise `maxDuration` (the maximum is 800). Docker and Node.js have no such limit.
 
 **Keeping your copy up to date:** use **Sync fork** on GitHub (or `git pull` for Docker). Vercel redeploys automatically when your copy changes.
+
+## Engine quality and evals
+
+The engine has two versions. Every change in `v2` is behind its own switch, so it can be measured against `v1` before it becomes the default.
+
+| Switch | What it does | Why it should give better decks |
+|---|---|---|
+| `prompt2` | Claude plans the 99 slots before searching, spends its searches on the seeds' theme and on recent cards, and skips searches for staples it already knows | Its memory is weakest on synergy pieces and new cards, which is where the deck's identity comes from |
+| `fullText` | Search results carry the full Oracle text instead of a 140-character excerpt | Less guessing from memory, fewer misread cards |
+| `strict` | The server counts lands, ramp, draw, removal and colored sources from the card text itself (`lib/shared/analysis.ts`). Big gaps are errors on the first two submits | Claude no longer grades its own role tags |
+| `review` | After the first legal deck, Claude gets the server's analysis and makes up to 10 swaps with a cheap `revise_deck` tool | Critiquing a concrete list with hard numbers is easier than getting 99 cards right in one pass |
+| `manabase` | The server re-splits the basic lands across colors by colored-source targets and mana symbols | Counting pips over 99 cards is arithmetic, which code does better |
+| `combos` | [Commander Spellbook](https://commanderspellbook.com) checks the deck; two-card combos it rates Ruthless or Spicy are errors (unless both pieces are the user's own picks) | A cheap two-card combo makes it the wrong deck for a Bracket 3 table |
+| `effort` | `ENGINE=v2,effort=xhigh` sets the API's effort level (default: the model's own) | More thinking per turn, at the cost of time |
+
+Thinking is already on: the 5.5 models use adaptive thinking by default.
+
+Specs combine a preset with switches: `v2`, `v2-review`, `v1+strict+fullText`, `v2,effort=xhigh`.
+
+### Running an eval
+
+`evals/hands.json` has 20 seed hands: every color count, tribal and non-tribal, chosen and open commanders, a partner pair, double-faced seeds and all three budgets. The harness builds each hand with each variant and scores every deck:
+
+- whether it's legal, time, token cost, and searches and submits per build;
+- objective numbers from the analysis: template roles in range, missing template cards, colored sources short of the Karsten targets, share of generic top-300 EDHREC staples, price against the budget, and too-strong combos;
+- a blind A/B judgement: Opus compares each variant's deck with the baseline's on the same hand, twice with the order swapped, and a win only counts when both orders agree.
+
+```bash
+node scripts/eval.mjs check                          # hands resolve on Scryfall, combo service works (no key)
+ANTHROPIC_API_KEY=sk-ant-... node scripts/eval.mjs run --variants v1,v2 --hands 6 --judge claude-opus-5-5
+```
+
+The output folder (`evals/out/<time>/`) holds `report.md`, `results.json` and every decklist with its analysis, so you can read the decks yourself too.
+
+In GitHub, add the repository secret `ANTHROPIC_API_KEY` (preferably from a Console workspace with a spend limit), then run **Actions → eval → Run workflow**. The report appears in the run summary and on the `ci-output` branch under `evals/`.
 
 ## Develop
 
@@ -117,8 +153,9 @@ CI (`.github/workflows/web.yml`) runs all of these on every push, and also build
 ```
 app/                    Next.js routes: page, layout, CSS, /api/generate, /api/config, /api/cards/*
 components/             App (flow and state), SeedHand, CardSearch, ForgeView (live build), DeckView, CardFace
-lib/server/             agent loop, Claude streaming client, Scryfall client, validation, prompt, demo
-lib/shared/             types, bracket rules, deck statistics and export
+lib/server/             agent loop, engine variants, Claude streaming client, Scryfall client, validation, combo check, prompt, demo
+lib/shared/             types, bracket rules, deck analysis, deck statistics and export
+evals/                  eval hands, runner, scorecard, blind judge, report
 lib/skill/content.ts    generated from ../mtg-master
 scripts/                sync-skill, test runner, e2e, screenshots
 tests/                  unit tests and Scryfall fixtures

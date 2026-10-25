@@ -4,12 +4,13 @@
 export type ContentBlock =
   | { type: "text"; text: string }
   | { type: "tool_use"; id: string; name: string; input: any }
-  | { type: "thinking"; thinking: string; signature?: string };
+  | { type: "thinking"; thinking: string; signature?: string }
+  | { type: "redacted_thinking"; data: string };
 
 export interface AssistantMessage {
   content: ContentBlock[];
   stop_reason: string | null;
-  usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number };
+  usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
 }
 
 export interface StreamHandlers {
@@ -25,6 +26,7 @@ export interface MessageParams {
   system: any;
   messages: any[];
   tools?: readonly any[];
+  output_config?: { effort?: string };
 }
 
 export type ModelCaller = (params: MessageParams, handlers: StreamHandlers, signal?: AbortSignal) => Promise<AssistantMessage>;

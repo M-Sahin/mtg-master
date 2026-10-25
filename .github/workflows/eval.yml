@@ -1,0 +1,91 @@
+name: eval
+
+# Builds the eval seed hands with each engine variant, scores the decks and has a judge model
+# compare them blind. Costs API credits: run it by hand from the Actions tab.
+# Needs the repository secret ANTHROPIC_API_KEY (use a key from a Console workspace with a spend limit).
+
+on:
+  workflow_dispatch:
+    inputs:
+      variants:
+        description: "Engine variants, comma-separated; the first is the baseline (e.g. v1,v2 or v1,v2-review)"
+        default: "v1,v2"
+      hands:
+        description: "all, a number (first N hands) or comma-separated hand ids from web/evals/hands.json"
+        default: "6"
+      model:
+        description: "Builder model"
+        default: "claude-sonnet-5-5"
+      judge:
+        description: "Judge model, or none"
+        default: "claude-opus-5-5"
+      repeat:
+        description: "Builds per hand and variant"
+        default: "1"
+      concurrency:
+        description: "Builds running at the same time"
+        default: "3"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: eval
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Check the key is set
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::Add the repository secret ANTHROPIC_API_KEY (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+      - name: Hands resolve on Scryfall
+        run: node scripts/eval.mjs check
+      - name: Run the eval
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -o pipefail
+          node scripts/eval.mjs run \
+            --variants "${{ inputs.variants }}" --hands "${{ inputs.hands }}" \
+            --model "${{ inputs.model }}" --judge "${{ inputs.judge }}" \
+            --repeat "${{ inputs.repeat }}" --concurrency "${{ inputs.concurrency }}" \
+            --out eval-out 2>&1 | tee eval-out.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-${{ github.run_id }}
+          path: |
+            web/eval-out/
+            web/eval-out.log
+      - name: Publish to the ci-output branch (evals/<run>)
+        if: always() && github.repository == 'M-Sahin/mtg-master'
+        run: |
+          set -e
+          dest="evals/$(date -u +%F)-${{ github.run_id }}"
+          git fetch -q origin ci-output && git worktree add -q --detach /tmp/ci-output FETCH_HEAD || { mkdir -p /tmp/ci-output && git -C /tmp/ci-output init -q -b ci-output; }
+          mkdir -p "/tmp/ci-output/$dest"
+          cp -r eval-out/. "/tmp/ci-output/$dest/" 2>/dev/null || true
+          cp eval-out.log "/tmp/ci-output/$dest/" 2>/dev/null || true
+          cd /tmp/ci-output
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A && git commit -q -m "Eval ${{ github.run_id }}: ${{ inputs.variants }} on ${{ inputs.hands }} hands" || exit 0
+          git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:ci-output
