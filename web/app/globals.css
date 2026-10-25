@@ -1748,3 +1748,7 @@ select.field option {
     flex-direction: column;
   }
 }
+.panel > .link {
+  align-self: flex-start;
+  text-align: left;
+}
