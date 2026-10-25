@@ -50,7 +50,10 @@ test("the build keeps running when the browser disconnects, and a reconnect gets
     assert.equal(again.status, 200);
     const rest: any[] = [];
     for await (const ev of lines(again)) if (ev.type !== "status" || ev.text) rest.push(ev);
-    assert.equal(rest[0].i, last + 1, "continues exactly where it stopped");
+    assert.ok(rest[0].i >= last + 1, "continues where it stopped");
+    // catching up merges Claude's text pieces: far fewer lines than events
+    const texts = rest.filter((e) => e.type === "text");
+    assert.ok(texts.every((t, k) => k === 0 || rest[rest.indexOf(t) - 1].type !== "text"), "no two text lines in a row on catch-up");
     const deck = rest.find((e) => e.type === "deck");
     assert.ok(deck?.validation.ok, "the deck arrives after the reconnect");
     assert.equal(rest.at(-1).type, "done");

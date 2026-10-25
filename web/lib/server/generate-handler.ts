@@ -59,8 +59,10 @@ function tailResponse(id: string, from: number, first?: StreamEvent): Response {
         }
       };
       if (first) send(first);
-      // keep proxies from closing an idle connection while Claude thinks
-      const ping = setInterval(() => send({ type: "status", text: "" }), 15000);
+      // an immediate line, then a heartbeat every 5 s: the browser can tell a live but quiet
+      // connection from a dead one, and proxies don't close it while Claude thinks
+      send({ type: "status", text: "" });
+      const ping = setInterval(() => send({ type: "status", text: "" }), 5000);
       try {
         for await (const { i, event } of tailJob(id, from, ctl.signal)) send({ ...event, i });
       } catch (e) {

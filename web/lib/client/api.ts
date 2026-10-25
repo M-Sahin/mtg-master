@@ -99,81 +99,109 @@ export const runningBuild = {
 
 /**
  * Start a build (or, with `resume`, reattach to one) and yield its events. The build runs on the
- * server independently of this connection: when the connection drops (the phone switched apps,
- * the network blipped), this waits until the page is back, reconnects, and continues from the
- * last event it saw.
+ * server independently of this connection. Phones leave a connection half-dead after you switch
+ * apps, and it can take the browser a long time to notice, so this doesn't wait for that:
+ * - coming back to the page after more than a moment drops the old connection and reconnects
+ *   right away (the server sends a heartbeat every 5 s, so nothing is lost);
+ * - a connection that stays silent for 12 s while the page is visible is treated as dead;
+ * - each reconnect continues from the last event seen.
  */
 export async function* generate(req: GenerateRequest, accessCode: string, signal: AbortSignal, resume?: string): AsyncGenerator<StreamEvent> {
   let job = resume ?? "";
   let next = 0;
   let failures = 0;
-  let res: Response | null = null;
-  if (!resume) {
-    try {
-      res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "content-type": "application/json", ...(accessCode ? { "x-access-code": accessCode } : {}) },
-        body: JSON.stringify(req),
-        signal,
-      });
-    } catch (e) {
-      if (!signal.aborted) yield { type: "error", message: `Couldn't reach the server: ${(e as Error).message}` };
-      return;
-    }
-    if (!res.ok || !res.body) {
-      let msg = `Request failed (${res.status})`;
+  let starting = !resume;
+  let attempt: AbortController | null = null;
+  let lastLine = Date.now();
+  let hiddenAt = 0;
+  const hasDoc = typeof document !== "undefined";
+  const onVisibility = () => {
+    if (document.visibilityState === "hidden") hiddenAt = Date.now();
+    else if (hiddenAt && Date.now() - hiddenAt > 1500) attempt?.abort(); // don't trust a connection that slept
+  };
+  if (hasDoc) document.addEventListener("visibilitychange", onVisibility);
+  const watchdog = setInterval(() => {
+    if ((!hasDoc || document.visibilityState === "visible") && Date.now() - lastLine > 12_000) attempt?.abort();
+  }, 2000);
+  const stop = () => attempt?.abort();
+  signal.addEventListener("abort", stop);
+  try {
+    for (;;) {
+      attempt = new AbortController();
+      if (signal.aborted) return;
+      lastLine = Date.now();
+      let res: Response | null = null;
       try {
-        msg = (await res.json()).error ?? msg;
-      } catch {}
-      yield { type: "error", message: msg };
-      return;
-    }
-  }
-  for (;;) {
-    if (res?.body) {
-      try {
-        for await (const ev of ndjson(res.body)) {
-          if (ev.type === "job") {
-            job = ev.id;
-            runningBuild.set({ job, req, at: Date.now() });
-            continue;
-          }
-          if (typeof ev.i === "number") {
-            if (ev.i < next) continue; // already seen before the reconnect
-            next = ev.i + 1;
-          }
-          failures = 0;
-          yield ev as StreamEvent;
-          if (ev.type === "done") {
-            runningBuild.set(null);
-            return;
-          }
+        res = starting
+          ? await fetch("/api/generate", {
+              method: "POST",
+              headers: { "content-type": "application/json", ...(accessCode ? { "x-access-code": accessCode } : {}) },
+              body: JSON.stringify(req),
+              signal: attempt.signal,
+            })
+          : await fetch(`/api/generate?job=${encodeURIComponent(job)}&from=${next}`, { signal: attempt.signal, cache: "no-store" });
+      } catch (e) {
+        if (signal.aborted) return;
+        if (starting) {
+          yield { type: "error", message: `Couldn't reach the server: ${(e as Error).message}` };
+          return;
         }
-      } catch {
-        /* dropped: reconnect below */
       }
-    }
-    if (signal.aborted) return;
-    if (!job || ++failures > 12) {
-      runningBuild.set(null);
-      yield { type: "error", message: "The connection to the build was lost. Try again." };
-      return;
-    }
-    await backInFront();
-    await sleep(Math.min(500 * failures, 4000), signal);
-    if (signal.aborted) return;
-    if (failures === 1) yield { type: "status", text: "Reconnecting to the build…" };
-    try {
-      res = await fetch(`/api/generate?job=${encodeURIComponent(job)}&from=${next}`, { signal, cache: "no-store" });
-      if (res.status === 404) {
+      if (res && !res.ok) {
+        let msg = `Request failed (${res.status})`;
+        try {
+          msg = (await res.json()).error ?? msg;
+        } catch {}
+        if (starting) {
+          yield { type: "error", message: msg };
+          return;
+        }
+        if (res.status === 404) {
+          runningBuild.set(null);
+          yield { type: "error", message: "That build isn't running anymore (the server may have restarted). Try again." };
+          return;
+        }
+        res = null;
+      }
+      starting = false;
+      if (res?.body) {
+        try {
+          for await (const ev of ndjson(res.body)) {
+            lastLine = Date.now();
+            failures = 0;
+            if (ev.type === "job") {
+              job = ev.id;
+              runningBuild.set({ job, req, at: Date.now() });
+              continue;
+            }
+            if (typeof ev.i === "number") {
+              if (ev.i < next) continue; // already seen before the reconnect
+              next = ev.i + 1;
+            }
+            yield ev as StreamEvent;
+            if (ev.type === "done") {
+              runningBuild.set(null);
+              return;
+            }
+          }
+        } catch {
+          /* dropped or aborted by the watchdog: reconnect below */
+        }
+      }
+      if (signal.aborted) return;
+      if (!job || ++failures > 12) {
         runningBuild.set(null);
-        yield { type: "error", message: "That build isn't running anymore (the server may have restarted). Try again." };
+        yield { type: "error", message: "The connection to the build was lost. Try again." };
         return;
       }
-      if (!res.ok) res = null;
-    } catch {
-      res = null;
+      if (failures === 1) yield { type: "status", text: "Reconnecting to the build…" };
+      await backInFront();
+      if (failures > 1) await sleep(Math.min(1000 * (failures - 1), 4000), signal); // the first retry is immediate
     }
+  } finally {
+    clearInterval(watchdog);
+    signal.removeEventListener("abort", stop);
+    if (hasDoc) document.removeEventListener("visibilitychange", onVisibility);
   }
 }
 

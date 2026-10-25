@@ -116,7 +116,13 @@ export async function* tailJob(id: string, from: number, signal?: AbortSignal): 
   if (local) {
     for (;;) {
       while (i < local.events.length) {
-        yield { i, event: local.events[i] };
+        // catching up: Claude's text arrives in hundreds of tiny pieces; send them as one
+        const e = local.events[i];
+        if (e.type === "text") {
+          let delta = e.delta;
+          while (i + 1 < local.events.length && local.events[i + 1].type === "text") delta += (local.events[++i] as { delta: string }).delta;
+          yield { i, event: { type: "text", delta } };
+        } else yield { i, event: e };
         i++;
       }
       if (local.done || signal?.aborted) return;
@@ -138,16 +144,26 @@ export async function* tailJob(id: string, from: number, signal?: AbortSignal): 
     const raw = (await kv(["LRANGE", key(id), i, -1]).catch(() => null)) as string[] | null;
     if (raw && raw.length) {
       missing = 0;
-      for (const r of raw) {
-        let event: StreamEvent;
+      const parsed = raw.map((r) => {
         try {
-          event = JSON.parse(r);
+          return JSON.parse(r) as StreamEvent;
         } catch {
-          i++;
+          return null;
+        }
+      });
+      for (let k = 0; k < parsed.length; k++, i++) {
+        const event = parsed[k];
+        if (!event) continue;
+        if (event.type === "text") {
+          let delta = event.delta;
+          while (k + 1 < parsed.length && parsed[k + 1]?.type === "text") {
+            delta += (parsed[++k] as { delta: string }).delta;
+            i++;
+          }
+          yield { i, event: { type: "text", delta } };
           continue;
         }
         yield { i, event };
-        i++;
         if (event.type === "done") return;
       }
     } else if (i === 0 && ++missing > 8) throw new JobNotFound();

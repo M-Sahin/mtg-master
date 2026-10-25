@@ -114,6 +114,29 @@ await run("13-dropped-stream", { width: 390, height: 844 }, async (p) => {
   if (!reconnects.length) errors.push("the page never reconnected after the stream was cut");
   if (/connection to the build was lost|isn't running anymore|connection dropped/i.test(body)) errors.push("build was lost after the stream dropped");
 });
+// switching apps and coming back: the page must reconnect right away, not wait for a dead socket
+await run("14-switch-apps", { width: 390, height: 844 }, async (p) => {
+  const gets = [];
+  p.on("response", (r) => r.request().method() === "GET" && r.url().includes("/api/generate?job=") && gets.push(Date.now()));
+  await loadSeeds(p);
+  await p.click("text=Build my deck");
+  await p.waitForSelector(".log", { timeout: 60000 }).catch(() => {});
+  await p.waitForTimeout(2500);
+  const setVis = (state) =>
+    p.evaluate((st) => {
+      Object.defineProperty(document, "visibilityState", { value: st, configurable: true });
+      Object.defineProperty(document, "hidden", { value: st === "hidden", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }, state);
+  await setVis("hidden");
+  await p.waitForTimeout(3000);
+  const back = Date.now();
+  await setVis("visible");
+  await p.waitForSelector(".deck", { timeout: 120000 });
+  const first = gets.find((t) => t >= back);
+  console.log(`switch apps: reconnected ${first ? `${first - back} ms` : "never"} after coming back`);
+  if (!first || first - back > 3000) errors.push(`slow or no reconnect after coming back (${first ? first - back : "none"} ms)`);
+});
 await run("7-mobile-setup", { width: 390, height: 844 }, loadSeeds);
 await run("8-mobile-result", { width: 390, height: 844 }, toResult);
 
