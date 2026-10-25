@@ -75,6 +75,11 @@ jobs:
           cp package-lock.json e2e.log server.log eval-check.log calibrate.log /tmp/out/ 2>/dev/null || true
           # keep earlier eval reports (published by the eval workflow)
           (cd "$GITHUB_WORKSPACE" && git fetch -q origin ci-output && git archive FETCH_HEAD evals | tar -x -C /tmp/out) 2>/dev/null || true
+          # this branch only holds CI output: tell Vercel not to deploy it (it reads vercel.json from the
+          # branch being deployed, at the root and in the project's root directory, web/)
+          mkdir -p /tmp/out/web
+          echo '{"git":{"deploymentEnabled":false}}' > /tmp/out/vercel.json
+          cp /tmp/out/vercel.json /tmp/out/web/vercel.json
           echo "${{ github.sha }} ${{ github.ref_name }} $(date -u +%FT%TZ)" > /tmp/out/SOURCE
           cd /tmp/out
           git init -q -b ci-output

@@ -21,7 +21,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${display.variable} ${ui.variable}`}>
       <body>
         {children}
-        <Analytics />
+        {/* Vercel Web Analytics only exists on Vercel; elsewhere (Docker, Node, CI) the script would 404 */}
+        {process.env.VERCEL === "1" || process.env.VERCEL_ENV ? <Analytics /> : null}
       </body>
     </html>
   );

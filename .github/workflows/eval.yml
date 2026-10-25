@@ -98,6 +98,7 @@ jobs:
             mkdir -p "/tmp/ci-output/$dest"
             cp -r eval-out/. "/tmp/ci-output/$dest/" 2>/dev/null || true
             cp eval-out.log "/tmp/ci-output/$dest/" 2>/dev/null || true
+            mkdir -p /tmp/ci-output/web && echo '{"git":{"deploymentEnabled":false}}' | tee /tmp/ci-output/vercel.json > /tmp/ci-output/web/vercel.json
             (cd /tmp/ci-output && git add -A && git commit -q -m "Eval ${{ github.run_id }}: $VARIANTS on $HANDS hands" && \
               git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:ci-output) && exit 0
             git worktree remove --force /tmp/ci-output 2>/dev/null || true
