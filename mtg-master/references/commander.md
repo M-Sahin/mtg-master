@@ -17,6 +17,8 @@
 - **Budget** — total and whether they already own staples.
 - **Theme or flavor** they care about.
 
+- **Two commanders** are legal only with matching pairing abilities: both have Partner; Partner with each other; the same Partner—[name] ability (e.g. Partner—Father & son, Partner—Survivors); both have Friends forever; Choose a Background plus a Background enchantment; Doctor's companion plus a Time Lord Doctor. The deck's color identity is the union of both.
+
 Look up the commander's exact oracle text and color identity first. Then check the current bracket rules and Game Changers list (they're maintained by Wizards and change).
 
 ## 2. Power level and brackets
