@@ -190,6 +190,8 @@ This is an unofficial fan project. It isn't affiliated with or endorsed by Wizar
 
 ## Contributing
 
+If Hundredfold or the skill is useful to you, you can [buy me a coffee on Ko-fi](https://ko-fi.com/msahin). It's free either way.
+
 Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to run the tests and what to update when Wizards changes the rules, and [SECURITY.md](SECURITY.md) for reporting security problems and keeping your API key safe.
 
 ## License
