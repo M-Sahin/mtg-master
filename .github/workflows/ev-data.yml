@@ -64,3 +64,17 @@ jobs:
           git add -A
           git commit -q -m "Box EV data $(date -u +%F)"
           git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:ev-data
+      - name: Publish the log of a test run to ci-output (ev-test/<run>.log)
+        if: always() && inputs.only && github.repository == 'M-Sahin/mtg-master'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for try in 1 2 3; do
+            rm -rf /tmp/ci-output && git worktree prune
+            git fetch -q origin ci-output && git worktree add -q --detach /tmp/ci-output FETCH_HEAD || exit 0
+            mkdir -p /tmp/ci-output/ev-test && cp ev-build.log "/tmp/ci-output/ev-test/${{ github.run_id }}.log" 2>/dev/null || echo "no log" > "/tmp/ci-output/ev-test/${{ github.run_id }}.log"
+            (cd /tmp/ci-output && git add -A && git commit -q -m "EV test run ${{ github.run_id }}" && \
+              git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:ci-output) && exit 0
+            git worktree remove --force /tmp/ci-output 2>/dev/null || true
+            sleep $((try * 10))
+          done
