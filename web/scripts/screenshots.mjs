@@ -120,8 +120,7 @@ await run("14-switch-apps", { width: 390, height: 844 }, async (p) => {
   p.on("response", (r) => r.request().method() === "GET" && r.url().includes("/api/generate?job=") && gets.push(Date.now()));
   await loadSeeds(p);
   await p.click("text=Build my deck");
-  await p.waitForSelector(".log", { timeout: 60000 }).catch(() => {});
-  await p.waitForTimeout(2500);
+  await p.waitForTimeout(1000); // the demo build takes ~9 s: switch away early
   const setVis = (state) =>
     p.evaluate((st) => {
       Object.defineProperty(document, "visibilityState", { value: st, configurable: true });
@@ -129,13 +128,14 @@ await run("14-switch-apps", { width: 390, height: 844 }, async (p) => {
       document.dispatchEvent(new Event("visibilitychange"));
     }, state);
   await setVis("hidden");
-  await p.waitForTimeout(3000);
+  await p.waitForTimeout(2500);
+  const running = (await p.locator(".deck").count()) === 0;
   const back = Date.now();
   await setVis("visible");
   await p.waitForSelector(".deck", { timeout: 120000 });
   const first = gets.find((t) => t >= back);
-  console.log(`switch apps: reconnected ${first ? `${first - back} ms` : "never"} after coming back`);
-  if (!first || first - back > 3000) errors.push(`slow or no reconnect after coming back (${first ? first - back : "none"} ms)`);
+  console.log(`switch apps: reconnected ${first ? `${first - back} ms` : "never"} after coming back (build still running then: ${running})`);
+  if (running && (!first || first - back > 3000)) errors.push(`slow or no reconnect after coming back (${first ? first - back : "none"} ms)`);
 });
 await run("7-mobile-setup", { width: 390, height: 844 }, loadSeeds);
 await run("8-mobile-result", { width: 390, height: 844 }, toResult);
