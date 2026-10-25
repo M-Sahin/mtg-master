@@ -10,7 +10,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { anthropicCaller, type ModelCaller } from "../lib/server/anthropic";
-import { costUsd as priceOf } from "../lib/shared/models";
+import { MODEL_ID, costUsd as priceOf } from "../lib/shared/models";
 import { resolveSeeds, runAgent, type AgentResult } from "../lib/server/agent";
 import { checkCombos, parseCombos } from "../lib/server/combos";
 import { parseEngine } from "../lib/server/engine";
@@ -105,13 +105,26 @@ interface Build {
   result?: AgentResult | null;
 }
 
+const MODEL_ALIASES: Record<string, string> = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5" };
+
+/** The builder model of a variant: "v2@haiku" or "v2@claude-haiku-5-5", else the run's --model. */
+function variantModel(variant: string, fallback: string): string {
+  const m = variant.split("@")[1]?.trim();
+  if (!m) return fallback;
+  const id = MODEL_ALIASES[m] ?? m;
+  if (!MODEL_ID.test(id)) throw new Error(`Unknown model "${m}" in variant "${variant}" (use haiku, sonnet, opus or a model id)`);
+  return id;
+}
+
 async function run(o: Record<string, string>) {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("Set ANTHROPIC_API_KEY to run evals (use a key with a spend limit).");
   const variants = (o.variants ?? "v1,v2").split(",").map((s) => s.trim()).filter(Boolean);
-  const engines = variants.map((v) => parseEngine(v)); // fail fast on typos
-  const hands = loadHands(o.hands ?? "all");
   const model = o.model ?? "claude-sonnet-5-5";
+  // "v2@haiku" builds with another model than --model, so models can be compared like engines
+  const engines = variants.map((v) => parseEngine(v.split("@")[0])); // fail fast on typos
+  const models = variants.map((v) => variantModel(v, model));
+  const hands = loadHands(o.hands ?? "all");
   const judge = o.judge ?? "claude-opus-5-5";
   const repeat = Math.max(1, Number(o.repeat ?? 1));
   const concurrency = Math.max(1, Number(o.concurrency ?? 3));
@@ -131,8 +144,8 @@ async function run(o: Record<string, string>) {
     return msg;
   };
 
-  const jobs = hands.flatMap((hand) => engines.flatMap((engine, vi) => Array.from({ length: repeat }, (_, r) => ({ hand, engine, variant: variants[vi], run: r + 1 }))));
-  console.log(`Eval: ${hands.length} hands × ${variants.length} variants × ${repeat} = ${jobs.length} builds with ${model}; judge ${judge}; output ${out}`);
+  const jobs = hands.flatMap((hand) => engines.flatMap((engine, vi) => Array.from({ length: repeat }, (_, r) => ({ hand, engine, variant: variants[vi], model: models[vi], run: r + 1 }))));
+  console.log(`Eval: ${hands.length} hands × ${variants.length} variants × ${repeat} = ${jobs.length} builds with ${[...new Set(models)].join(" and ")}; judge ${judge}; output ${out}`);
   const builds: Build[] = [];
   await pool(jobs, concurrency, async (j, i) => {
     if (spent >= maxUsd) {
@@ -144,13 +157,13 @@ async function run(o: Record<string, string>) {
     let result: AgentResult | null = null;
     let error: string | undefined;
     try {
-      result = await runAgent({ seeds: j.hand.seeds, commander: j.hand.commander, budget: j.hand.budget, theme: j.hand.theme }, { model, callModel: caller, emit: (e) => events.push(e), engine: j.engine });
+      result = await runAgent({ seeds: j.hand.seeds, commander: j.hand.commander, budget: j.hand.budget, theme: j.hand.theme }, { model: j.model, callModel: caller, emit: (e) => events.push(e), engine: j.engine });
     } catch (e) {
       error = (e as Error).message;
     }
     const ms = Date.now() - started;
     const combos = result ? await checkCombos(result.deck) : null; // scored for every variant
-    const score = scoreBuild({ hand: j.hand, variant: j.variant, run: j.run, model, ms, events, result, combos, error });
+    const score = scoreBuild({ hand: j.hand, variant: j.variant, run: j.run, model: j.model, ms, events, result, combos, error });
     builds.push({ hand: j.hand, variant: j.variant, run: j.run, score, deck: result?.deck, result });
     const file = `${j.hand.id}--${j.variant.replace(/[^\w.-]+/g, "_")}--${j.run}.txt`;
     if (result) {
@@ -202,7 +215,7 @@ async function run(o: Record<string, string>) {
     return a;
   });
   console.log(`Estimated spend: $${spent.toFixed(2)} of the $${maxUsd} budget`);
-  const meta = { model, judge, variants, hands: hands.map((h) => h.id), repeat, date: new Date().toISOString(), spentUsd: Math.round(spent * 100) / 100 };
+  const meta = { model: [...new Set(models)].join(" + "), judge, variants, hands: hands.map((h) => h.id), repeat, date: new Date().toISOString(), spentUsd: Math.round(spent * 100) / 100 };
   writeFileSync(join(out, "results.json"), JSON.stringify({ meta, aggregates, scores, pairs }, null, 2));
   const md = renderReport({ meta, aggregates, scores, pairs });
   writeFileSync(join(out, "report.md"), md);
