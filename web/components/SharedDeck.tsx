@@ -31,7 +31,8 @@ export default function SharedDeck({ d, missing }: { d: string; missing?: boolea
           Hundredfold
         </a>
         <a className="btn" href="/">
-          Build your own deck
+          <span className="label-long">Build your own deck</span>
+          <span className="label-short">Build a deck</span>
         </a>
       </header>
       <main>

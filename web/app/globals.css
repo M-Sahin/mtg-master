@@ -86,7 +86,50 @@ input {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 18px clamp(16px, 4vw, 48px);
+}
+.top-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.top .btn,
+.top-link {
+  white-space: nowrap;
+}
+.label-short {
+  display: none;
+}
+@media (max-width: 640px) {
+  .top {
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+  .wordmark {
+    font-size: 20px;
+  }
+  /* the skill version is a detail; on a phone the header keeps the one useful link */
+  .top-meta .pill:not(.pill--demo) {
+    display: none;
+  }
+  .top-link {
+    padding: 7px 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: 99px;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .top .btn {
+    padding: 8px 14px;
+  }
+  .label-long {
+    display: none;
+  }
+  .label-short {
+    display: inline;
+  }
 }
 .wordmark {
   display: inline-flex;
@@ -1826,7 +1869,6 @@ select.field option {
 }
 .top-link {
   color: var(--muted);
-  margin-right: 14px;
   font-size: 15px;
 }
 .top-link:hover {

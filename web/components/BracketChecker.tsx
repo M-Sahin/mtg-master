@@ -39,7 +39,8 @@ export default function BracketChecker() {
           Hundredfold
         </a>
         <a className="btn" href="/">
-          Build a deck from five cards
+          <span className="label-long">Build a deck from five cards</span>
+          <span className="label-short">Build a deck</span>
         </a>
       </header>
       <main className="bracket-page">

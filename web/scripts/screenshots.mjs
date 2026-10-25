@@ -177,9 +177,16 @@ await run("17-bracket-checker", { width: 1440, height: 1000 }, async (p) => {
   console.log(`bracket checker: ${badge}; ${reasons.length} reason(s): ${reasons.map((r) => r.split("\n")[0].slice(0, 90)).join(" | ")}`);
   if (!/Bracket [34]/.test(badge)) errors.push(`bracket checker gave ${badge}`);
 });
-await run("18-mobile-bracket", { width: 390, height: 844 }, async (p) => {
-  await p.goto(`${base}/bracket`, { waitUntil: "networkidle" });
-});
+// the header must fit on one row on a phone, on every page
+for (const [name, path] of [["18-mobile-bracket", "/bracket"], ["19-mobile-home-header", "/"]]) {
+  await run(name, { width: 360, height: 740 }, async (p) => {
+    await p.goto(`${base}${path}`, { waitUntil: "networkidle" });
+    const box = await p.locator("header.top").boundingBox();
+    const items = await p.locator("header.top > *").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
+    console.log(`header on ${path} at 360px: ${Math.round(box?.height ?? 0)}px tall, items ${items.map(Math.round).join("/")}px`);
+    if ((box?.height ?? 0) > 80) errors.push(`header on ${path} wraps on a phone (${Math.round(box.height)}px)`);
+  });
+}
 await run("7-mobile-setup", { width: 390, height: 844 }, loadSeeds);
 await run("8-mobile-result", { width: 390, height: 844 }, toResult);
 
