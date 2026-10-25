@@ -48,7 +48,7 @@ The data is built once a day by `.github/workflows/ev-data.yml` (`scripts/build-
 - prices come from Scryfall (Cardmarket trend, EUR), looked up by set and collector number;
 - the result goes to the `ev-data` branch as one commit (no history, so the repo stays small), and Vercel doesn't deploy that branch.
 
-The site reads it from GitHub and keeps it in memory for 30 minutes. A self-hosted copy reads the same data, or set `EV_DATA_URL` to your own. Sealed box prices aren't in any free data source, which is why you enter your own price.
+The site reads it from GitHub and keeps it in memory for 30 minutes. A self-hosted copy reads the same data, or set `EV_DATA_URL` to your own. Sealed box prices aren't in any free data source, which is why you enter your own price. Packs per box come from MTGJSON's sealed products (Final Fantasy Play boxes have 30, Commander Masters Collector boxes 4); box toppers aren't counted, so boxes with one are worth a little more than shown.
 
 ## Opening-hand check
 
