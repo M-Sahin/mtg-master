@@ -33,7 +33,7 @@ export const IMPORT_SITES = [
 /** A ready-to-paste Reddit post (Markdown) for r/EDH and friends. */
 export function redditPost(deck: Deck, url: string): string {
   const lines: string[] = [];
-  lines.push(`**${deck.name}**: Bracket 3 Commander deck led by ${deck.commander.name}${deck.partner ? ` and ${deck.partner.name}` : ""}`);
+  lines.push(`**${deck.name}**: Bracket ${deck.bracket ?? 3} Commander deck led by ${deck.commander.name}${deck.partner ? ` and ${deck.partner.name}` : ""}`);
   lines.push("");
   if (deck.strategy) lines.push(deck.strategy, "");
   if (deck.winConditions.length) {

@@ -20,6 +20,7 @@ export interface SharedPayload {
   k: [string, number, number?][];
   e?: number[];
   cs?: boolean; // commander is a seed
+  br?: number; // bracket the deck was built for (missing = 3)
 }
 
 function toBase64Url(bytes: Uint8Array): string {
@@ -76,6 +77,7 @@ export function toPayload(deck: Deck): SharedPayload {
     k,
     ...(e.length ? { e } : {}),
     ...(deck.commander.seed ? { cs: true } : {}),
+    ...(deck.bracket && deck.bracket !== 3 ? { br: deck.bracket } : {}),
   };
 }
 
@@ -120,10 +122,11 @@ export async function decodePayload(d: string): Promise<SharedPayload> {
     k,
     e: Array.isArray(raw.e) ? raw.e.filter((i: unknown) => Number.isInteger(i) && (i as number) >= 0 && (i as number) < k.length) : undefined,
     cs: raw.cs === true,
+    ...([1, 2, 3, 4].includes(raw.br) ? { br: raw.br } : {}),
   };
 }
 
 /** Short description used in share texts and link previews. */
-export function shareTitle(p: { n: string; c: string; p?: string }) {
-  return `${p.n}: a Bracket 3 Commander deck led by ${p.c}${p.p ? ` and ${p.p}` : ""}`;
+export function shareTitle(p: { n: string; c: string; p?: string; br?: number }) {
+  return `${p.n}: a Bracket ${p.br ?? 3} Commander deck led by ${p.c}${p.p ? ` and ${p.p}` : ""}`;
 }

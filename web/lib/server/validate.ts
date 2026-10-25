@@ -1,6 +1,6 @@
 // Commander deck validation: a TypeScript port of mtg-master/scripts/deckcheck.py,
 // plus the Bracket 3 checks. Returns errors (must fix) and warnings (worth a look).
-import { BRACKET, COMMANDER_TEMPLATE } from "../shared/bracket";
+import { COMMANDER_TEMPLATE, bracketInfo } from "../shared/bracket";
 import type { CardInfo, Color, Deck, DeckCard, Role, Validation } from "../shared/types";
 import { BASIC_FOR_COLOR, ROLES, isBasicLand } from "../shared/types";
 import { type DeckAnalysis, isLand, isMdfcLand, landColors, pips, sourceTarget } from "../shared/analysis";
@@ -139,7 +139,8 @@ export function pairingProblem(a: CardInfo, b: CardInfo): string | null {
   return `${a.name} and ${b.name} can't be paired as commanders (they need matching Partner, Partner—[name], Friends forever, Background or Doctor's companion abilities).`;
 }
 
-export function validateDeck(deck: Deck, notFound: string[], seeds: string[] = [], opts: { commander?: string | null } = {}): Validation {
+export function validateDeck(deck: Deck, notFound: string[], seeds: string[] = [], opts: { commander?: string | null; bracket?: number } = {}): Validation {
+  const BRACKET = bracketInfo(opts.bracket ?? deck.bracket ?? 3);
   const errors: string[] = [];
   const warnings: string[] = [];
   const commanders = [deck.commander, ...(deck.partner ? [deck.partner] : [])];
@@ -198,19 +199,33 @@ export function validateDeck(deck: Deck, notFound: string[], seeds: string[] = [
       if (outside.length) errors.push(`${i.name} (${i.colorIdentity.join("")}) is outside the commander's color identity (${deck.colorIdentity.join("") || "colorless"}).`);
     }
     if (i.gameChanger) gameChangers.push(i.name);
-    if (MLD.some((re) => re.test(i.oracleText))) warnings.push(`${i.name} looks like mass land denial, which Bracket 3 tables don't expect.`);
+    if (BRACKET.number <= 3 && MLD.some((re) => re.test(i.oracleText))) warnings.push(`${i.name} looks like mass land denial, which Bracket ${BRACKET.number} tables don't expect.`);
     if (EXTRA_TURN.test(i.oracleText)) extraTurns += c.qty;
   }
   gameChangers = [...new Set(gameChangers)];
   if (gameChangers.length > BRACKET.maxGameChangers) {
-    errors.push(`${gameChangers.length} Game Changers (${gameChangers.join(", ")}); Bracket 3 allows at most ${BRACKET.maxGameChangers}. Cut ${gameChangers.length - BRACKET.maxGameChangers}.`);
+    // the user's own picks can't be cut: only the cards Claude added count against the limit
+    const picked = new Set(seeds.map((x) => x.toLowerCase()));
+    const added = gameChangers.filter((g) => !picked.has(g.toLowerCase()));
+    const allowed = Math.max(0, BRACKET.maxGameChangers - (gameChangers.length - added.length));
+    if (added.length > allowed) {
+      const cut = added.length - allowed;
+      errors.push(
+        BRACKET.maxGameChangers === 0
+          ? `${added.length} Game Changer${added.length > 1 ? "s" : ""} (${added.join(", ")}): Bracket ${BRACKET.number} allows none. Cut ${added.length > 1 ? "them" : "it"}.`
+          : `${gameChangers.length} Game Changers (${gameChangers.join(", ")}); Bracket ${BRACKET.number} allows at most ${BRACKET.maxGameChangers}. Cut ${cut}${added.length < gameChangers.length ? ` of ${added.join(", ")}` : ""}.`,
+      );
+    }
+    if (added.length < gameChangers.length && gameChangers.length - added.length > BRACKET.maxGameChangers)
+      warnings.push(`Your own cards include ${gameChangers.length - added.length} Game Changer(s), more than Bracket ${BRACKET.number} allows; the deck plays above that bracket.`);
   }
-  if (extraTurns > 2) warnings.push(`${extraTurns} extra-turn cards: Bracket 3 expects only a few and never chained.`);
+  if (extraTurns > 2 && BRACKET.number <= 3) warnings.push(`${extraTurns} extra-turn cards: Bracket ${BRACKET.number} expects only a few and never chained.`);
 
   // seeds
   for (const s of seeds) {
     const inDeck = [...commanders, ...deck.cards].some((c) => c.name.toLowerCase() === s.toLowerCase() || c.info?.name.toLowerCase() === s.toLowerCase());
-    if (!inDeck) errors.push(`Seed card "${s}" is missing. All five seed cards must be in the deck (or be the commander).`);
+    if (!inDeck)
+      errors.push(seeds.length > 5 ? `"${s}" from the user's deck is missing. Keep every card the user started with.` : `Seed card "${s}" is missing. All five seed cards must be in the deck (or be the commander).`);
   }
 
   // shape vs the template (warnings)
@@ -266,7 +281,7 @@ export function strictProblems(a: DeckAnalysis): string[] {
   const out: string[] = [];
   const named = (fn: string) => Object.entries(a.byCard).filter(([, f]) => (f as string[]).includes(fn)).map(([n]) => n);
   const landEq = a.lands + a.mdfcLands * 0.5;
-  if (landEq < 33) out.push(`Only ${a.lands} lands${a.mdfcLands ? ` (+${a.mdfcLands} MDFC land backs)` : ""}: a Bracket 3 deck needs about 35–38. Add ${Math.ceil(35 - landEq)} lands.`);
+  if (landEq < 33) out.push(`Only ${a.lands} lands${a.mdfcLands ? ` (+${a.mdfcLands} MDFC land backs)` : ""}: a Commander deck needs about 35–38. Add ${Math.ceil(35 - landEq)} lands.`);
   // landfall and lands-matter decks run 40+ on purpose; only flag the extreme
   if (a.lands > 44) out.push(`${a.lands} lands is too many even for a lands deck; the usual range is 35–38 (up to ~42 for landfall). Cut ${a.lands - 42}.`);
   const mins: [string, string, number, string][] = [

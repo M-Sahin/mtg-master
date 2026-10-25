@@ -583,7 +583,7 @@ button.card {
 /* ---------- options ---------- */
 .options {
   display: grid;
-  grid-template-columns: 1.1fr 1.4fr 1.2fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px 28px;
   margin-top: 28px;
   align-items: start;
@@ -1887,4 +1887,42 @@ select.field option {
   clip: rect(0 0 0 0);
   white-space: nowrap;
   border: 0;
+}
+.bracket-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.seg--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.deckstart-ask {
+  border: 1px solid var(--brass);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: color-mix(in oklab, var(--brass) 10%, transparent);
+  display: grid;
+  gap: 10px;
+}
+.deckstart-ask p {
+  margin: 0;
+}
+.deckstart-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.deckstart-result {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+@media (max-width: 860px) {
+  .options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .seg--four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

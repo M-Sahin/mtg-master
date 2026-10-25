@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BRACKET, COMMANDER_TEMPLATE } from "../lib/shared/bracket";
+import { COMMANDER_TEMPLATE, bracketInfo } from "../lib/shared/bracket";
 import { MANA_COLORS, ROLE_COLORS, averageMv, byRole, byType, curve, exportText, library, pips, price, shuffle, totalCards, isLand } from "../lib/shared/deck-utils";
 import type { Color, Deck, DeckCard, Validation } from "../lib/shared/types";
 import { ROLE_LABELS } from "../lib/shared/types";
@@ -59,7 +59,7 @@ export function DeckView({
           <div className="deck-title">
             <p className="deck-kicker">
               <IdentityPips colors={deck.colorIdentity} /> {shared ? "Shared with you: a " : ""}
-              {shared ? "b" : "B"}racket {BRACKET.number} Commander deck led by {cmd.name}
+              {shared ? "b" : "B"}racket {deck.bracket ?? 3} Commander deck led by {cmd.name}
               {deck.partner ? ` and ${deck.partner.name}` : ""}
             </p>
             <h2>{deck.name}</h2>
@@ -326,18 +326,24 @@ function HandTab({ deck, onOpen }: { deck: Deck; onOpen: (c: DeckCard) => void }
 }
 
 function BracketCard({ deck, validation }: { deck: Deck; validation: Validation }) {
+  const BRACKET = bracketInfo(deck.bracket ?? 3);
   const gc = validation.gameChangers;
   const mldWarn = validation.warnings.find((w) => w.includes("mass land denial"));
   const turnWarn = validation.warnings.find((w) => w.includes("extra-turn"));
   const items: [boolean, string][] = [
-    [gc.length <= BRACKET.maxGameChangers, `${gc.length} of ${BRACKET.maxGameChangers} Game Changers${gc.length ? `: ${gc.join(", ")}` : ""}`],
+    [
+      gc.length <= BRACKET.maxGameChangers,
+      BRACKET.maxGameChangers >= 99 ? `${gc.length} Game Changers (no limit in Bracket 4)${gc.length ? `: ${gc.join(", ")}` : ""}` : BRACKET.maxGameChangers === 0 ? (gc.length ? `${gc.length} Game Changers: ${gc.join(", ")} (Bracket ${BRACKET.number} allows none)` : "No Game Changers") : `${gc.length} of ${BRACKET.maxGameChangers} Game Changers${gc.length ? `: ${gc.join(", ")}` : ""}`,
+    ],
     [!mldWarn, mldWarn ? mldWarn : "No mass land denial"],
     [!turnWarn, turnWarn ? turnWarn : "No chained extra turns"],
     [validation.total === 100, `${validation.total} cards, singleton, all in color identity`],
   ];
   return (
     <div className="bracket">
-      <h3>Bracket {BRACKET.number} check</h3>
+      <h3>
+        Bracket {BRACKET.number} ({BRACKET.name}) check
+      </h3>
       <ul>
         {items.map(([ok, text]) => (
           <li key={text} className={ok ? "is-ok" : "is-warn"}>

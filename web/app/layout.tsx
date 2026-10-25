@@ -8,7 +8,7 @@ const ui = Alegreya_Sans({ subsets: ["latin"], weight: ["400", "500", "700"], va
 
 export const metadata: Metadata = {
   title: "Hundredfold: a Commander deck from five cards",
-  description: "Pick five Magic cards. Claude, using the mtg-master skill, builds a complete Bracket 3 Commander deck around them and checks every card on Scryfall.",
+  description: "Pick five Magic cards. Claude, using the mtg-master skill, builds a complete Commander deck around them in the bracket you choose, and checks every card on Scryfall. Free bracket checker included.",
 };
 
 // every page gets a per-request CSP nonce (proxy.ts), so pages render per request

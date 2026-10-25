@@ -196,6 +196,29 @@ for (const [name, path] of [["18-mobile-bracket", "/bracket"], ["19-mobile-home-
     if ((box?.height ?? 0) > 80) errors.push(`header on ${path} wraps on a phone (${Math.round(box.height)}px)`);
   });
 }
+// start from your own deck: an incomplete list gets the "complete it?" question
+await run("20-complete-my-deck", { width: 1440, height: 1000 }, async (p) => {
+  const picker = await p.locator("input[name=bracket]").count();
+  if (picker !== 4) errors.push(`bracket picker has ${picker} options`);
+  await p.click("text=Add my deck");
+  await p.fill("[data-testid=deck-list]", "Commander\n1 Meren of Clan Nel Toth\n\nDeck\n1 Sol Ring\n1 Sakura-Tribe Elder\n1 Viscera Seer\n1 Eternal Witness\n10 Forest\n10 Swamp");
+  await p.click("text=Read my deck");
+  await p.waitForSelector("[data-testid=deck-start-result]", { timeout: 60000 });
+  const ask = await p.locator(".deckstart-ask").innerText().catch(() => "");
+  console.log(`complete my deck: ${ask.split("\n")[0]}`);
+  if (!/Your deck has 25 cards\. Do you want Hundredfold to complete it\?/.test(ask)) errors.push(`no completion question: ${ask}`);
+  // this demo deployment has no key: the button explains why it's off
+  if (!(await p.locator("text=Yes, complete my deck").isDisabled())) errors.push("complete button should need an API key here");
+});
+// bracket checker: upload a .txt decklist
+await run("21-bracket-upload", { width: 1440, height: 1000 }, async (p) => {
+  await p.goto(`${base}/bracket`, { waitUntil: "networkidle" });
+  await p.setInputFiles("[data-testid=bracket-file]", { name: "deck.txt", mimeType: "text/plain", buffer: Buffer.from("Commander\n1 Meren of Clan Nel Toth\n\nDeck\n1 Sol Ring\n1 Demonic Tutor\n") });
+  await p.waitForFunction(() => document.querySelector("[data-testid=bracket-list]")?.value.includes("Demonic Tutor"), null, { timeout: 5000 });
+  await p.click("text=Check the bracket");
+  await p.waitForSelector(".bracket-badge", { timeout: 60000 });
+  console.log(`bracket upload: ${await p.locator(".bracket-badge strong").innerText()}`);
+});
 await run("7-mobile-setup", { width: 390, height: 844 }, loadSeeds);
 await run("8-mobile-result", { width: 390, height: 844 }, toResult);
 

@@ -23,5 +23,6 @@ export async function resolveShared(p: SharedPayload): Promise<{ deck: Deck; val
   const { sub, seeds } = payloadToSubmission(p);
   const { found, notFound } = await scry.getCollection(namesInSubmission(sub));
   const deck = buildDeck(sub, found, seeds);
-  return { deck, validation: validateDeck(deck, notFound, seeds) };
+  if (p.br) deck.bracket = p.br;
+  return { deck, validation: validateDeck(deck, notFound, seeds, { bracket: p.br ?? 3 }) };
 }

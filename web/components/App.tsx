@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BRACKET } from "../lib/shared/bracket";
+import { BRACKETS, type BracketNumber } from "../lib/shared/bracket";
+import { DeckStartPanel, splitBasics, type StartDeck } from "./DeckStartPanel";
 import { MANA_COLORS } from "../lib/shared/deck-utils";
 import type { Budget, Color, Deck, GenerateRequest, StreamEvent, Usage, Validation } from "../lib/shared/types";
 import { cardByName, generate, getConfig, myDecks, randomCard, resolveDeck, runningBuild, stopBuild, storage, type PublicConfig, type SavedDeck } from "../lib/client/api";
@@ -36,6 +37,7 @@ export default function App() {
   const [seeds, setSeeds] = useState<(Seed | null)[]>([null, null, null, null, null]);
   const [commander, setCommander] = useState<string | null>(null);
   const [budget, setBudget] = useState<Budget>("any");
+  const [bracket, setBracket] = useState<BracketNumber>(3);
   const [theme, setTheme] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [phase, setPhase] = useState<Phase>("setup");
@@ -149,7 +151,25 @@ export default function App() {
       commander,
       budget,
       theme,
+      bracket,
       ...(collection && !demoOnly ? { collection: { names: collection.names, mode: collection.mode } } : {}),
+    });
+  };
+
+  /** "Yes, complete my deck": every card the user has stays; Claude fills the deck to 100. */
+  const complete = async (d: StartDeck) => {
+    savedCode.set(accessCode.trim() || null);
+    const { names, basics } = splitBasics(d.cards);
+    await run({
+      mode: "complete",
+      seeds: names,
+      basics,
+      commander: d.commander,
+      partner: d.partner ?? null,
+      budget,
+      theme,
+      bracket,
+      ...(collection ? { collection: { names: collection.names, mode: collection.mode } } : {}),
     });
   };
 
@@ -318,7 +338,7 @@ export default function App() {
               Five cards in.
               <br />A hundred out.
             </h1>
-            <p className="hero-sub">Pick five cards you love. Claude builds a full Bracket {BRACKET.number} Commander deck around them, checks every card on Scryfall, and shows its work while it builds.</p>
+            <p className="hero-sub">Pick five cards you love. Claude builds a full Commander deck around them in the bracket you choose, checks every card on Scryfall, and shows its work while it builds. Or let it complete a deck you started.</p>
           </section>
 
           <section className="mat" aria-label="Seed cards">
@@ -378,6 +398,20 @@ export default function App() {
                 ))}
               </div>
             </fieldset>
+            <fieldset className="opt">
+              <legend className="opt-label">Bracket</legend>
+              <div className="seg seg--four">
+                {([1, 2, 3, 4] as BracketNumber[]).map((b) => (
+                  <label key={b} className={`seg-item ${bracket === b ? "is-on" : ""}`} title={BRACKETS[b].rules.join(" ")}>
+                    <input type="radio" name="bracket" value={b} checked={bracket === b} onChange={() => setBracket(b)} />
+                    <span className="seg-title">
+                      {b} · {BRACKETS[b].name}
+                    </span>
+                    <span className="seg-hint">{BRACKETS[b].hint}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <label className="opt">
               <span className="opt-label">Anything else?</span>
               <input className="field" value={theme} maxLength={300} onChange={(e) => setTheme(e.target.value)} placeholder="For example: lots of tokens, no infinite combos, flavor over power" />
@@ -392,6 +426,21 @@ export default function App() {
 
           <div className="panels">
             {config?.ownKeys ? <KeyPanel value={key} onChange={setKey} serverKey={config.mode === "live"} /> : null}
+            <DeckStartPanel
+              onComplete={complete}
+              onRead={(r) => {
+                if (r.bracket >= 1 && r.bracket <= 4) setBracket(r.bracket as BracketNumber);
+              }}
+              blocked={
+                demoOnly
+                  ? config?.ownKeys
+                    ? "Completing a deck needs a Claude API key: add yours in the key panel."
+                    : "Completing a deck needs a Claude API key on this site."
+                  : needCode
+                    ? "Enter the access code first."
+                    : undefined
+              }
+            />
             <CollectionPanel value={collection} onChange={setCollection} inactive={demoOnly ? "Your collection is used once you add an API key; the demo deck ignores it." : undefined} />
           </div>
 

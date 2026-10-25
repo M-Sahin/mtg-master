@@ -6,8 +6,9 @@ import { DraftScanner } from "./draft-scanner";
 import { parseEngine, type EngineOptions } from "./engine";
 import { systemPrompt, toolsFor, userPrompt } from "./prompt";
 import * as scry from "./scryfall";
-import { buildDeck, namesInSubmission, rebalanceBasics, repairCount, strictProblems, validateDeck, type SubmittedDeck } from "./validate";
+import { EXTRA_TURN, MLD, buildDeck, namesInSubmission, rebalanceBasics, repairCount, strictProblems, validateDeck, type SubmittedDeck } from "./validate";
 import { analysisReport, analyzeDeck, type DeckAnalysis } from "../shared/analysis";
+import { bracketInfo } from "../shared/bracket";
 import type { CardInfo, Deck, GenerateRequest, Role, StreamEvent, Usage, Validation } from "../shared/types";
 import { ROLES, isBasicLand, nameKey } from "../shared/types";
 
@@ -201,7 +202,9 @@ async function checkSubmission(sub: SubmittedDeck, attempt: number, req: Generat
       await fillInfo();
     }
   }
-  const opts = { commander: req.commander };
+  const bracket = bracketInfo(req.bracket);
+  deck.bracket = bracket.number;
+  const opts = { commander: req.commander, bracket: bracket.number };
   let validation = validateDeck(deck, notFound, seedNames, opts);
   // After a couple of tries, fix pure count problems ourselves.
   if (!validation.ok && attempt >= 2 && validation.errors.every((e) => e.startsWith("Deck has "))) {
@@ -225,20 +228,37 @@ async function checkSubmission(sub: SubmittedDeck, attempt: number, req: Generat
   }
   // The stricter checks only block the first attempts, so a heuristic miss can't sink a build.
   if (engine.strict && attempt <= 2) problems.push(...strictProblems(analysis));
+  // the chosen bracket: land denial and extra turns (combos below)
+  const strictBracket = attempt <= 3 ? problems : validation.warnings;
+  if (bracket.number <= 3) {
+    const mld = [deck.commander, ...deck.cards].filter((c) => c.info && MLD.some((r) => r.test(c.info!.oracleText)) && !seedNames.includes(c.name)).map((c) => c.name);
+    if (mld.length) strictBracket.push(`${mld.join(", ")}: mass land denial isn't allowed in Bracket ${bracket.number}. Replace ${mld.length > 1 ? "them" : "it"}.`);
+  }
+  if (bracket.number === 1) {
+    const turns = deck.cards.filter((c) => c.info && EXTRA_TURN.test(c.info.oracleText) && !seedNames.includes(c.name)).map((c) => c.name);
+    if (turns.length) strictBracket.push(`${turns.join(", ")}: Bracket 1 has no extra-turn cards. Replace ${turns.length > 1 ? "them" : "it"}.`);
+  }
   let combos: ComboReport | undefined;
   const room = msLeft() - 8000;
-  if (engine.combos && validation.errors.every((e) => !e.startsWith("Deck has "))) {
+  // two-card combos decide brackets 1–3: always checked below bracket 3, and in bracket 3 with the combos switch
+  if ((engine.combos ? bracket.number <= 3 : bracket.number <= 2) && validation.errors.every((e) => !e.startsWith("Deck has "))) {
     if (room < 3000) validation.warnings.push("Combo check skipped: out of time.");
     else {
       combos = await checkCombos(deck, fetch, Math.min(12000, room));
       const chosen = new Set([...seedNames, deck.commander.name, deck.partner?.name ?? ""].map((n) => n.toLowerCase()));
       // a combo made only of the user's own picks is their call: warn, don't reject
-      const forced = combos.tooStrong.filter((c) => c.cards.every((n) => chosen.has(n.toLowerCase())));
-      const blocking = comboErrors({ ...combos, tooStrong: combos.tooStrong.filter((c) => !forced.includes(c)) });
+      // bracket 3: the fast (Ruthless) ones; brackets 1–2: any two-card combo
+      const tooStrong = bracket.number <= 2 ? combos.combos.filter((c) => c.cards.length <= 2) : combos.tooStrong;
+      const forced = tooStrong.filter((c) => c.cards.every((n) => chosen.has(n.toLowerCase())));
+      const blocking =
+        bracket.number <= 2
+          ? tooStrong.filter((c) => !forced.includes(c)).map((c) => `${c.cards.join(" + ")} is a two-card combo (${c.results.slice(0, 2).join(", ") || "infinite"}): Bracket ${bracket.number} decks have none. Cut one of the pieces (keep the user's cards).`)
+          : comboErrors({ ...combos, tooStrong: tooStrong.filter((c) => !forced.includes(c)) });
       if (attempt <= 3) problems.push(...blocking);
       else validation.warnings.push(...blocking);
-      for (const c of forced) validation.warnings.push(`${c.cards.join(" + ")} is a strong two-card combo made of your own picks; Bracket 3 tables may not expect it.`);
-      for (const c of combos.flagged ?? []) validation.warnings.push(`Combo in the deck: ${c.cards.join(" + ")} (${c.results.slice(0, 2).join(", ")}), rated Spicy by Commander Spellbook. Fine for Bracket 3, but mention it at the table.`);
+      for (const c of forced) validation.warnings.push(`${c.cards.join(" + ")} is a two-card combo made of your own picks; Bracket ${bracket.number} tables may not expect it.`);
+      if (bracket.number === 3)
+        for (const c of combos.flagged ?? []) validation.warnings.push(`Combo in the deck: ${c.cards.join(" + ")} (${c.results.slice(0, 2).join(", ")}), rated Spicy by Commander Spellbook. Fine for Bracket 3, but mention it at the table.`);
       if (!combos.checked) validation.warnings.push(combos.error ?? "Combo check unavailable.");
     }
   }
@@ -256,24 +276,32 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
   const left = () => hard - (Date.now() - started);
   const usage = emptyUsage();
 
-  emit({ type: "status", text: "Reading your five seed cards" });
-  const { seeds, problems } = await resolveSeeds(req.seeds);
+  const completing = req.mode === "complete";
+  emit({ type: "status", text: completing ? "Reading your deck" : "Reading your five seed cards" });
+  // completing a deck: the commander(s) are looked up with the user's cards
+  const lookupNames = completing ? [...req.seeds, req.commander ?? "", req.partner ?? ""].filter(Boolean) : req.seeds;
+  const { seeds, problems } = await resolveSeeds(lookupNames);
   if (problems.length) {
     emit({ type: "error", message: problems.join(" ") });
     return null;
   }
+  const byName = (n: string) => seeds.find((s) => s.name.toLowerCase() === n.toLowerCase() || s.name.toLowerCase().split(" // ")[0] === n.toLowerCase().split(" // ")[0]);
   if (req.commander) {
-    const c = seeds.find((s) => s.name.toLowerCase() === req.commander!.toLowerCase());
+    const c = byName(req.commander);
     if (!c?.canBeCommander) {
       emit({ type: "error", message: `${req.commander} can't be a commander.` });
       return null;
     }
     req = { ...req, commander: c.name };
   }
+  if (completing && req.partner) {
+    const p = byName(req.partner);
+    if (p) req = { ...req, partner: p.name };
+  }
   const seedNames = seeds.map((s) => s.name);
   const owned = req.collection?.names.length ? new Set(req.collection.names.map(nameKey)) : undefined;
 
-  const system = [{ type: "text", text: systemPrompt(engine), cache_control: { type: "ephemeral" } }];
+  const system = [{ type: "text", text: systemPrompt(engine, req.bracket), cache_control: { type: "ephemeral" } }];
   const tools = toolsFor(engine);
   const messages: any[] = [{ role: "user", content: userPrompt(req, seeds) }];
   const baseTokens = engine.prompt === 2 ? 32000 : 16000;
@@ -494,7 +522,8 @@ function reviewRequest(c: Checked): string {
   if (c.combos) parts.push(comboNotes(c.combos));
   if (c.validation.warnings.length) parts.push(`Warnings: ${c.validation.warnings.join(" ")}`);
   parts.push(
-    "Review the list as a strong Bracket 3 player would. Fix template gaps the counts show; swap generic staples and weak or off-plan cards for cards that make the seeds better; check the curve and the mana. Seeds and the commander stay.",
+    `Review the list as a strong Bracket ${c.deck.bracket ?? 3} player would.` +
+      " Fix template gaps the counts show; swap generic staples and weak or off-plan cards for cards that make the seeds better; check the curve and the mana. Seeds and the commander stay.",
     "Then call revise_deck with up to 10 swaps (each removes one card and adds one), or with an empty swaps list if the deck is already right. Don't resubmit the whole deck.",
   );
   return parts.join("\n");

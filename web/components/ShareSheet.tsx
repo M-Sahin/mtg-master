@@ -62,7 +62,7 @@ function ShareSheet({ deck, shareD, onClose }: { deck: Deck; shareD?: string; on
     };
   }, [deck, shareD]);
 
-  const title = shareTitle({ n: deck.name, c: deck.commander.name, p: deck.partner?.name });
+  const title = shareTitle({ n: deck.name, c: deck.commander.name, p: deck.partner?.name, br: deck.bracket });
   const targets = useMemo(() => (url ? shareTargets({ url, title }) : []), [url, title]);
 
   const flash = (msg: string) => {

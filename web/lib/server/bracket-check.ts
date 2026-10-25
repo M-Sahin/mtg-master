@@ -39,6 +39,8 @@ export interface BracketReport {
   commanders: string[];
   commanderGuessed: boolean;
   total: number;
+  /** The cards besides the commander(s), with Scryfall's names (used to complete a deck). */
+  cards: { name: string; qty: number }[];
   notFound: string[];
   problems: string[]; // legality / deck-size issues
   analysis: DeckAnalysis | null;
@@ -132,6 +134,7 @@ export async function checkBracket(text: string): Promise<BracketReport> {
     commanders: cmdCards.map((c) => c.name),
     commanderGuessed: guessed,
     total,
+    cards: deckCards.filter((c) => c.info).map((c) => ({ name: c.name, qty: c.qty })),
     notFound,
     problems,
     analysis: cmdCards.length && total >= 60 ? analyzeDeck(deck) : null,

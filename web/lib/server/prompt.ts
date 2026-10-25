@@ -1,6 +1,6 @@
 // Builds Claude's system prompt from the mtg-master skill (lib/skill/content.ts, generated
 // from ../mtg-master by scripts/sync-skill.mjs) plus an adapter for this app's tools.
-import { BRACKET } from "../shared/bracket";
+import { bracketInfo, type BracketInfo } from "../shared/bracket";
 import type { Budget, CardInfo, GenerateRequest } from "../shared/types";
 import { SKILL_FILES, SKILL_VERSION } from "../skill/content";
 import type { EngineOptions } from "./engine";
@@ -40,7 +40,7 @@ export function skillContext(): string {
   ].join("\n");
 }
 
-const ADAPTER_V1 = `
+const ADAPTER_V1 = (BRACKET: BracketInfo) => `
 <app_adapter>
 You are running inside "Hundredfold", a web app that builds a complete Commander deck from five seed cards.
 Follow the mtg-master skill above, with these adaptations for this app:
@@ -53,7 +53,7 @@ TOOLS (they replace the skill's scripts — you have no shell):
 THE TASK
 - Build exactly one Commander deck for Bracket ${BRACKET.number} (${BRACKET.name}). Bracket rules, verified ${BRACKET.verified}:
 ${BRACKET.rules.map((r) => `  - ${r}`).join("\n")}
-  The Game Changer flag on card data is authoritative and current; respect the limit of ${BRACKET.maxGameChangers}.
+  The Game Changer flag on card data is authoritative and current; ${BRACKET.maxGameChangers >= 99 ? "this bracket has no limit" : `respect the limit of ${BRACKET.maxGameChangers}`}.
 - All five seed cards must be in the deck (or be the commander). Build the deck so the seeds matter: find what they have in common and make that the plan.
 - If the user picked a commander, use it. Otherwise choose the commander whose color identity covers all five seeds and that best rewards what they do (search with is:commander and id>= the seeds' combined identity; prefer one of the seeds if it's a good fit). If no single legal commander covers the seeds, pick the best one and explain which seed is off-color — but avoid this whenever possible.
 - Use the skill's Commander template (references/commander.md §4) and Karsten numbers for colored sources. Count roles honestly.
@@ -72,7 +72,7 @@ EFFICIENCY (the user is watching a live progress screen; keep total time to a fe
 
 // v2: plan the slots first, spend research on the seeds' theme (where Claude's memory is
 // weakest) instead of on staples it already knows, and expect the stricter server checks.
-const ADAPTER_V2 = (e: EngineOptions) => `
+const ADAPTER_V2 = (e: EngineOptions, BRACKET: BracketInfo) => `
 <app_adapter>
 You are running inside "Hundredfold", a web app that builds a complete Commander deck from five seed cards.
 Follow the mtg-master skill above, with these adaptations for this app:
@@ -86,7 +86,7 @@ TOOLS (they replace the skill's scripts — you have no shell):
 THE TASK
 - Build exactly one Commander deck for Bracket ${BRACKET.number} (${BRACKET.name}). Bracket rules, verified ${BRACKET.verified}:
 ${BRACKET.rules.map((r) => `  - ${r}`).join("\n")}
-  The Game Changer flag on card data is authoritative and current; respect the limit of ${BRACKET.maxGameChangers}. Don't put two-card infinite combos in the deck unless the user asks for combos${e.combos ? "; cheap early ones are rejected by the server" : ""}.
+  The Game Changer flag on card data is authoritative and current; ${BRACKET.maxGameChangers >= 99 ? "this bracket has no limit" : `respect the limit of ${BRACKET.maxGameChangers}`}.${BRACKET.number <= 3 ? ` Don't put two-card infinite combos in the deck unless the user asks for combos${e.combos ? "; cheap early ones are rejected by the server" : ""}.` : ""}
 - All five seed cards must be in the deck (or be the commander). The seeds are the point of the deck: the user picked them because they want to play them.
 - If the user picked a commander, use it. Otherwise choose the commander whose color identity covers all five seeds and that best rewards what they do (search with is:commander and id>= the seeds' combined identity; prefer one of the seeds if it's a good fit). If no single legal commander covers the seeds, pick the best one and explain which seed is off-color — but avoid this whenever possible.
 
@@ -112,8 +112,9 @@ SUBMITTING
 - Keep your visible text short: 1 sentence before each batch of tool calls saying what you're looking for. The user is watching a live progress screen; the whole build should take a few minutes.
 </app_adapter>`;
 
-export function systemPrompt(engine?: EngineOptions): string {
-  const adapter = engine?.prompt === 2 ? ADAPTER_V2(engine) : ADAPTER_V1;
+export function systemPrompt(engine?: EngineOptions, bracket?: number): string {
+  const b = bracketInfo(bracket ?? 3);
+  const adapter = engine?.prompt === 2 ? ADAPTER_V2(engine, b) : ADAPTER_V1(b);
   return `${skillContext()}\n${adapter}`.trim();
 }
 
@@ -124,6 +125,8 @@ const BUDGET_TEXT: Record<Budget, string> = {
 };
 
 export function userPrompt(req: GenerateRequest, seeds: CardInfo[]): string {
+  if (req.mode === "complete") return completePrompt(req, seeds);
+  const BRACKET = bracketInfo(req.bracket);
   const lines = seeds.map((s) => {
     const pair = pairingLabel(s);
     return `- ${s.name} — ${s.manaCost || "(no cost)"} — ${s.typeLine} — identity ${s.colorIdentity.join("") || "C"}${s.canBeCommander ? " — can be a commander" : ""}${pair ? ` — ${pair}` : ""}`;
@@ -185,7 +188,7 @@ export const TOOLS = [
         partner: { type: "string", description: "Second commander, only when both can pair: Partner, Partner with, Partner—[same name], Friends forever, a Background, or a Doctor's companion with a Doctor" },
         strategy: { type: "string", description: "2–4 sentences: game plan and how the seeds fit" },
         win_conditions: { type: "array", items: { type: "string" }, description: "3–6 concrete ways the deck wins" },
-        bracket_notes: { type: "string", description: "1–2 sentences on why this is Bracket 3 (Game Changers used, no MLD/chained turns/early combos)" },
+        bracket_notes: { type: "string", description: "1–2 sentences on why the deck fits its bracket (Game Changers used, combos, land denial, extra turns)" },
         cards: {
           type: "array",
           description: "Every card except the commander and basic lands, one entry per card (singleton). Nonbasic lands go here with role 'land'.",
@@ -248,4 +251,28 @@ function collectionText(c: NonNullable<GenerateRequest["collection"]>): string {
       ? "Build ONLY from cards in this collection, plus basic lands and the seeds. The server rejects any other card, so search with your usual queries and pick the results marked OWNED."
       : "Prefer cards from this collection when they fit the plan about as well as the alternative; cards the user doesn't own are fine where they're clearly better. Search results mark owned cards with OWNED.";
   return `\nCOLLECTION: the user owns these ${c.names.length} cards. ${rule}\n<collection>\n${c.names.join("\n")}\n</collection>`;
+}
+
+/** "Complete my deck": the user's cards all stay; Claude fills the deck up to 100. */
+function completePrompt(req: GenerateRequest, cards: CardInfo[]): string {
+  const b = bracketInfo(req.bracket);
+  const basics = Object.entries(req.basics ?? {}).filter(([, q]) => q > 0);
+  const own = cards.filter((c) => c.name.toLowerCase() !== (req.commander ?? "").toLowerCase() && c.name.toLowerCase() !== (req.partner ?? "").toLowerCase());
+  const total = 1 + (req.partner ? 1 : 0) + own.length + basics.reduce((n, [, q]) => n + q, 0);
+  return [
+    `COMPLETE A DECK: the user has started a Bracket ${b.number} (${b.name}) Commander deck and wants you to finish it. This replaces the five-seed task: there are no five seeds here; every card the user already has counts as a seed and must stay.`,
+    `Commander: ${req.commander}${req.partner ? ` with ${req.partner}` : ""} (the user's choice: use ${req.partner ? "them" : "it"}).`,
+    `The deck has ${total} of 100 cards. Add exactly ${100 - total} more (basic lands count), so the total is 100.`,
+    "First work out the plan the user's cards point to, then fill the gaps the Commander template shows (ramp, draw, removal, wipes, lands) and add cards that support that plan.",
+    "",
+    "The user's cards (all stay; put them in submit_deck with the cards you add):",
+    ...own.map((c) => `- ${c.name} — ${c.manaCost || "(no cost)"} — ${c.typeLine}`),
+    ...(basics.length ? [`Basic lands already in the deck: ${basics.map(([n, q]) => `${q} ${n}`).join(", ")} (you may add more basics).`] : []),
+    "",
+    `Budget: ${BUDGET_TEXT[req.budget]}`,
+    req.theme?.trim() ? `Wishes from the user: ${req.theme.trim().slice(0, 300)}` : "",
+    req.collection?.names.length ? collectionText(req.collection) : "",
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
 }

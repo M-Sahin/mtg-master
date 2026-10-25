@@ -55,10 +55,27 @@ export default function BracketChecker() {
             <textarea className="field bracket-input" rows={12} value={list} onChange={(e) => setList(e.target.value)} placeholder={EXAMPLE} aria-label="Decklist" data-testid="bracket-list" spellCheck={false} />
             <span className="opt-hint">Works with exports from Moxfield, Archidekt, MTG Arena and MTGO, or any &ldquo;1 Card name&rdquo; list. Put the commander under a &ldquo;Commander&rdquo; heading, or first, followed by an empty line.</span>
           </label>
-          <div>
+          <div className="bracket-actions">
             <button type="button" className="btn btn--big btn--brass" onClick={check} disabled={busy || !list.trim()}>
               {busy ? "Checking…" : "Check the bracket"}
             </button>
+            <label className="btn">
+              Upload a .txt file
+              <input
+                type="file"
+                accept=".txt,text/plain"
+                hidden
+                data-testid="bracket-file"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!f) return;
+                  if (f.size > 200_000) return setError("That file is too big for a decklist.");
+                  setError(null);
+                  setList(await f.text());
+                }}
+              />
+            </label>
           </div>
           {error ? (
             <p className="error" role="alert">

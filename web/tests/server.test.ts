@@ -175,7 +175,13 @@ test("parseRequest validates input", () => {
   assert.equal(typeof parseRequest({ seeds: ["a", "a", "b", "c", "d"] }), "string");
   assert.equal(typeof parseRequest({ seeds: ["a", "b", "c", "d", "e"], commander: "z" }), "string");
   const ok = parseRequest({ seeds: ["a", "b", "c", "d", "e"], commander: "c", budget: "lol" });
-  assert.deepEqual(ok, { seeds: ["a", "b", "c", "d", "e"], commander: "c", budget: "any", theme: undefined });
+  assert.deepEqual(ok, { seeds: ["a", "b", "c", "d", "e"], commander: "c", budget: "any", theme: undefined, bracket: 3 });
+  assert.equal((parseRequest({ seeds: ["a", "b", "c", "d", "e"], bracket: 1 }) as any).bracket, 1);
+  assert.equal((parseRequest({ seeds: ["a", "b", "c", "d", "e"], bracket: 7 }) as any).bracket, 3, "unknown brackets fall back to 3");
+  // completing a deck: any number of cards, a commander is required, basics are kept as counts
+  assert.equal(typeof parseRequest({ mode: "complete", seeds: ["Sol Ring"] }), "string");
+  const c = parseRequest({ mode: "complete", seeds: ["Sol Ring", "Sol Ring", "Viscera Seer"], commander: "Meren of Clan Nel Toth", basics: { Forest: 10, "Not a basic": 3 }, bracket: 2 });
+  assert.deepEqual(c, { seeds: ["Sol Ring", "Viscera Seer"], commander: "Meren of Clan Nel Toth", budget: "any", theme: undefined, bracket: 2, mode: "complete", partner: null, basics: { Forest: 10 } });
 });
 
 async function collect(res: Response) {

@@ -70,6 +70,8 @@ export interface Deck {
   winConditions: string[];
   bracketNotes: string;
   colorIdentity: Color[];
+  /** The bracket the deck was built for (missing = 3). */
+  bracket?: number;
 }
 
 export interface Validation {
@@ -92,8 +94,15 @@ export interface Usage {
 }
 
 export interface GenerateRequest {
-  seeds: string[]; // exactly 5 card names
-  commander: string | null; // one of the seeds, or null = let Claude choose
+  /** "seeds" (default): build around five seed cards. "complete": finish a deck the user started. */
+  mode?: "seeds" | "complete";
+  seeds: string[]; // seeds mode: exactly 5 card names; complete mode: the nonbasic cards the user has (all stay)
+  commander: string | null; // seeds mode: one of the seeds, or null = let Claude choose; complete mode: required
+  partner?: string | null; // complete mode: a second commander the user already has
+  /** complete mode: basic lands already in the user's deck */
+  basics?: Record<string, number>;
+  /** Commander bracket to build for (default 3). */
+  bracket?: 1 | 2 | 3 | 4;
   budget: Budget;
   theme?: string;
   /** Cards the user owns: "prefer" them, or build "only" from them (plus basics and the seeds). */

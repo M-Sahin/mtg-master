@@ -26,12 +26,28 @@ const MAX_BODY = 1_500_000; // a 5000-card collection fits comfortably
 
 export function parseRequest(body: any): GenerateRequest | string {
   if (!body || typeof body !== "object") return "Invalid request body.";
-  const seeds = Array.isArray(body.seeds) ? body.seeds.map((s: unknown) => String(s ?? "").trim()).filter(Boolean) : [];
-  if (seeds.length !== 5) return "Pick exactly five seed cards.";
-  if (new Set(seeds.map((s: string) => s.toLowerCase())).size !== 5) return "The five seed cards must be different.";
-  if (seeds.some((s: string) => s.length > 150)) return "Card name too long.";
-  const commander = body.commander ? String(body.commander).trim() : null;
-  if (commander && !seeds.some((s: string) => s.toLowerCase() === commander.toLowerCase())) return "The commander must be one of the seeds.";
+  const complete = body.mode === "complete";
+  const raw = Array.isArray(body.seeds) ? body.seeds.map((s: unknown) => String(s ?? "").trim()).filter(Boolean) : [];
+  if (raw.some((s: string) => s.length > 150)) return "Card name too long.";
+  const commander = body.commander ? String(body.commander).trim().slice(0, 150) : null;
+  const bracket = ([1, 2, 3, 4] as const).find((b) => b === Number(body.bracket)) ?? 3;
+  let seeds: string[];
+  let extra: Partial<GenerateRequest> = {};
+  if (complete) {
+    seeds = [...new Map(raw.map((s: string) => [s.toLowerCase(), s])).values()] as string[];
+    if (!commander) return "To complete a deck, it needs a commander.";
+    if (seeds.length < 1 || seeds.length > 98) return "To complete a deck, send between 1 and 98 cards besides the commander.";
+    const partner = body.partner ? String(body.partner).trim().slice(0, 150) : null;
+    const basics: Record<string, number> = {};
+    if (body.basics && typeof body.basics === "object")
+      for (const [k, v] of Object.entries(body.basics)) if (/^(snow-covered )?(plains|island|swamp|mountain|forest|wastes)$/i.test(k)) basics[k] = Math.max(0, Math.min(99, Math.round(Number(v) || 0)));
+    extra = { mode: "complete", partner, basics };
+  } else {
+    seeds = raw;
+    if (seeds.length !== 5) return "Pick exactly five seed cards.";
+    if (new Set(seeds.map((s: string) => s.toLowerCase())).size !== 5) return "The five seed cards must be different.";
+    if (commander && !seeds.some((s: string) => s.toLowerCase() === commander.toLowerCase())) return "The commander must be one of the seeds.";
+  }
   const budget: Budget = ["any", "mid", "budget"].includes(body.budget) ? body.budget : "any";
   const theme = typeof body.theme === "string" ? body.theme.slice(0, 300) : undefined;
   let collection: GenerateRequest["collection"];
@@ -40,7 +56,7 @@ export function parseRequest(body: any): GenerateRequest | string {
     if (names.length > MAX_COLLECTION) return `Collections can have up to ${MAX_COLLECTION} different cards.`;
     if (names.length) collection = { names, mode: body.collection.mode === "only" ? "only" : "prefer" };
   }
-  return { seeds, commander, budget, theme, ...(collection ? { collection } : {}) };
+  return { seeds, commander, budget, theme, bracket, ...extra, ...(collection ? { collection } : {}) };
 }
 
 // Per-instance rate limit (best effort: each warm Vercel instance keeps its own counts).
@@ -153,6 +169,9 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
   if (typeof req === "string") return Response.json({ error: req }, { status: 400 });
 
   const demo = cfg.demo && !userKey;
+  if (demo && !override?.callModel && req.mode === "complete") {
+    return Response.json({ error: "Completing a deck needs a Claude API key. Add your own key above to use it." }, { status: 400 });
+  }
   if (demo && !override?.callModel) {
     const same = req.seeds.map((s) => s.toLowerCase()).sort().join("|") === DEMO_SEEDS.map((s) => s.toLowerCase()).sort().join("|");
     if (!same) {
@@ -162,6 +181,7 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
       );
     }
     req.commander = "Meren of Clan Nel Toth";
+    req.bracket = 3; // the scripted demo deck is a Bracket 3 deck
   }
   const wanted = typeof (body as any)?.model === "string" ? String((body as any).model).trim() : "";
   const model = userKey ? (MODEL_ID.test(wanted) ? wanted : DEFAULT_MODEL) : cfg.model;

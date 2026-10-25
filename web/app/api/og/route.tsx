@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   try {
     const p = await decodePayload(d);
     title = p.n;
-    sub = `Bracket 3 Commander deck led by ${p.c}${p.p ? ` and ${p.p}` : ""}`;
+    sub = `Bracket ${p.br ?? 3} Commander deck led by ${p.c}${p.p ? ` and ${p.p}` : ""}`;
     const cmd = await named(p.c);
     const img = cmd ? await previewArt(cmd.name) : null;
     if (img && img.artist) {
