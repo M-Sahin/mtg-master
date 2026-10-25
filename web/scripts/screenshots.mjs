@@ -182,6 +182,8 @@ for (const [name, path] of [["18-mobile-bracket", "/bracket"], ["19-mobile-home-
   await run(name, { width: 360, height: 740 }, async (p) => {
     await p.goto(`${base}${path}`, { waitUntil: "networkidle" });
     const box = await p.locator("header.top").boundingBox();
+    const overflow = await p.evaluate(() => Math.max(...[...document.querySelectorAll("header.top *")].map((e) => e.getBoundingClientRect().right)) - window.innerWidth);
+    if (overflow > 1) errors.push(`header on ${path} runs ${Math.round(overflow)}px off the screen on a phone`);
     const items = await p.locator("header.top > *").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
     console.log(`header on ${path} at 360px: ${Math.round(box?.height ?? 0)}px tall, items ${items.map(Math.round).join("/")}px`);
     if ((box?.height ?? 0) > 80) errors.push(`header on ${path} wraps on a phone (${Math.round(box.height)}px)`);

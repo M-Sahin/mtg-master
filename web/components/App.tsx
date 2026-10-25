@@ -298,7 +298,7 @@ export default function App() {
             Bracket checker
           </a>
           {config ? (
-            config.mode === "demo" ? (
+            config.mode === "demo" && !config.ownKeys ? (
               <span className="pill pill--demo" title="No ANTHROPIC_API_KEY set: the app replays a scripted build of one sample deck.">
                 Demo mode
               </span>

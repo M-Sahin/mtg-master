@@ -111,7 +111,7 @@ input {
     font-size: 20px;
   }
   /* the skill version is a detail; on a phone the header keeps the one useful link */
-  .top-meta .pill:not(.pill--demo) {
+  .top-meta .pill {
     display: none;
   }
   .top-link {
