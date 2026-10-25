@@ -106,7 +106,7 @@ console.log(`priced: ${found.size}/${want.size}; not on Scryfall: ${unresolved.l
 
 // ---- 3. packs per box from MTGJSON's sealed products (booster boxes differ: 36, 30, 24, 12, 4…)
 const boxSize = new Map(); // "dsk-play" → packs
-const probe = Number(args.probe ?? 0);
+let probe = Number(args.probe ?? 0);
 for (const setCode of [...new Set(chosen.map((b) => b.code.split("-")[0]))]) {
   let json = null;
   try {
