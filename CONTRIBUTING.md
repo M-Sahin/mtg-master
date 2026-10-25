@@ -12,11 +12,11 @@ Thanks for helping out. This repository has two parts:
 ```bash
 cd web
 npm install
-cp .env.example .env.local   # leave ANTHROPIC_API_KEY empty for demo mode
+cp .env.example .env.local   # everything in it is optional
 npm run dev
 ```
 
-Demo mode needs no API key: load the demo seeds and it replays one scripted build against real Scryfall data.
+Without any key, paste your own Claude API key in the page to build real decks, or load the demo seeds: the demo replays one scripted build against real Scryfall data and costs nothing. `npm test` needs no network and no key.
 
 ## Changing the skill
 
@@ -27,7 +27,8 @@ Demo mode needs no API key: load the demo seeds and it replays one scripted buil
 ## When Wizards changes the rules
 
 - **The Game Changers list** is read live from Scryfall, so there's nothing to update.
-- **Bracket rules:** update `web/lib/shared/bracket.ts` (the limit and the wording shown to Claude and users) and `mtg-master/references/commander.md`. Link the official announcement in your pull request.
+- **Bracket rules:** update `web/lib/shared/bracket.ts` (the limit and the wording shown to Claude and users), `web/lib/server/bracket-check.ts` (the free bracket checker's rules for every bracket) and `mtg-master/references/commander.md`. Link the official announcement in your pull request.
+- **Model prices** for the cost estimate are in `web/lib/shared/models.ts`.
 - **Ban lists** come from Scryfall's legality data.
 
 ## Ground rules

@@ -31,11 +31,11 @@ Three small Python helpers (standard library only, no dependencies) do the work 
 
 ## Web app: Hundredfold
 
-[`web/`](web) contains **Hundredfold**, a Next.js app built on this skill. You pick five cards, and Claude builds a complete Bracket 3 Commander deck around them. Progress is shown live: Scryfall searches, the list filling a 10×10 grid, and server-side validation with automatic fixes. You can export the result to Moxfield or Arena.
+[`web/`](web) contains **Hundredfold**, a Next.js app built on this skill. You pick five cards, and Claude builds a complete Bracket 3 Commander deck around them. Progress is shown live: Scryfall searches, the list filling a 10×10 grid, and server-side validation with automatic fixes. You can export the result to Moxfield or Arena, or share it with a short link. You can also build from your own collection, keep your decks in the browser, and check any decklist's bracket for free at `/bracket`.
 
-It's free and open source, and you host it yourself with your own Claude API key:
+It's free and open source. Host your own copy in one click; visitors build with their own Claude API key, so the site itself needs no key:
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FM-Sahin%2Fmtg-master&root-directory=web&env=ANTHROPIC_API_KEY,ACCESS_CODE&envDescription=Your%20Claude%20API%20key%2C%20and%20an%20access%20code%20visitors%20must%20enter%20%28it%20protects%20your%20API%20credits%29.&envLink=https%3A%2F%2Fgithub.com%2FM-Sahin%2Fmtg-master%2Fblob%2Fmain%2Fweb%2FREADME.md%23environment-variables)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FM-Sahin%2Fmtg-master&root-directory=web)
 
 You can also run it with Docker or plain Node.js. See [web/README.md](web/README.md#host-your-own) for all the options and the environment variables.
 
@@ -56,7 +56,8 @@ mtg-master/                  ← the skill itself (this folder is what you insta
     └── odds.py              ← hypergeometric draw probabilities
 tests/                       ← offline unit tests (Scryfall is mocked with fixtures)
 web/                         ← Hundredfold, the Next.js deckbuilder that uses this skill
-.github/workflows/tests.yml  ← CI: runs the tests and packages the skill
+.github/workflows/           ← CI: tests.yml (skill tests + package), web.yml (app build, tests, browser checks),
+                                release.yml (GitHub Release with the .skill file), eval.yml (engine eval, manual)
 ```
 
 ## Installation
@@ -164,13 +165,16 @@ Add `--json` to any command, before or after it, to get raw JSON. Batch lookups 
 python3 -m unittest discover -s tests -v
 ```
 
-The 45 tests run fully offline. Scryfall is replaced by fixture cards in `tests/fixtures/cards.json`. Those cards are shaped like real Scryfall objects, but their legalities are simplified for testing, so don't use them as a reference. The probability tests are checked against values from `scipy`, exhaustive enumeration and a Monte Carlo simulation. CI runs the tests on Python 3.8 and 3.12 and packages the skill.
+The 49 tests run fully offline. Scryfall is replaced by fixture cards in `tests/fixtures/cards.json`. Those cards are shaped like real Scryfall objects, but their legalities are simplified for testing, so don't use them as a reference. The probability tests are checked against values from `scipy`, exhaustive enumeration and a Monte Carlo simulation. CI runs the tests on Python 3.8 and 3.12 and packages the skill.
 
 The skill's reference files contain time-sensitive facts, such as Commander brackets and recent rules changes. The skill always tells Claude to verify these, but the files themselves still need updating now and then.
 
 ## Changelog
 
-- **1.0.3**: `references/commander.md` lists every way to have two commanders, including the named Partner—[name] abilities (such as Partner—Father & son on Kratos, Stoic Father and Atreus, Impulsive Son).
+- **1.0.3**:
+  - The description is now under 200 characters, the limit for skills uploaded to Claude.ai (it was over 500).
+  - `references/commander.md` lists every way to have two commanders, including the named Partner—[name] abilities (such as Partner—Father & son on Kratos, Stoic Father and Atreus, Impulsive Son).
+  - `references/commander.md` has a table of all five brackets as of the October 2025 update: Game Changers, combos, land denial, extra turns and expected game length.
 - **1.0.2**: `scryfall.py cards` and `deckcheck.py` couldn't find double-faced cards given by their full "Front // Back" name, because Scryfall's batch endpoint doesn't match those. They now look up the front face, fall back to an exact and then a fuzzy lookup for anything still missing, and CI checks this against the live Scryfall API.
 - **1.0.1**: fixes found while testing the original 1.0:
   - `odds.py`: `combo` with a `--need` list shorter than `--groups` used to give a silently wrong answer. It now refuses that input, along with other impossible inputs (more copies or cards seen than the deck has, a `--target` above 1, turn 0). `need` now says when the target can't be reached.
@@ -189,6 +193,8 @@ Card data comes from the [Scryfall API](https://scryfall.com/docs/api); please f
 This is an unofficial fan project. It isn't affiliated with or endorsed by Wizards of the Coast or Scryfall. Magic: The Gathering is a trademark of Wizards of the Coast LLC.
 
 ## Contributing
+
+If Hundredfold or the skill is useful to you, you can [buy me a coffee on Ko-fi](https://ko-fi.com/msahin). It's free either way.
 
 Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to run the tests and what to update when Wizards changes the rules, and [SECURITY.md](SECURITY.md) for reporting security problems and keeping your API key safe.
 
