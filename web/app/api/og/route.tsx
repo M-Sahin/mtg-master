@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { named } from "../../../lib/server/scryfall";
+import { named, previewArt } from "../../../lib/server/scryfall";
 import { decodePayload } from "../../../lib/shared/share";
 import { MANA_COLORS } from "../../../lib/shared/deck-utils";
 
@@ -11,6 +11,7 @@ export async function GET(request: Request) {
   let title = "Hundredfold";
   let sub = "Five cards in. A hundred out.";
   let art: string | null = null;
+  let fullCard = false;
   let credit = "";
   let colors: string[] = [];
   try {
@@ -18,9 +19,11 @@ export async function GET(request: Request) {
     title = p.n;
     sub = `Bracket 3 Commander deck led by ${p.c}${p.p ? ` and ${p.p}` : ""}`;
     const cmd = await named(p.c);
-    if (cmd?.artCrop && cmd.artist) {
-      art = cmd.artCrop;
-      credit = `${cmd.name}, art by ${cmd.artist}. © Wizards of the Coast`;
+    const img = cmd ? await previewArt(cmd.name) : null;
+    if (img && img.artist) {
+      art = img.src;
+      fullCard = img.full;
+      credit = `${cmd!.name}, art by ${img.artist}. © Wizards of the Coast`;
     }
     colors = (cmd?.colorIdentity ?? []).map((c) => MANA_COLORS[c]);
   } catch {
@@ -29,7 +32,11 @@ export async function GET(request: Request) {
   return new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", position: "relative", background: "#121733", color: "#eef0ff", fontFamily: "serif" }}>
-        {art ? <img src={art} width={1200} height={630} style={{ position: "absolute", top: 0, left: 0, width: 1200, height: 630, objectFit: "cover" }} /> : null}
+        {art && !fullCard ? <img src={art} width={1200} height={630} style={{ position: "absolute", top: 0, left: 0, width: 1200, height: 630, objectFit: "cover" }} /> : null}
+        {art && fullCard ? (
+          // whole card (with its own credits) on the right instead of a background crop
+          <img src={art} width={400} height={558} style={{ position: "absolute", top: 36, right: 56, width: 400, height: 558, borderRadius: 20 }} />
+        ) : null}
         <div style={{ position: "absolute", top: 0, left: 0, width: 1200, height: 630, display: "flex", backgroundImage: "linear-gradient(90deg, rgba(14,18,44,0.97) 0%, rgba(14,18,44,0.85) 55%, rgba(14,18,44,0.35) 100%)" }} />
         <div style={{ position: "relative", display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: "64px 72px", width: "100%", height: "100%" }}>
           <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
@@ -37,8 +44,8 @@ export async function GET(request: Request) {
               <div key={i} style={{ width: 30, height: 30, borderRadius: 30, background: c, boxShadow: "0 0 0 3px rgba(0,0,0,0.35)" }} />
             ))}
           </div>
-          <div style={{ fontSize: 76, fontWeight: 700, lineHeight: 1.02, maxWidth: 900 }}>{title}</div>
-          <div style={{ fontSize: 32, marginTop: 18, color: "#c9cdf0", maxWidth: 900 }}>{sub}</div>
+          <div style={{ fontSize: 76, fontWeight: 700, lineHeight: 1.02, maxWidth: fullCard ? 640 : 900 }}>{title}</div>
+          <div style={{ fontSize: 32, marginTop: 18, color: "#c9cdf0", maxWidth: fullCard ? 640 : 900 }}>{sub}</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 44, fontSize: 24, color: "#e2b04a" }}>
             <span>Built with Hundredfold</span>
             <span style={{ fontSize: 16, color: "rgba(238,240,255,0.75)" }}>{credit}</span>

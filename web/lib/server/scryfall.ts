@@ -180,6 +180,31 @@ export async function named(name: string, fuzzy = false): Promise<CardInfo | nul
   });
 }
 
+/**
+ * An image the OG renderer (Satori) can draw: JPEG or PNG only (no WebP), as a data URI.
+ * Tries the art crop first, then Scryfall's PNG of the whole card.
+ */
+export async function previewArt(name: string): Promise<{ src: string; artist: string; full: boolean } | null> {
+  const card = await request<any>(`/cards/named?exact=${encodeURIComponent(name)}`);
+  if (card.object === "error") return null;
+  const uris = card.image_uris ?? card.card_faces?.[0]?.image_uris ?? {};
+  const artist = card.artist ?? card.card_faces?.[0]?.artist ?? "";
+  for (const [url, full] of [[uris.art_crop, false], [uris.png, true]] as [string | undefined, boolean][]) {
+    if (!url) continue;
+    try {
+      const res = await fetch(url, { headers: { "User-Agent": HEADERS["User-Agent"], Accept: "image/jpeg,image/png;q=0.9" }, signal: AbortSignal.timeout(10000) });
+      const type = (res.headers.get("content-type") ?? "").split(";")[0].trim();
+      if (!res.ok || !/^image\/(jpeg|png)$/.test(type)) continue;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > 4 * 1024 * 1024) continue;
+      return { src: `data:${type};base64,${buf.toString("base64")}`, artist, full };
+    } catch {
+      /* try the next one */
+    }
+  }
+  return null;
+}
+
 export async function autocomplete(q: string): Promise<string[]> {
   if (q.trim().length < 2) return [];
   return cached(`ac:${q.toLowerCase()}`, async () => {
