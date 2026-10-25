@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BRACKETS, type BracketNumber } from "../lib/shared/bracket";
 import { DeckStartPanel, splitBasics, type StartDeck } from "./DeckStartPanel";
 import { MANA_COLORS } from "../lib/shared/deck-utils";
-import type { Budget, Color, Deck, GenerateRequest, StreamEvent, Usage, Validation } from "../lib/shared/types";
+import type { Budget, Color, Deck, GenerateRequest, StreamEvent, Swap, Usage, Validation } from "../lib/shared/types";
 import { cardByName, generate, getConfig, myDecks, randomCard, resolveDeck, runningBuild, stopBuild, storage, type PublicConfig, type SavedDeck } from "../lib/client/api";
 import { costUsd, formatCost, formatTokens, modelInfo } from "../lib/shared/models";
 import { encodeDeck } from "../lib/shared/share";
@@ -12,6 +12,7 @@ import { KeyPanel, type KeyState } from "./KeyPanel";
 import { MyDecks } from "./MyDecks";
 import { IdentityPips } from "./CardFace";
 import { DeckView } from "./DeckView";
+import { UpgradeSummary } from "./UpgradeSummary";
 import { ForgeView, type DraftCell, type LogItem } from "./ForgeView";
 import { SeedHand, seedProblem, type Seed } from "./SeedHand";
 
@@ -21,6 +22,8 @@ interface Result {
   validation: Validation;
   usage?: Usage;
   model?: string;
+  /** Upgrade mode: the swaps Claude made to the user's deck. */
+  swaps?: Swap[];
 }
 
 const lastDeck = storage<Result>("hundredfold:last-deck");
@@ -173,6 +176,23 @@ export default function App() {
     });
   };
 
+  /** "Suggest upgrades": Claude proposes up to 10 swaps for a finished deck. */
+  const upgrade = async (d: StartDeck) => {
+    savedCode.set(accessCode.trim() || null);
+    const { names, basics } = splitBasics(d.cards);
+    await run({
+      mode: "upgrade",
+      seeds: names,
+      basics,
+      commander: d.commander,
+      partner: d.partner ?? null,
+      budget,
+      theme,
+      bracket,
+      ...(collection ? { collection: { names: collection.names, mode: collection.mode } } : {}),
+    });
+  };
+
   /** Start a build, or (with `resume`) reattach to one that was running before a reload. */
   const run = async (req: GenerateRequest, resume?: string) => {
     abort.current?.abort();
@@ -187,6 +207,11 @@ export default function App() {
     setError(null);
     setResult(null);
     setUsage(null);
+    if (req.mode === "upgrade") {
+      // the deck is already whole: show it in the grid while Claude looks for swaps
+      setDraft([...req.seeds.map((name) => ({ name, role: "synergy" as const }))]);
+      setFilled(100);
+    }
     const start = resume ? (runningBuild.get()?.at ?? Date.now()) : Date.now();
     setElapsed(Date.now() - start);
     const timer = setInterval(() => setElapsed(Date.now() - start), 250);
@@ -201,7 +226,7 @@ export default function App() {
           spent = { usage: ev.usage, model: ev.model };
           setUsage(spent);
         }
-        if (ev.type === "deck") got = { deck: ev.deck, validation: ev.validation };
+        if (ev.type === "deck") got = { deck: ev.deck, validation: ev.validation, ...(ev.swaps ? { swaps: ev.swaps } : {}) };
         if (ev.type === "error") setError(ev.message);
       }
     } catch (e) {
@@ -428,14 +453,15 @@ export default function App() {
             {config?.ownKeys ? <KeyPanel value={key} onChange={setKey} serverKey={config.mode === "live"} /> : null}
             <DeckStartPanel
               onComplete={complete}
+              onUpgrade={upgrade}
               onRead={(r) => {
                 if (r.bracket >= 1 && r.bracket <= 4) setBracket(r.bracket as BracketNumber);
               }}
               blocked={
                 demoOnly
                   ? config?.ownKeys
-                    ? "Completing a deck needs a Claude API key: add yours in the key panel."
-                    : "Completing a deck needs a Claude API key on this site."
+                    ? "Completing or upgrading a deck needs a Claude API key: add yours in the key panel."
+                    : "Completing or upgrading a deck needs a Claude API key on this site."
                   : needCode
                     ? "Enter the access code first."
                     : undefined
@@ -500,9 +526,11 @@ export default function App() {
 
       {phase === "result" && result ? (
         <main>
+          {result.swaps ? <UpgradeSummary swaps={result.swaps} /> : null}
           <DeckView
             deck={result.deck}
             validation={result.validation}
+            added={result.swaps?.map((s) => s.in)}
             onRestart={restart}
             onRebuild={ready ? build : undefined}
             spend={result.usage && result.model ? `Built with ${modelInfo(result.model)?.label ?? result.model}: ${spendText(result.usage, result.model)}` : undefined}

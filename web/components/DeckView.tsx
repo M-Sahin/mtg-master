@@ -20,6 +20,7 @@ export function DeckView({
   shareD,
   spend,
   donationUrl,
+  added,
 }: {
   deck: Deck;
   validation: Validation;
@@ -29,7 +30,10 @@ export function DeckView({
   shareD?: string; // the link payload, when we already have it
   spend?: string; // model, tokens and estimated cost of this build
   donationUrl?: string;
+  /** Upgrade mode: cards Claude swapped in, marked "New". */
+  added?: string[];
 }) {
+  const addedSet = useMemo(() => (added?.length ? new Set(added.map((n) => n.toLowerCase())) : undefined), [added]);
   const [tab, setTab] = useState<Tab>("cards");
   const [open, setOpen] = useState<DeckCard | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -151,7 +155,7 @@ export function DeckView({
             ))}
             <span className="tabs-total">{totalCards(deck)} cards</span>
           </div>
-          {tab === "cards" ? <CardsTab deck={deck} onOpen={setOpen} /> : null}
+          {tab === "cards" ? <CardsTab deck={deck} onOpen={setOpen} added={addedSet} /> : null}
           {tab === "list" ? <ListTab deck={deck} onOpen={setOpen} /> : null}
           {tab === "numbers" ? <NumbersTab deck={deck} /> : null}
           {tab === "hand" ? <HandTab deck={deck} onOpen={setOpen} /> : null}
@@ -162,7 +166,7 @@ export function DeckView({
   );
 }
 
-function CardsTab({ deck, onOpen }: { deck: Deck; onOpen: (c: DeckCard) => void }) {
+function CardsTab({ deck, onOpen, added }: { deck: Deck; onOpen: (c: DeckCard) => void; added?: Set<string> }) {
   return (
     <div className="roles">
       {byRole(deck).map((g) => (
@@ -176,6 +180,7 @@ function CardsTab({ deck, onOpen }: { deck: Deck; onOpen: (c: DeckCard) => void 
                 <CardFace card={c.info} name={c.name} onClick={() => onOpen(c)} />
                 {c.qty > 1 ? <span className="tile-qty">×{c.qty}</span> : null}
                 {c.seed ? <span className="tile-seed" title="One of your seed cards">Seed</span> : null}
+                {added?.has(c.name.toLowerCase()) ? <span className="tile-seed tile-new" title="Swapped in by the upgrade">New</span> : null}
                 {c.info?.gameChanger ? <span className="tile-gc" title="Game Changer">GC</span> : null}
               </div>
             ))}

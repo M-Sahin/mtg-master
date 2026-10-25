@@ -4,13 +4,13 @@ import type { ModelCaller, ContentBlock } from "./anthropic";
 import { checkCombos, comboErrors, comboNotes, type ComboReport } from "./combos";
 import { DraftScanner } from "./draft-scanner";
 import { parseEngine, type EngineOptions } from "./engine";
-import { systemPrompt, toolsFor, userPrompt } from "./prompt";
+import { systemPrompt, toolsFor, upgradePrompt, userPrompt } from "./prompt";
 import * as scry from "./scryfall";
 import { EXTRA_TURN, MLD, buildDeck, namesInSubmission, rebalanceBasics, repairCount, strictProblems, validateDeck, type SubmittedDeck } from "./validate";
-import { analysisReport, analyzeDeck, type DeckAnalysis } from "../shared/analysis";
+import { analysisReport, analyzeDeck, detectFunctions, isLand, type DeckAnalysis } from "../shared/analysis";
 import { openerReport, simulateOpeners } from "../shared/openers";
 import { bracketInfo } from "../shared/bracket";
-import type { CardInfo, Deck, GenerateRequest, Role, StreamEvent, Usage, Validation } from "../shared/types";
+import type { CardInfo, Deck, GenerateRequest, Role, StreamEvent, Swap, Usage, Validation } from "../shared/types";
 import { ROLES, isBasicLand, nameKey } from "../shared/types";
 
 export interface AgentOptions {
@@ -31,6 +31,8 @@ export interface AgentResult {
   combos?: ComboReport;
   /** What the review pass changed, if it ran. */
   review?: string;
+  /** Upgrade mode: the accepted swaps. */
+  swaps?: Swap[];
 }
 
 const MAX_SUBMITS = 4;
@@ -124,12 +126,7 @@ export function toSubmission(deck: Deck): SubmittedDeck {
   };
 }
 
-export interface Swap {
-  out: string;
-  in: string;
-  role?: string;
-  why?: string;
-}
+export type { Swap };
 
 /** Apply swaps to a submission. Returns the problems (unknown "out" cards etc.); applies nothing if any. */
 export function applySwaps(sub: SubmittedDeck, swaps: Swap[], protect: string[] = []): { sub: SubmittedDeck; problems: string[] } {
@@ -277,9 +274,10 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
   const left = () => hard - (Date.now() - started);
   const usage = emptyUsage();
 
-  const completing = req.mode === "complete";
+  const upgrading = req.mode === "upgrade";
+  const completing = req.mode === "complete" || upgrading;
   emit({ type: "status", text: completing ? "Reading your deck" : "Reading your five seed cards" });
-  // completing a deck: the commander(s) are looked up with the user's cards
+  // completing or upgrading a deck: the commander(s) are looked up with the user's cards
   const lookupNames = completing ? [...req.seeds, req.commander ?? "", req.partner ?? ""].filter(Boolean) : req.seeds;
   const { seeds, problems } = await resolveSeeds(lookupNames);
   if (problems.length) {
@@ -299,12 +297,14 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
     const p = byName(req.partner);
     if (p) req = { ...req, partner: p.name };
   }
-  const seedNames = seeds.map((s) => s.name);
+  // upgrading: nothing but the commander is protected, and the basics stay as the user split them
+  const seedNames = upgrading ? [] : seeds.map((s) => s.name);
+  const run: EngineOptions = upgrading ? { ...engine, manabase: false, review: true } : engine;
   const owned = req.collection?.names.length ? new Set(req.collection.names.map(nameKey)) : undefined;
 
   const system = [{ type: "text", text: systemPrompt(engine, req.bracket), cache_control: { type: "ephemeral" } }];
-  const tools = toolsFor(engine);
-  const messages: any[] = [{ role: "user", content: userPrompt(req, seeds) }];
+  const tools = toolsFor(engine, req.mode);
+  const messages: any[] = [];
   const baseTokens = engine.prompt === 2 ? 32000 : 16000;
   let submits = 0;
   let revises = 0;
@@ -316,7 +316,22 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
   let best: Checked | null = null; // best deck so far (legal first, then fewest problems)
   let lastDeck: AgentResult | null = null; // what gets returned
 
-  emit({ type: "status", text: "Claude is studying the seeds with the mtg-master skill" });
+  if (upgrading) {
+    // the user's deck is the accepted deck; the review round is the whole job
+    const start = await upgradeStart(req, seeds, run, left);
+    if (start.deck.cards.length < 20) {
+      emit({ type: "error", message: "Couldn't read enough of that deck to upgrade it." });
+      return null;
+    }
+    reviewing = true;
+    reviewBase = start;
+    lastDeck = { ...finish(start, "No changes suggested."), swaps: [] };
+    emit({ type: "status", text: "Claude is looking for upgrades" });
+    messages.push({ role: "user", content: upgradePrompt(req, upgradeList(start.deck), upgradeReport(start)) });
+  } else {
+    messages.push({ role: "user", content: userPrompt(req, seeds) });
+    emit({ type: "status", text: "Claude is studying the seeds with the mtg-master skill" });
+  }
 
   for (let turn = 0; turn < maxTurns; turn++) {
     if (opts.signal?.aborted) return lastDeck;
@@ -382,11 +397,12 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
     const content = cleanAssistant(msg.content);
     const uses = content.filter((b): b is ContentBlock & { type: "tool_use" } => b.type === "tool_use");
     if (!uses.length) {
-      if (lastDeck) return lastDeck;
+      // an upgrade that ends without revise_deck gets one nudge
+      if (lastDeck && !(upgrading && revises === 0 && !nudged)) return lastDeck;
       if (nudged) break;
       nudged = true;
       if (content.length) messages.push({ role: "assistant", content });
-      const nudge = "Please finish now: call submit_deck with the complete 100-card deck.";
+      const nudge = upgrading ? "Please finish now: call revise_deck with your swaps (or an empty list)." : "Please finish now: call submit_deck with the complete 100-card deck.";
       if (messages[messages.length - 1].role === "user") messages[messages.length - 1] = { role: "user", content: [...asBlocks(messages[messages.length - 1].content), { type: "text", text: nudge }] };
       else messages.push({ role: "user", content: nudge });
       continue;
@@ -427,6 +443,7 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
           emit({ type: "tool_result", id: x.id, summary: "kept as is", ok: true });
           reviewNote = String(x.input?.notes ?? "").trim() || "Review: no changes.";
           lastDeck.review = reviewNote;
+          if (upgrading) lastDeck.swaps = [];
           reply("ACCEPTED (unchanged).", false);
           done = true;
           continue;
@@ -440,30 +457,36 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
           emit({ type: "status", text: `Checking ${swaps.length} review swap(s)` });
           try {
             // same strictness as the accepted deck had, so the review can't fail on checks it passed
-            checked = await checkSubmission(sub, reviewBase!.attempt, req, seedNames, engine, left);
+            checked = await checkSubmission(sub, reviewBase!.attempt, req, seedNames, run, left);
           } catch (e) {
             problems.push(`Couldn't check the swaps: ${(e as Error).message}`);
           }
         }
         const errs = checked ? [...checked.validation.errors, ...checked.problems] : problems;
-        if (checked && accepted(checked)) {
+        // an upgrade starts from the user's deck, which may already break a rule: swaps that don't make it worse are fine
+        if (checked && (accepted(checked) || (upgrading && rank(checked) <= rank(reviewBase!)))) {
           emit({ type: "tool_result", id: x.id, summary: `${swaps.length} swap(s) accepted`, ok: true });
           emit({ type: "validation", validation: checked.validation, attempt: submits + revises });
           reviewNote = String(x.input?.notes ?? "").trim() || `Review: ${swaps.map((s) => `${s.out} → ${s.in}`).join(", ")}.`;
-          lastDeck = finish(checked, reviewNote);
+          lastDeck = { ...finish(checked, reviewNote), ...(upgrading ? { swaps: swaps.map(cleanSwap) } : {}) };
           reply("ACCEPTED", false);
           done = true;
-        } else if (revises >= MAX_REVISES) {
+        } else if (revises >= (upgrading ? MAX_REVISES + 1 : MAX_REVISES)) {
           emit({ type: "tool_result", id: x.id, summary: "swaps rejected; kept the checked deck", ok: false });
           reply("The swaps didn't pass; keeping the deck that was already accepted.", false);
           done = true;
         } else {
           emit({ type: "tool_result", id: x.id, summary: `${errs.length} problem(s)`, ok: false });
-          reply(`REJECTED — the swapped deck has problems. Send revise_deck again with corrected swaps (relative to the accepted deck), or an empty list to keep it:\n- ${errs.join("\n- ")}`);
+          const base = upgrading ? "the user's deck" : "the accepted deck";
+          reply(`REJECTED — the swapped deck has problems. Send revise_deck again with corrected swaps (relative to ${base}), or an empty list to keep it:\n- ${errs.join("\n- ")}`);
         }
         continue;
       }
       // submit_deck
+      if (upgrading) {
+        reply("Upgrades are sent with revise_deck (up to 10 swaps), not as a whole deck.");
+        continue;
+      }
       submits++;
       const r = await runSubmit(x, submits, req, seedNames, emit, engine, left);
       results.set(x.id, r.result);
@@ -512,6 +535,49 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
   if (lastDeck) return lastDeck;
   emit({ type: "error", message: "Claude didn't finish a deck in time. Try again; it usually works on a second run." });
   return null;
+}
+
+/** The user's finished deck, checked like an accepted deck (attempt 3: the bracket checks on, the template counts advisory). */
+async function upgradeStart(req: GenerateRequest, cards: CardInfo[], engine: EngineOptions, left: () => number): Promise<Checked> {
+  const cmd = [req.commander, req.partner].filter(Boolean).map((n) => n!.toLowerCase());
+  const role = (c: CardInfo): Role => {
+    if (isLand(c)) return "land";
+    const f = detectFunctions(c);
+    return (["ramp", "draw", "removal", "wipe", "protection", "recursion"] as const).find((r) => f.has(r)) ?? "synergy";
+  };
+  const sub: SubmittedDeck = {
+    deck_name: `${req.commander}, upgraded`,
+    commander: req.commander!,
+    partner: req.partner ?? undefined,
+    strategy: req.theme?.trim() ? `The user's deck. Their wishes: ${req.theme.trim()}` : "The user's deck.",
+    win_conditions: [],
+    bracket_notes: "",
+    cards: cards.filter((c) => !cmd.includes(c.name.toLowerCase()) && !isBasicLand(c.name)).map((c) => ({ name: c.name, role: role(c), why: "In your deck" })),
+    basics: { ...(req.basics ?? {}) },
+  };
+  return checkSubmission(sub, 3, req, [], engine, left);
+}
+
+/** The deck as the model sees it in upgrade mode: one line per card with its Oracle text. */
+function upgradeList(deck: Deck): string[] {
+  const basics = deck.cards.filter((c) => isBasicLand(c.name));
+  return [
+    ...deck.cards.filter((c) => !isBasicLand(c.name)).map((c) => `- ${c.info ? cardLine(c.info, "excerpt") : c.name}`),
+    basics.length ? `- Basic lands: ${basics.map((c) => `${c.qty} ${c.name}`).join(", ")}` : "",
+  ].filter(Boolean);
+}
+
+function upgradeReport(c: Checked): string {
+  const parts = [analysisReport(c.analysis), openerReport(simulateOpeners(c.deck, { games: 2000 }))];
+  if (c.combos) parts.push(comboNotes(c.combos));
+  const issues = [...c.validation.errors, ...c.problems];
+  if (issues.length) parts.push(`Rule and bracket problems to fix: ${issues.join(" ")}`);
+  if (c.validation.warnings.length) parts.push(`Warnings: ${c.validation.warnings.join(" ")}`);
+  return parts.join("\n");
+}
+
+function cleanSwap(s: Swap): Swap {
+  return { out: String(s.out ?? "").trim().slice(0, 150), in: String(s.in ?? "").trim().slice(0, 150), role: s.role ? String(s.role).slice(0, 20) : undefined, why: s.why ? String(s.why).trim().slice(0, 200) : undefined };
 }
 
 function reviewRequest(c: Checked): string {

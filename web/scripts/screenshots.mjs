@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Captures the main screens in demo mode (used in CI; needs `playwright` installed).
 //   BASE_URL=http://localhost:3000 OUT=shots node scripts/screenshots.mjs
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright";
 
 const base = process.env.BASE_URL ?? "http://localhost:3000";
@@ -222,6 +222,43 @@ await run("21-bracket-upload", { width: 1440, height: 1000 }, async (p) => {
   await p.click("text=Check the bracket");
   await p.waitForSelector(".bracket-badge", { timeout: 60000 });
   console.log(`bracket upload: ${await p.locator(".bracket-badge strong").innerText()}`);
+});
+// upgrade a finished deck: the question, the request, the swaps panel and "New" marks.
+// CI has no real key, so the key check and the build stream are canned in the browser.
+await run("22-upgrade-my-deck", { width: 1440, height: 1000 }, async (p) => {
+  let sent = null;
+  await p.route("**/api/key/check", (r) => r.fulfill({ json: { models: [{ id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" }] } }));
+  await p.route("**/api/generate", async (r) => {
+    if (r.request().method() !== "POST") return r.fallback();
+    sent = r.request().postDataJSON();
+    const keep = sent.seeds.slice(1).map((name) => ({ name, role: "synergy", why: "In your deck", qty: 1 }));
+    const basics = Object.entries(sent.basics ?? {}).map(([name, qty]) => ({ name, role: "land", why: "", qty }));
+    const deck = {
+      name: `${sent.commander}, upgraded`, strategy: "The user's deck.", winConditions: [], bracketNotes: "", colorIdentity: ["B", "R"], bracket: sent.bracket,
+      commander: { name: sent.commander, role: "wincon", why: "", qty: 1 },
+      cards: [{ name: "Night's Whisper", role: "draw", why: "Cheap card draw", qty: 1 }, ...keep, ...basics],
+    };
+    const swaps = [{ out: sent.seeds[0], in: "Night's Whisper", role: "draw", why: "Cheap card draw for the sacrifice plan" }];
+    const lines = [{ type: "status", text: "Claude is looking for upgrades" }, { type: "deck", deck, validation: { ok: true, errors: [], warnings: [], total: 100, gameChangers: [] }, swaps }, { type: "done", ms: 5 }];
+    await r.fulfill({ status: 200, contentType: "application/x-ndjson", body: lines.map((l) => JSON.stringify(l)).join("\n") + "\n" });
+  });
+  await p.fill("[data-testid=api-key]", "sk-ant-api03-" + "y".repeat(60));
+  await p.press("[data-testid=api-key]", "Enter");
+  await p.waitForSelector(".keypanel .pill--ok", { timeout: 20000 });
+  await p.click("text=Add my deck");
+  await p.fill("[data-testid=deck-list]", readFileSync("evals/sample-decks/judith-aristocrats--v2--1.txt", "utf8"));
+  await p.click("text=Read my deck");
+  await p.waitForSelector("[data-testid=deck-start-result]", { timeout: 60000 });
+  const ask = await p.locator(".deckstart-ask").innerText().catch(() => "");
+  console.log(`upgrade my deck: ${ask.split("\n")[0]}`);
+  if (!/Your deck is complete\. Do you want Hundredfold to suggest upgrades\?/.test(ask)) errors.push(`no upgrade question: ${ask}`);
+  await p.click("[data-testid=upgrade-deck]");
+  await p.waitForSelector("[data-testid=upgrade-summary]", { timeout: 30000 }).catch(() => errors.push("no upgrade summary after the build"));
+  const swaps = await p.locator(".swap").allInnerTexts();
+  const marked = await p.locator(".tile-new").count();
+  console.log(`upgrade request: mode ${sent?.mode}, ${sent?.seeds?.length} cards, commander ${sent?.commander}, basics ${JSON.stringify(sent?.basics)}; swaps shown: ${swaps.map((s) => s.replace(/\s+/g, " ")).join(" | ")}; ${marked} card(s) marked New`);
+  if (sent?.mode !== "upgrade" || !/Judith/.test(sent?.commander ?? "")) errors.push(`upgrade request looked wrong: ${JSON.stringify(sent)?.slice(0, 200)}`);
+  if (swaps.length !== 1 || marked !== 1) errors.push(`upgrade view: ${swaps.length} swaps, ${marked} marked New`);
 });
 await run("7-mobile-setup", { width: 390, height: 844 }, loadSeeds);
 await run("8-mobile-result", { width: 390, height: 844 }, toResult);

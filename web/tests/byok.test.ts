@@ -176,3 +176,13 @@ test("review fixes: own keys are opt-in next to a server key; Dragon Shield CSV;
   const big = await handleGenerate(new Request("http://x/api/generate", { method: "POST", headers: { "content-length": "2000000" }, body: "{}" }));
   assert.equal(big.status, 413);
 });
+
+test("parseRequest: upgrade mode needs a commander and a finished deck's cards", () => {
+  const cards = Array.from({ length: 62 }, (_, k) => `Card ${k}`);
+  const r = parseRequest({ mode: "upgrade", seeds: cards, commander: "Meren of Clan Nel Toth", basics: { Swamp: 18, Forest: 19, Nonsense: 3 }, budget: "mid", bracket: 2 });
+  assert.ok(typeof r !== "string", String(r));
+  assert.equal(r.mode, "upgrade");
+  assert.deepEqual(r.basics, { Swamp: 18, Forest: 19 });
+  assert.match(String(parseRequest({ mode: "upgrade", seeds: cards, commander: null, budget: "any" })), /needs a commander/);
+  assert.match(String(parseRequest({ mode: "upgrade", seeds: cards.slice(0, 10), commander: "Meren of Clan Nel Toth", budget: "any" })), /30 to 99/);
+});

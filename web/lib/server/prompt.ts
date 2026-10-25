@@ -241,8 +241,35 @@ export const REVISE_TOOL = {
   },
 } as const;
 
-export function toolsFor(engine?: EngineOptions): readonly any[] {
+export function toolsFor(engine?: EngineOptions, mode?: GenerateRequest["mode"]): readonly any[] {
+  // upgrading a finished deck: research, then swaps; no full resubmission
+  if (mode === "upgrade") return [...TOOLS.filter((t) => t.name !== "submit_deck"), REVISE_TOOL];
   return engine?.review ? [...TOOLS, REVISE_TOOL] : TOOLS;
+}
+
+/** "Upgrade my deck": the user's finished deck, the server's analysis, and the swaps task. */
+export function upgradePrompt(req: GenerateRequest, deckList: string[], report: string): string {
+  const b = bracketInfo(req.bracket);
+  return [
+    `UPGRADE A DECK: the user has a finished Commander deck and wants it to play better at Bracket ${b.number} (${b.name}). This replaces the five-seed task: don't build a new deck.`,
+    `Commander: ${req.commander}${req.partner ? ` with ${req.partner}` : ""} (stays).`,
+    "Work out the plan the deck is going for and keep it: this is the user's deck, so improve it rather than turning it into a different one.",
+    "Then find the weakest cards (off-plan, too slow, too expensive for what they do, redundant past the template) and better replacements. Use search_cards and get_cards to check every card you add: its exact name, color identity, legality and price.",
+    "Fix what the server's analysis flags first (missing ramp, draw, removal or lands; mana that arrives late; cards above the bracket), then make the deck's plan stronger.",
+    "When you're done, call revise_deck once with up to 10 swaps, each with a short why the user will read. Fewer swaps are fine if the deck is already strong; an empty list keeps it as it is.",
+    "",
+    "The deck:",
+    ...deckList,
+    "",
+    "Independent analysis from the server:",
+    report,
+    "",
+    `Budget for the cards you add: ${BUDGET_TEXT[req.budget]}`,
+    req.theme?.trim() ? `Wishes from the user: ${req.theme.trim().slice(0, 300)}` : "",
+    req.collection?.names.length ? collectionText(req.collection) : "",
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
 }
 
 function collectionText(c: NonNullable<GenerateRequest["collection"]>): string {

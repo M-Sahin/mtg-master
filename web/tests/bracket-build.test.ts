@@ -102,3 +102,59 @@ test("the complete prompt replaces the five-seed task", () => {
   assert.ok(!p.includes("- Meren of Clan Nel Toth"), "the commander isn't listed as one of the 99");
   assert.match(p, /has 3 of 100 cards\. Add exactly 97 more/);
 });
+
+test("upgrade my deck: one review round of swaps on the user's deck; only revise_deck is offered", async () => {
+  const fake = installFakeScryfall();
+  try {
+    const full = clone();
+    const names = full.cards.map((c) => c.name);
+    const cut = names.find((n) => n !== "Sol Ring")!;
+    const seen: { prompt?: string; tools?: string[]; results: string[] } = { results: [] };
+    let turn = 0;
+    const caller: ModelCaller = async (params) => {
+      turn++;
+      if (turn === 1) {
+        const c0 = params.messages[0].content;
+        seen.prompt = typeof c0 === "string" ? c0 : c0.map((b: any) => b.text ?? "").join("\n");
+        seen.tools = params.tools.map((t: any) => t.name);
+      }
+      const last = params.messages.at(-1);
+      if (Array.isArray(last.content)) for (const r of last.content) if (r.type === "tool_result") seen.results.push(String(r.content));
+      // first a swap that names a card the deck doesn't have, then a good one
+      const swaps = turn === 1 ? [{ out: "Not In The Deck", in: "Night's Whisper", role: "draw", why: "x" }] : [{ out: cut, in: "Night's Whisper", role: "draw", why: "Cheap card draw" }];
+      return { content: [{ type: "tool_use", id: `r${turn}`, name: "revise_deck", input: { swaps, notes: "One swap." } }], stop_reason: "tool_use" };
+    };
+    const out = await runAgent(
+      { mode: "upgrade", seeds: names, commander: "Meren of Clan Nel Toth", basics: full.basics, budget: "any", bracket: 3 },
+      { model: "m", callModel: caller, emit: () => {} },
+    );
+    assert.match(seen.prompt!, /UPGRADE A DECK[\s\S]*Commander: Meren of Clan Nel Toth[\s\S]*The deck:[\s\S]*Opening hands \(2000 goldfished games\)/);
+    assert.ok(!seen.tools!.includes("submit_deck") && seen.tools!.includes("revise_deck") && seen.tools!.includes("search_cards"));
+    assert.match(seen.results[0], /REJECTED[\s\S]*relative to the user's deck[\s\S]*"Not In The Deck" isn't in the deck/);
+    assert.deepEqual(out!.swaps, [{ out: cut, in: "Night's Whisper", role: "draw", why: "Cheap card draw" }]);
+    assert.ok(out!.deck.cards.some((c) => c.name === "Night's Whisper"));
+    assert.ok(!out!.deck.cards.some((c) => c.name === cut));
+    // the basics stay as the user split them (no rebalance in upgrade mode)
+    for (const [b, q] of Object.entries(full.basics ?? {})) assert.equal(out!.deck.cards.find((c) => c.name === b)?.qty, q, b);
+  } finally {
+    fake.restore();
+  }
+});
+
+test("upgrade my deck: a model that stops without swaps keeps the deck as it was", async () => {
+  const fake = installFakeScryfall();
+  try {
+    const full = clone();
+    let turn = 0;
+    const caller: ModelCaller = async () => {
+      turn++;
+      return { content: [{ type: "text", text: "Looks great already." }], stop_reason: "end_turn" };
+    };
+    const out = await runAgent({ mode: "upgrade", seeds: full.cards.map((c) => c.name), commander: "Meren of Clan Nel Toth", basics: full.basics, budget: "any", bracket: 3 }, { model: "m", callModel: caller, emit: () => {} });
+    assert.equal(turn, 2, "one nudge to call revise_deck");
+    assert.deepEqual(out!.swaps, []);
+    assert.equal(out!.deck.cards.reduce((n, c) => n + c.qty, 0) + 1, 100);
+  } finally {
+    fake.restore();
+  }
+});

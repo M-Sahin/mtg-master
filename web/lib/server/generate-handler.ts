@@ -26,7 +26,8 @@ const MAX_BODY = 1_500_000; // a 5000-card collection fits comfortably
 
 export function parseRequest(body: any): GenerateRequest | string {
   if (!body || typeof body !== "object") return "Invalid request body.";
-  const complete = body.mode === "complete";
+  const upgrade = body.mode === "upgrade";
+  const complete = body.mode === "complete" || upgrade;
   const raw = Array.isArray(body.seeds) ? body.seeds.map((s: unknown) => String(s ?? "").trim()).filter(Boolean) : [];
   if (raw.some((s: string) => s.length > 150)) return "Card name too long.";
   const commander = body.commander ? String(body.commander).trim().slice(0, 150) : null;
@@ -35,13 +36,14 @@ export function parseRequest(body: any): GenerateRequest | string {
   let extra: Partial<GenerateRequest> = {};
   if (complete) {
     seeds = [...new Map(raw.map((s: string) => [s.toLowerCase(), s])).values()] as string[];
-    if (!commander) return "To complete a deck, it needs a commander.";
-    if (seeds.length < 1 || seeds.length > 98) return "To complete a deck, send between 1 and 98 cards besides the commander.";
+    if (!commander) return upgrade ? "To upgrade a deck, it needs a commander." : "To complete a deck, it needs a commander.";
+    if (upgrade && (seeds.length < 30 || seeds.length > 99)) return "To upgrade a deck, send its cards besides the commander (30 to 99 different cards).";
+    if (!upgrade && (seeds.length < 1 || seeds.length > 98)) return "To complete a deck, send between 1 and 98 cards besides the commander.";
     const partner = body.partner ? String(body.partner).trim().slice(0, 150) : null;
     const basics: Record<string, number> = {};
     if (body.basics && typeof body.basics === "object")
       for (const [k, v] of Object.entries(body.basics)) if (/^(snow-covered )?(plains|island|swamp|mountain|forest|wastes)$/i.test(k)) basics[k] = Math.max(0, Math.min(99, Math.round(Number(v) || 0)));
-    extra = { mode: "complete", partner, basics };
+    extra = { mode: upgrade ? "upgrade" : "complete", partner, basics };
   } else {
     seeds = raw;
     if (seeds.length !== 5) return "Pick exactly five seed cards.";
@@ -169,8 +171,8 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
   if (typeof req === "string") return Response.json({ error: req }, { status: 400 });
 
   const demo = cfg.demo && !userKey;
-  if (demo && !override?.callModel && req.mode === "complete") {
-    return Response.json({ error: "Completing a deck needs a Claude API key. Add your own key above to use it." }, { status: 400 });
+  if (demo && !override?.callModel && (req.mode === "complete" || req.mode === "upgrade")) {
+    return Response.json({ error: `${req.mode === "upgrade" ? "Upgrading" : "Completing"} a deck needs a Claude API key. Add your own key above to use it.` }, { status: 400 });
   }
   if (demo && !override?.callModel) {
     const same = req.seeds.map((s) => s.toLowerCase()).sort().join("|") === DEMO_SEEDS.map((s) => s.toLowerCase()).sort().join("|");
@@ -192,7 +194,7 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
   const run = startJob(id, async (emit, signal) => {
     try {
       const result = await runAgent(req, { model: demo ? "demo" : model, callModel, emit, signal, engine });
-      if (result) emit({ type: "deck", deck: result.deck, validation: result.validation, analysis: result.analysis, review: result.review });
+      if (result) emit({ type: "deck", deck: result.deck, validation: result.validation, analysis: result.analysis, review: result.review, ...(result.swaps ? { swaps: result.swaps } : {}) });
     } catch (e) {
       emit({ type: "error", message: friendlyModelError(e, !!userKey) || "Something went wrong." });
     } finally {

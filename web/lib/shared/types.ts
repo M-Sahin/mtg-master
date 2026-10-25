@@ -94,12 +94,15 @@ export interface Usage {
 }
 
 export interface GenerateRequest {
-  /** "seeds" (default): build around five seed cards. "complete": finish a deck the user started. */
-  mode?: "seeds" | "complete";
-  seeds: string[]; // seeds mode: exactly 5 card names; complete mode: the nonbasic cards the user has (all stay)
-  commander: string | null; // seeds mode: one of the seeds, or null = let Claude choose; complete mode: required
-  partner?: string | null; // complete mode: a second commander the user already has
-  /** complete mode: basic lands already in the user's deck */
+  /**
+   * "seeds" (default): build around five seed cards. "complete": finish a deck the user started.
+   * "upgrade": suggest up to 10 swaps for a finished deck.
+   */
+  mode?: "seeds" | "complete" | "upgrade";
+  seeds: string[]; // seeds mode: exactly 5 card names; complete/upgrade mode: the nonbasic cards in the user's deck
+  commander: string | null; // seeds mode: one of the seeds, or null = let Claude choose; complete/upgrade mode: required
+  partner?: string | null; // complete/upgrade mode: a second commander the user already has
+  /** complete/upgrade mode: basic lands already in the user's deck */
   basics?: Record<string, number>;
   /** Commander bracket to build for (default 3). */
   bracket?: 1 | 2 | 3 | 4;
@@ -116,6 +119,14 @@ export function nameKey(name: string): string {
   return name.split(/\s+\/\/?\s+/)[0].normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+/** One suggested change: cut a card, add another (the review round and upgrade mode). */
+export interface Swap {
+  out: string;
+  in: string;
+  role?: string;
+  why?: string;
+}
+
 /** Events streamed from /api/generate as newline-delimited JSON. */
 export type StreamEvent =
   | { type: "status"; text: string }
@@ -126,7 +137,7 @@ export type StreamEvent =
   | { type: "draft_card"; name: string; role: Role }
   | { type: "draft_meta"; commander?: string; deckName?: string }
   | { type: "validation"; validation: Validation; attempt: number }
-  | { type: "deck"; deck: Deck; validation: Validation; analysis?: DeckAnalysis; review?: string }
+  | { type: "deck"; deck: Deck; validation: Validation; analysis?: DeckAnalysis; review?: string; swaps?: Swap[] }
   | { type: "usage"; usage: Usage; model?: string }
   | { type: "job"; id: string }
   | { type: "error"; message: string }
