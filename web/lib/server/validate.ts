@@ -326,10 +326,12 @@ export function rebalanceBasics(deck: Deck): string | null {
   const before = Object.fromEntries(basics.map((c) => [c.name, c.qty]));
 
   const sources: Record<string, number> = {};
-  const pipShare: Record<string, number> = {};
-  const target: Record<string, number> = {};
-  for (const col of colors) [sources[col], pipShare[col], target[col]] = [0, 0, 0];
+  const pipShare: Record<string, number> = {}; // colored pips, weighted: cheap spells and the commander count more
+  const reqs: Record<string, number[]> = {}; // source targets of the early cards in each color
+  const cmdReq: Record<string, number> = {};
+  for (const col of colors) [sources[col], pipShare[col], reqs[col], cmdReq[col]] = [0, 0, [], 0];
   const basicsAll = new Set<Color>(colors);
+  const weight = (mv: number) => (mv <= 2 ? 1.5 : mv <= 4 ? 1.2 : 1);
   for (const c of deck.cards) {
     const i = c.info;
     if (!i || isBasicLand(c.name)) continue;
@@ -337,8 +339,8 @@ export function rebalanceBasics(deck: Deck): string | null {
     if (isLand(i)) continue;
     const p = pips(i.manaCost);
     for (const col of colors) {
-      pipShare[col] += p[col] * c.qty;
-      if (p[col] > 0 && i.cmc <= 4) target[col] = Math.max(target[col], sourceTarget(p[col], i.cmc));
+      pipShare[col] += p[col] * c.qty * weight(i.cmc);
+      if (p[col] > 0 && i.cmc <= 4) reqs[col].push(sourceTarget(p[col], i.cmc));
     }
   }
   for (const cmd of [deck.commander, deck.partner]) {
@@ -347,8 +349,17 @@ export function rebalanceBasics(deck: Deck): string | null {
     const p = pips(i.manaCost);
     for (const col of colors) {
       pipShare[col] += p[col] * 3; // the commander is cast every game
-      if (p[col] > 0) target[col] = Math.max(target[col], sourceTarget(p[col], Math.min(i.cmc, 6)));
+      if (p[col] > 0) cmdReq[col] = Math.max(cmdReq[col], sourceTarget(p[col], Math.min(i.cmc, 6)));
     }
+  }
+  // A color's target: what the commander needs, or the second most demanding early card.
+  // One lone Counterspell shouldn't make blue look as hungry as the deck's main color;
+  // a color with a single early card is a splash.
+  const target: Record<string, number> = {};
+  for (const col of colors) {
+    const r = [...reqs[col]].sort((x, y) => y - x);
+    const cards = r.length >= 2 ? r[1] : r.length === 1 ? Math.round(r[0] * 0.6) : 0;
+    target[col] = Math.max(cmdReq[col], cards);
   }
   const demand = colors.filter((col) => pipShare[col] > 0 || target[col] > 0);
   const use = demand.length ? demand : colors;
@@ -359,7 +370,7 @@ export function rebalanceBasics(deck: Deck): string | null {
       const gx = target[x] ? (target[x] - sources[x] - alloc[x]) / target[x] : -1;
       const gy = target[y] ? (target[y] - sources[y] - alloc[y]) / target[y] : -1;
       if (gx > 0 || gy > 0) return gy - gx;
-      // all targets met: follow the share of colored pips
+      // all targets met: follow the (weighted) share of colored pips
       return pipShare[y] / pipsTotal - alloc[y] / total - (pipShare[x] / pipsTotal - alloc[x] / total);
     })[0];
     alloc[pick]++;

@@ -280,3 +280,19 @@ test("rebalanceBasics keeps Wastes and snow choices per basic type", () => {
   assert.equal(q("Snow-Covered Forest"), 0, "Forests stay non-snow");
   assert.ok(q("Snow-Covered Island") >= 10);
 });
+
+test("rebalanceBasics in three colors: the main color gets the most basics, not the one with a single double-pip card", () => {
+  const w = Array.from({ length: 14 }, (_, i) => dc(card(`White ${i}`, "Creature", i % 2 ? "{1}{W}{W}" : "{2}{W}")));
+  const b = Array.from({ length: 6 }, (_, i) => dc(card(`Black ${i}`, "Instant", "{1}{B}")));
+  const counterspell = dc(card("Counterspell", "Instant", "{U}{U}"));
+  const tri = card("Arcane Sanctum", "Land", "", "", { producedMana: ["W", "U", "B"] });
+  const deck: Deck = {
+    name: "t", commander: dc(card("Aminatou", "Legendary Creature", "{W}{U}{B}"), "wincon"), strategy: "", winConditions: [], bracketNotes: "", colorIdentity: ["W", "U", "B"],
+    cards: [...w, ...b, counterspell, dc(tri, "land", 1), dc(card("Island", "Basic Land — Island", ""), "land", 8), dc(card("Plains", "Basic Land — Plains", ""), "land", 7), dc(card("Swamp", "Basic Land — Swamp", ""), "land", 7)],
+  };
+  rebalanceBasics(deck);
+  const q = (n: string) => deck.cards.find((c) => c.name === n)?.qty ?? 0;
+  assert.equal(q("Plains") + q("Island") + q("Swamp"), 22);
+  assert.ok(q("Plains") > q("Island") && q("Plains") > q("Swamp"), `${q("Plains")} Plains / ${q("Island")} Island / ${q("Swamp")} Swamp`);
+  assert.ok(q("Island") >= 2, "blue still gets some");
+});
