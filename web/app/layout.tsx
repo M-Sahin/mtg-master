@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Alegreya, Alegreya_Sans } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const display = Alegreya({ subsets: ["latin"], weight: ["500", "700", "800"], variable: "--font-display", display: "swap" });
@@ -18,7 +19,10 @@ export const viewport: Viewport = { themeColor: "#121733", width: "device-width"
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${display.variable} ${ui.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
