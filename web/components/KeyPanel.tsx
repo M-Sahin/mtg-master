@@ -43,6 +43,7 @@ export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onCh
   const [models, setModels] = useState<{ id: string; name: string }[] | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [help, setHelp] = useState(!serverKey);
+  const [forgotten, setForgotten] = useState(false);
 
   // load a remembered key and model once
   useEffect(() => {
@@ -81,6 +82,7 @@ export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onCh
       setModels(list);
       cacheModels(key, list);
       keyStore.set(key, remember);
+      setForgotten(false);
       onChange({ key, model: fitModel(value.model, list) });
       setDraft("");
     } catch (e) {
@@ -92,6 +94,7 @@ export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onCh
 
   const forget = () => {
     keyStore.forget();
+    setForgotten(true);
     try {
       sessionStorage.removeItem(CHECKED);
     } catch {}
@@ -178,29 +181,49 @@ export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onCh
             Create a workspace just for this, for example &ldquo;Hundredfold&rdquo;, and give it a <strong>monthly spend limit</strong>. A key from that workspace can never cost more than the limit you chose.
           </li>
           <li>Add a little credit under Billing if your account has none.</li>
-          <li>In that workspace, create an API key and paste it here.</li>
+          <li>
+            In that workspace, create an API key. <strong>Save it in your password manager right away</strong>: the Console shows a key only once. Then paste it here.
+          </li>
         </ol>
       ) : null}
-      <div className="keyrow">
-        <input
-          className="field"
-          type="password"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && use()}
-          placeholder="sk-ant-…"
-          autoComplete="off"
-          spellCheck={false}
-          aria-label="Claude API key"
-          data-testid="api-key"
-        />
-        <button type="button" className="btn btn--brass" onClick={use} disabled={!draft.trim() || checking}>
-          {checking ? "Checking…" : "Use this key"}
-        </button>
-      </div>
+      {/* A login-style form, so the browser's password manager offers to save the key and fills it in
+          next time (also after clearing the cache, and on other devices). Nothing is submitted anywhere:
+          the key is only checked with Anthropic through /api/key/check. */}
+      <form
+        className="keyform"
+        autoComplete="on"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void use();
+        }}
+      >
+        <input className="visually-hidden" type="text" name="username" autoComplete="username" value="Claude API key" readOnly tabIndex={-1} aria-hidden="true" />
+        <div className="keyrow">
+          <input
+            className="field"
+            type="password"
+            name="password"
+            id="claude-api-key"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="sk-ant-…"
+            autoComplete="current-password"
+            spellCheck={false}
+            aria-label="Claude API key"
+            data-testid="api-key"
+          />
+          <button type="submit" className="btn btn--brass" disabled={!draft.trim() || checking}>
+            {checking ? "Checking…" : "Use this key"}
+          </button>
+        </div>
+      </form>
       <label className="check">
         <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember it on this device (otherwise only for this tab)
       </label>
+      <p className="opt-hint">
+        {forgotten ? "Removed from this browser. If you saved it in your password manager, it's still there. " : ""}
+        Lost your key? Create a new one in the same workspace in the Claude Console: the spend limit stays, and you can delete the old key there.
+      </p>
       {error ? <p className="error">{error}</p> : null}
     </section>
   );

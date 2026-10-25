@@ -139,8 +139,15 @@ await run("14-switch-apps", { width: 390, height: 844 }, async (p) => {
 });
 // own key panel: a made-up key is refused by Anthropic with a readable message
 await run("15-own-key", { width: 1440, height: 1000 }, async (p) => {
+  // password managers need a form with a username and a current-password field
+  const form = await p.evaluate(() => {
+    const f = document.querySelector("[data-testid=api-key]")?.closest("form");
+    return f ? { user: !!f.querySelector("input[autocomplete=username]"), pass: !!f.querySelector("input[type=password][autocomplete=current-password]"), submit: !!f.querySelector("button[type=submit]") } : null;
+  });
+  console.log(`key form for password managers: ${JSON.stringify(form)}`);
+  if (!form || !form.user || !form.pass || !form.submit) errors.push("the key field isn't a form a password manager can save");
   await p.fill("[data-testid=api-key]", "sk-ant-api03-" + "x".repeat(60));
-  await p.click("text=Use this key");
+  await p.press("[data-testid=api-key]", "Enter"); // submitting the form checks the key
   await p.waitForSelector(".keypanel .error", { timeout: 20000 });
   const msg = await p.locator(".keypanel .error").innerText();
   console.log(`own key with a fake key: "${msg}"`);
