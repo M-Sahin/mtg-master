@@ -35,6 +35,8 @@ const config = { url, anonKey: anon };
 const failures = [];
 const check = (ok, what) => {
   console.log(`${ok ? "ok  " : "FAIL"} ${what}`);
+  // in GitHub Actions, a failed check is also an annotation on the run
+  if (!ok && process.env.GITHUB_ACTIONS) console.log(`::error title=Account check::${what}`);
   if (!ok) failures.push(what);
 };
 
