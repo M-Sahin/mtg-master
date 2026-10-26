@@ -337,7 +337,8 @@ await run("26-mobile-nav", { width: 390, height: 844 }, async (p) => {
   await p.click("[data-testid=nav-toggle]");
   const links = await p.locator(".nav-menu a").allInnerTexts();
   console.log(`phone menu: ${links.join(" | ")}`);
-  if (!["Build a deck", "Bracket checker", "Box EV", "My decks", "GitHub"].every((l) => links.includes(l))) errors.push(`phone menu links: ${links.join(", ")}`);
+  if (!["Build a deck", "Bracket checker", "Box EV", "GitHub"].every((l) => links.includes(l))) errors.push(`phone menu links: ${links.join(", ")}`);
+  if (links.includes("My decks")) errors.push("My decks shows in the menu without a login");
 });
 // deck shape: a broken limit is explained and blocks the build; a good one is counted
 await run("29-deck-shape", { width: 1440, height: 1000 }, async (p) => {
@@ -378,6 +379,7 @@ await run("31-account-decks", { width: 1440, height: 1000 }, async (p) => {
   const nav = await p.locator(".nav-main + .nav-side [data-testid=nav-account]").innerText().catch(() => "");
   console.log(`account decks: ${panel.replace(/\s+/g, " ").slice(0, 160)}; navbar: ${nav.replace(/\s+/g, " ")}`);
   if (!/Cloud Meren/.test(panel) || !/saved to your account/.test(panel) || !/Account/.test(nav)) errors.push(`account decks: ${panel.slice(0, 100)} / ${nav}`);
+  if (!(await p.locator(".nav-main .nav-link", { hasText: "My decks" }).count())) errors.push("My decks missing from the menu when logged in");
 });
 // free builds (faked in the browser: CI's site has no Claude key): the count, then the key sheet when they're used up
 await run("32-free-builds", { width: 1440, height: 1000 }, async (p) => {

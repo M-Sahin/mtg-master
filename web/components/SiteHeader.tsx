@@ -4,6 +4,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { loadConfig } from "../lib/client/site-config";
 import { AccountButton } from "./AccountButton";
+import { useAccount } from "../lib/client/account";
 
 export type NavKey = "build" | "bracket" | "ev" | "decks" | null;
 
@@ -32,6 +33,9 @@ export function Mark() {
 export function SiteHeader({ active, donationUrl, extra }: { active: NavKey; donationUrl?: string | null; extra?: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [donation, setDonation] = useState<string | null>(donationUrl ?? null);
+  // "My decks" only for someone logged in (a browser's own decks still show on the build page)
+  const acct = useAccount();
+  const links = LINKS.filter((l) => l.key !== "decks" || !!acct.user);
 
   useEffect(() => {
     if (donationUrl !== undefined) {
@@ -72,7 +76,7 @@ export function SiteHeader({ active, donationUrl, extra }: { active: NavKey; don
         <Mark /> Hundredfoldz
       </a>
       <nav className="nav-main" aria-label="Main">
-        {LINKS.map((l) => (
+        {links.map((l) => (
           <a key={l.href} className={`nav-link ${active === l.key ? "is-active" : ""}`} href={l.href} aria-current={active === l.key ? "page" : undefined} onClick={() => setOpen(false)}>
             {l.label}
           </a>
@@ -91,7 +95,7 @@ export function SiteHeader({ active, donationUrl, extra }: { active: NavKey; don
       </button>
       {open ? (
         <nav id="nav-menu" className="nav-menu" aria-label="Menu">
-          {LINKS.map((l) => (
+          {links.map((l) => (
             <a key={l.href} className={`nav-link ${active === l.key ? "is-active" : ""}`} href={l.href} aria-current={active === l.key ? "page" : undefined} onClick={() => setOpen(false)}>
               {l.label}
             </a>
