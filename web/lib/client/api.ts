@@ -80,19 +80,24 @@ export interface RunningBuild {
   req: GenerateRequest;
   at: number;
 }
+// In localStorage, not sessionStorage: closing the browser (or a phone dropping the tab) mid-build
+// must not lose it. The server keeps a build's events for an hour (lib/server/jobs.ts).
+const RUNNING = "hundredfold:running";
 export const runningBuild = {
   get(): RunningBuild | null {
     try {
-      const v = JSON.parse(sessionStorage.getItem("hundredfold:running") ?? "null") as RunningBuild | null;
-      return v && Date.now() - v.at < 6 * 60_000 ? v : null;
+      const raw = localStorage.getItem(RUNNING) ?? sessionStorage.getItem(RUNNING); // (older tabs kept it per tab)
+      const v = JSON.parse(raw ?? "null") as RunningBuild | null;
+      return v && Date.now() - v.at < 55 * 60_000 ? v : null;
     } catch {
       return null;
     }
   },
   set(v: RunningBuild | null) {
     try {
-      if (v) sessionStorage.setItem("hundredfold:running", JSON.stringify(v));
-      else sessionStorage.removeItem("hundredfold:running");
+      sessionStorage.removeItem(RUNNING);
+      if (v) localStorage.setItem(RUNNING, JSON.stringify(v));
+      else localStorage.removeItem(RUNNING);
     } catch {}
   },
 };

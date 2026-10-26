@@ -1,7 +1,8 @@
 // Accounts and saved decks: framework-independent handlers behind the /api/auth, /auth and
 // /api/decks routes (lib/server/supabase.ts does the talking to Supabase).
 import { LIMITS, clientIp, rateLimit, rateLimitAll, tooMany } from "./ratelimit";
-import { decodePayload } from "../shared/share";
+import { decodePayload, encodeDeck } from "../shared/share";
+import type { Deck } from "../shared/types";
 import {
   COOKIE,
   clearSessionCookies,
@@ -23,6 +24,7 @@ import {
   siteOrigin,
   supabaseConfig,
   SupabaseError,
+  tokenUser,
   type Fetch,
   type SupabaseConfig,
 } from "./supabase";
@@ -251,6 +253,27 @@ async function authed(request: Request, deps: Deps) {
   if (!auth) return { res: json({ error: "The account service didn't answer. Try again in a minute." }, 502) } as const;
   if (!auth.user) return { res: json({ error: "Log in to use your saved decks." }, 401, auth.setCookies) } as const;
   return { cfg, auth } as const;
+}
+
+/**
+ * Save a finished build to the account of whoever started it, so it's in My decks even when the
+ * browser was closed before the deck arrived. Uses the access token from the build request as is:
+ * no refresh here, because new tokens couldn't reach the browser (and Supabase would retire the
+ * browser's refresh token). Best effort; the page saves the deck too when it gets it (duplicates
+ * are ignored).
+ */
+export async function saveBuildForUser(token: string | null | undefined, deck: Deck, extra: { model?: string; usage?: Record<string, number> } = {}, deps: Deps = {}): Promise<boolean> {
+  const cfg = cfgOf(deps);
+  if (!cfg || !token) return false;
+  const u = tokenUser(token);
+  if (!u || u.exp < Date.now() + 15_000) return false;
+  try {
+    const row = await deckRow({ d: await encodeDeck(deck), colors: deck.colorIdentity, ...extra }, u.id);
+    await rest(cfg, token, "decks?on_conflict=user_id,d_hash", { method: "POST", headers: { prefer: "resolution=ignore-duplicates,return=minimal" }, body: JSON.stringify([row]) }, deps.fetch);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** GET /api/decks: the account's decks, newest first. POST: save one ({d, colors, model, usage}) or import many ({decks: [...]}). */

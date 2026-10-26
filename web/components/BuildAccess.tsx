@@ -27,7 +27,7 @@ export function BuildStatus({ config, access, keyState, free, onSheet, deckMode 
   else if (access === "free")
     line = (
       <>
-        Free build: {free ? `${free.remaining} of ${free.limit}` : config.freeBuilds?.limit} left, on {freeModel}. {config.ownKeys ? <>For {strong}, {addKey("use your own key", `Free builds use ${freeModel}. With your own key you can pick Claude Sonnet 5.5 or Opus 5.5, and you pay Anthropic directly: about 25 cents a deck on Sonnet.`)}.</> : null}
+        {free ? `Free build: ${free.remaining} of ${free.limit} left, on ${freeModel}.` : `Free builds on ${freeModel}.`} {config.ownKeys ? <>For {strong}, {addKey("use your own key", `Free builds use ${freeModel}. With your own key you can pick Claude Sonnet 5.5 or Opus 5.5, and you pay Anthropic directly: about 25 cents a deck on Sonnet.`)}.</> : null}
       </>
     );
   else if (access === "none" && config.freeBuilds)

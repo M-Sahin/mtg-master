@@ -340,9 +340,14 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
     emit({ type: "status", text: "Claude is reading the seeds" });
   }
 
-  for (let turn = 0; turn < maxTurns; turn++) {
+  let turns = 0;
+  let why = "out of turns";
+  for (let turn = 0; turn < maxTurns; turn++, turns++) {
     if (opts.signal?.aborted) return lastDeck;
-    if (left() < 30_000) break;
+    if (left() < 30_000) {
+      why = "out of time";
+      break;
+    }
     const scanner = new DraftScanner();
     // leave ~25 s after the model call to check a submitted deck before the hard deadline
     const timeout = AbortSignal.timeout(Math.max(1000, left() - 25_000));
@@ -379,7 +384,10 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
       );
     } catch (e) {
       if (opts.signal?.aborted) return lastDeck;
-      if (timeout.aborted) break; // out of time
+      if (timeout.aborted) {
+        why = "out of time during a model call";
+        break;
+      }
       throw e;
     }
     const u = msg.usage ?? {};
@@ -406,7 +414,10 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
     if (!uses.length) {
       // an upgrade that ends without revise_deck gets one nudge
       if (lastDeck && !(upgrading && revises === 0 && !nudged)) return lastDeck;
-      if (nudged) break;
+      if (nudged) {
+        why = "stopped without submitting, twice";
+        break;
+      }
       nudged = true;
       if (content.length) messages.push({ role: "assistant", content });
       const nudge = upgrading ? "Please finish now: call revise_deck with your swaps (or an empty list)." : "Please finish now: call submit_deck with the complete 100-card deck.";
@@ -543,6 +554,8 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
     messages.push({ role: "user", content: blocks });
   }
   if (lastDeck) return lastDeck;
+  // for the server log (Vercel's logs): why this build ended without a deck
+  console.warn(`build ended without a deck: ${why}; ${turns} turns, ${Math.round((Date.now() - started) / 1000)} s, ${submits} submits, model ${opts.model}, engine ${engine.name}${engine.effort ? `, effort ${engine.effort}` : ""}`);
   emit({ type: "error", message: "Claude didn't finish a deck in time. Try again; it usually works on a second run." });
   return null;
 }

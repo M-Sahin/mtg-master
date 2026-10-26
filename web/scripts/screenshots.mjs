@@ -395,6 +395,7 @@ await run("32-free-builds", { width: 1440, height: 1000 }, async (p) => {
     await r.fulfill({ status: 402, json: { error: "You've used your 3 free builds. Add your own Claude API key to keep building.", code: "free_used" } });
   });
   await p.goto(base, { waitUntil: "load" });
+  await p.waitForSelector("[data-testid=build-status]:has-text('of 3 left')", { timeout: 8000 }).catch(() => {});
   const status = await p.locator("[data-testid=build-status]").innerText({ timeout: 8000 }).catch(() => "");
   const examples = await p.locator("[data-testid=examples] button").allInnerTexts();
   console.log(`free builds: "${status}"; examples: ${examples.join(" | ")}`);
@@ -429,6 +430,16 @@ await run("33-result-menus", { width: 1440, height: 1000 }, async (p) => {
   if (!stacked || stacked !== grid) errors.push(`stacks ${stacked} vs grid ${grid}`);
   await p.click("[data-testid=view-stacks]");
   await p.click("[data-testid=more-menu]");
+});
+// on a phone the build screen follows the build: the newest log line stays on screen
+await run("34-mobile-follow", { width: 390, height: 844 }, async (p) => {
+  await loadSeeds(p);
+  await p.click("[data-testid=build]");
+  await p.waitForFunction(() => document.querySelectorAll(".log-tool").length >= 3, null, { timeout: 60000 });
+  await p.waitForTimeout(1200);
+  const pos = await p.evaluate(() => ({ y: Math.round(window.scrollY), caret: Math.round(document.querySelector(".log-caret")?.getBoundingClientRect().top ?? -1), h: window.innerHeight }));
+  console.log(`phone build: scrolled to ${pos.y}px, newest line at ${pos.caret}px of ${pos.h}px`);
+  if (pos.caret < 0 || pos.caret > pos.h) errors.push(`the phone build screen doesn't follow the log (${JSON.stringify(pos)})`);
 });
 await run("7-mobile-setup", { width: 390, height: 844 }, async (p) => {
   await loadSeeds(p);

@@ -8,7 +8,8 @@
 import type { StreamEvent } from "../shared/types";
 import { kv, kvConfig } from "./store";
 
-const JOB_TTL_S = 15 * 60;
+// an hour: a phone put away mid-build (or a closed browser) can still pick up the finished deck
+export const JOB_TTL_S = 60 * 60;
 const FLUSH_MS = 1500; // batches events: ~120 store commands per build (Upstash free tier: 500K/month)
 const key = (id: string) => `hf:job:${id}`;
 const stopKey = (id: string) => `hf:job:${id}:stop`;

@@ -3188,3 +3188,9 @@ ul.verdict {
     margin-left: auto;
   }
 }
+
+/* the build screen follows the newest log line or the grid on phones: leave a little room */
+.forge-hundred,
+.log-caret {
+  scroll-margin: 16px;
+}

@@ -36,11 +36,32 @@ export function ForgeView({
   spend?: string; // tokens and estimated cost so far, on the visitor's key
 }) {
   const logRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const caretRef = useRef<HTMLSpanElement>(null);
   const [raw, setRaw] = useState(false); // show the Scryfall queries as Claude wrote them
+  const touched = useRef(0); // when the visitor last scrolled by hand
+  useEffect(() => {
+    const mark = () => (touched.current = Date.now());
+    window.addEventListener("wheel", mark, { passive: true });
+    window.addEventListener("touchmove", mark, { passive: true });
+    return () => {
+      window.removeEventListener("wheel", mark);
+      window.removeEventListener("touchmove", mark);
+    };
+  }, []);
+  // while the list is being written, the grid is where things happen; otherwise the newest log line
+  const last = log[log.length - 1];
+  const writing = draft.length > 0 && filled < 100 && last?.kind === "status" && /^Writing the/.test(last.text);
   useEffect(() => {
     const el = logRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [log]);
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    // on a phone (and narrow windows) the log isn't a scroll box of its own: the page follows the
+    // build, unless the visitor scrolled in the last few seconds to look at something
+    if (getComputedStyle(el).maxHeight !== "none" || Date.now() - touched.current < 6000) return;
+    const target = writing ? gridRef.current : caretRef.current;
+    target?.scrollIntoView({ behavior: "smooth", block: writing ? "start" : "end" });
+  }, [log, writing, draft.length]);
 
   const cells = Array.from({ length: 100 }, (_, i) => (i === 0 ? (commander ? { name: commander, role: "wincon" as Role, cmd: true } : null) : draft[i - 1] ? { ...draft[i - 1], cmd: false } : i < filled ? { name: "Basic land", role: "land" as Role, cmd: false } : null));
   const count = cells.filter(Boolean).length;
@@ -82,7 +103,7 @@ export function ForgeView({
               </div>
             );
           })}
-          <span className="log-caret" aria-hidden />
+          <span className="log-caret" aria-hidden ref={caretRef} />
         </div>
         <div className="forge-foot">
           <button type="button" className="btn btn--quiet" onClick={onCancel}>
@@ -96,7 +117,7 @@ export function ForgeView({
         </div>
       </div>
 
-      <div className="forge-hundred">
+      <div className="forge-hundred" ref={gridRef}>
         <div className="hundred-count" aria-label={`${count} of 100 cards`}>
           <span className="hundred-num">{count}</span>
           <span className="hundred-of">of 100</span>

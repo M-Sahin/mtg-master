@@ -1,7 +1,7 @@
 // Accounts: PKCE logins, cookie sessions, and the deck API, against a fake Supabase.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { handleCallback, handleDeck, handleDecks, handleDeleteAccount, handleEmail, handleOAuth, handleSession, resetLimits } from "../lib/server/account-handler";
+import { handleCallback, handleDeck, handleDecks, handleDeleteAccount, handleEmail, handleOAuth, handleSession, resetLimits, saveBuildForUser } from "../lib/server/account-handler";
 import { pkceChallenge, requestAuth, resetProviderCache, safeNext, siteOrigin, supabaseConfig, tokenUser } from "../lib/server/supabase";
 import { encodeDeck } from "../lib/shared/share";
 import type { Deck } from "../lib/shared/types";
@@ -219,4 +219,21 @@ test("made-up user ids can't flush the login-email limit", async () => {
   for (let i = 0; i < 6000; i++) await handleDecks(req("/api/decks", { method: "POST", cookies: { hf_at: fresh(`x${i}`) }, body: {} }), { config: cfg, fetch: f });
   const r = await handleEmail(req("/api/auth/email", { method: "POST", body: { email: "target@example.com" } }), { config: cfg, fetch: f });
   assert.equal(r.status, 429, "the email limit still holds");
+});
+
+test("a finished build is saved to the builder's account with their token, never refreshed", async () => {
+  const { f, calls } = fakeSupabase((c) => (c.url.includes("/rest/v1/decks") && c.method === "POST" ? { status: 201, body: [] } : undefined));
+  assert.equal(await saveBuildForUser(fresh("u7"), deck as unknown as Deck, { model: "claude-haiku-5-5" }, { config: cfg, fetch: f }), true);
+  const post = calls.find((c) => c.url.includes("/rest/v1/decks"))!;
+  assert.match(post.url, /on_conflict=user_id,d_hash/);
+  assert.equal(post.headers.authorization, `Bearer ${fresh("u7")}`);
+  assert.equal(post.body[0].user_id, "u7");
+  assert.equal(post.body[0].model, "claude-haiku-5-5");
+  // an expired token, no token or no accounts: nothing is sent (the page saves it when it gets the deck)
+  const before = calls.length;
+  assert.equal(await saveBuildForUser(stale("u7"), deck as unknown as Deck, {}, { config: cfg, fetch: f }), false);
+  assert.equal(await saveBuildForUser(null, deck as unknown as Deck, {}, { config: cfg, fetch: f }), false);
+  assert.equal(await saveBuildForUser(fresh("u7"), deck as unknown as Deck, {}, { config: null, fetch: f }), false);
+  assert.equal(calls.length, before);
+  assert.ok(!calls.some((c) => c.url.includes("grant_type=refresh_token")));
 });

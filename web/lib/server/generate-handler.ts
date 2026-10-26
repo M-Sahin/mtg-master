@@ -9,6 +9,8 @@ import { serverConfig } from "./config";
 import { DEMO_SEEDS, demoCaller } from "./demo";
 import { claimFreeBuild, freeRefusal, freeStatus, visitor } from "./free-builds";
 import { turnstileError, verifyTurnstile } from "./turnstile";
+import { COOKIE, readCookies } from "./supabase";
+import { saveBuildForUser } from "./account-handler";
 import type { Budget, GenerateRequest, StreamEvent } from "../shared/types";
 import { MAX_COLLECTION } from "../shared/types";
 
@@ -204,10 +206,20 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
   const engine = demo ? cfg.engine : free ? { ...cfg.liveEngine, effort: free.effort as typeof cfg.liveEngine.effort } : cfg.liveEngine;
   const id = newJobId();
   const started = Date.now();
-  const run = startJob(id, async (emit, signal) => {
+  // logged in: the finished deck also goes straight into the account (the browser may be gone by then)
+  const token = demo ? null : (readCookies(request)[COOKIE.access] ?? null);
+  const run = startJob(id, async (emitRaw, signal) => {
+    let usage: Record<string, number> | undefined;
+    const emit = (e: StreamEvent) => {
+      if (e.type === "usage") usage = { ...e.usage };
+      emitRaw(e);
+    };
     try {
-      const result = await runAgent(req, { model: demo ? "demo" : model, callModel, emit, signal, engine });
+      // free builds are told to wrap up sooner: a smaller model at high effort can run long, and a
+      // build that hits the hard deadline without a deck is a wasted wait
+      const result = await runAgent(req, { model: demo ? "demo" : model, callModel, emit, signal, engine, ...(free ? { timeBudgetMs: 150_000 } : {}) });
       if (result) emit({ type: "deck", deck: result.deck, validation: result.validation, analysis: result.analysis, review: result.review, ...(result.swaps ? { swaps: result.swaps } : {}) });
+      if (result && token) await saveBuildForUser(token, result.deck, userKey ? { model, usage } : { model }).catch(() => false);
       // no deck and not stopped by the visitor: the free build doesn't count
       else if (!signal.aborted) await refund?.();
     } catch (e) {
