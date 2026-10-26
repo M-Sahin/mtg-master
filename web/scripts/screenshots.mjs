@@ -527,6 +527,103 @@ await run("39-mobile-result-menus", { width: 390, height: 844 }, async (p) => {
     await p.keyboard.press("Escape");
   }
 });
+// The phone sweep: every screen, menu and dialog at 360px, checked for anything that sticks out past
+// the screen's edge (a menu running off the side, a too-wide button row). Elements inside a box that
+// scrolls sideways on purpose (the tab bar) don't count.
+const offscreen = (p) =>
+  p.evaluate(() => {
+    const W = window.innerWidth;
+    const scrolls = (el) => {
+      for (let e = el.parentElement; e; e = e.parentElement) {
+        const o = getComputedStyle(e).overflowX;
+        if (o === "auto" || o === "scroll" || o === "hidden" || o === "clip") return true;
+      }
+      return false;
+    };
+    const out = [];
+    for (const el of document.querySelectorAll("body *")) {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.display === "none" || cs.position === "fixed" && el.tagName === "DIALOG") continue;
+      if ((r.right > W + 1 || r.left < -1) && !scrolls(el)) out.push(`${el.tagName.toLowerCase()}.${String(el.className).split(" ")[0]} (${Math.round(r.left)}–${Math.round(r.right)})`);
+    }
+    return { scroll: document.documentElement.scrollWidth - W, out: [...new Set(out)].slice(0, 6) };
+  });
+const sweep = async (p, what) => {
+  const r = await offscreen(p);
+  if (r.scroll > 1 || r.out.length) errors.push(`phone sweep, ${what}: ${r.scroll > 1 ? `page scrolls sideways ${r.scroll}px; ` : ""}${r.out.join(", ")}`);
+  return r;
+};
+await run("40-phone-sweep", { width: 360, height: 740 }, async (p) => {
+  const checked = [];
+  const step = async (what, fn) => {
+    try {
+      await fn();
+      await p.waitForTimeout(350);
+      await sweep(p, what);
+      checked.push(what);
+    } catch (e) {
+      errors.push(`phone sweep, ${what}: couldn't get there (${String(e).split("\n")[0].slice(0, 120)})`);
+    }
+  };
+  await step("home", async () => {});
+  await step("menu", async () => p.click("[data-testid=nav-toggle]"));
+  await p.click("[data-testid=nav-toggle]").catch(() => {});
+  await step("seeds", async () => loadSeeds(p));
+  await step("more options", async () => p.click("[data-testid=more-options] summary"));
+  await step("deck shape", async () => p.click("[data-testid=deck-shape] summary"));
+  await step("key sheet", async () => p.click("[data-testid=add-key]"));
+  await p.keyboard.press("Escape");
+  await step("decklist tab", async () => p.click("[data-testid=mode-deck]"));
+  await p.click("[data-testid=mode-seeds]");
+  await step("building", async () => {
+    await p.click("[data-testid=build]");
+    await p.waitForFunction(() => document.querySelectorAll(".cell.is-in").length > 10, null, { timeout: 60000 });
+  });
+  await step("result", async () => {
+    await p.waitForSelector(".deck", { timeout: 120000 });
+    await p.waitForTimeout(1500);
+  });
+  await step("export menu", async () => p.click("[data-testid=export-menu]"));
+  await p.keyboard.press("Escape");
+  await step("more menu", async () => p.click("[data-testid=more-menu]"));
+  await p.keyboard.press("Escape");
+  await step("buy links", async () => p.click("[data-testid=buy-toggle]"));
+  await step("stacks", async () => p.click("[data-testid=view-stacks]"));
+  await step("list tab", async () => p.click("role=tab[name=List]"));
+  await step("numbers tab", async () => p.click("role=tab[name=Numbers]"));
+  await step("hand tab", async () => p.click('role=tab[name="Draw a hand"]'));
+  await step("card view", async () => {
+    await p.click("role=tab[name=Cards]");
+    await p.locator(".role-grid .tile button").nth(3).click();
+  });
+  await p.keyboard.press("Escape");
+  await step("share sheet", async () => p.click("text=Share deck"));
+  await p.keyboard.press("Escape");
+  await step("my decks", async () => {
+    await p.goto(`${base}/decks`, { waitUntil: "networkidle" });
+    await p.waitForSelector("[data-testid=deck-card]", { timeout: 8000 });
+  });
+  await step("deck menu", async () => p.click("[data-testid=deck-more]"));
+  await p.keyboard.press("Escape");
+  await step("deck rename", async () => {
+    await p.click("[data-testid=deck-more]");
+    await p.click(".menu-list >> text=Rename");
+  });
+  await step("deck delete question", async () => {
+    await p.keyboard.press("Escape");
+    await p.goto(`${base}/decks`, { waitUntil: "networkidle" });
+    await p.click("[data-testid=deck-more]");
+    await p.click("[data-testid=deck-delete]");
+  });
+  await step("bracket checker", async () => p.goto(`${base}/bracket`, { waitUntil: "load" }));
+  await step("box EV", async () => p.goto(`${base}/ev`, { waitUntil: "networkidle" }));
+  await step("a box", async () => p.goto(`${base}${evFirst || "/ev/dsk-play"}`, { waitUntil: "networkidle" }));
+  await step("account", async () => p.goto(`${base}/account`, { waitUntil: "networkidle" }));
+  await step("privacy", async () => p.goto(`${base}/privacy`, { waitUntil: "networkidle" }));
+  console.log(`phone sweep at 360px: ${checked.length} screens checked (${checked.join(", ")})`);
+});
 await run("7-mobile-setup", { width: 390, height: 844 }, async (p) => {
   await loadSeeds(p);
   const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
