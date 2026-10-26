@@ -3426,3 +3426,21 @@ ul.verdict {
 .btn--saved:hover {
   color: var(--ink);
 }
+
+/* menus never run off the screen: they open to the left when there's no room on the right, and
+   their items wrap on narrow screens */
+.menu-list {
+  max-width: calc(100vw - 24px);
+}
+.menu-list--right {
+  left: auto;
+  right: 0;
+}
+@media (max-width: 640px) {
+  .menu-item {
+    white-space: normal;
+  }
+  .deckcard .menu-list {
+    min-width: min(270px, calc(100vw - 24px));
+  }
+}

@@ -1,7 +1,7 @@
 "use client";
 // A small dropdown menu: a button that opens a list of actions. Closes on a choice, Escape or a
 // click elsewhere.
-import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 export interface MenuItem {
   label: string;
@@ -11,8 +11,17 @@ export interface MenuItem {
 
 export function Menu({ label, items, className = "btn", testId }: { label: ReactNode; items: MenuItem[]; className?: string; testId?: string }) {
   const [open, setOpen] = useState(false);
+  const [align, setAlign] = useState<"left" | "right">("left");
   const ref = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const id = useId();
+  // keep the list on screen: open toward the side with room (a phone's right edge is close)
+  useLayoutEffect(() => {
+    if (!open) return setAlign("left");
+    const btn = ref.current?.getBoundingClientRect();
+    const list = listRef.current?.getBoundingClientRect();
+    if (btn && list && btn.left + list.width > window.innerWidth - 12) setAlign("right");
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
@@ -43,7 +52,7 @@ export function Menu({ label, items, className = "btn", testId }: { label: React
         </svg>
       </button>
       {open ? (
-        <div className="menu-list" role="menu" id={id} onKeyDown={move}>
+        <div className={`menu-list ${align === "right" ? "menu-list--right" : ""}`} role="menu" id={id} onKeyDown={move} ref={listRef}>
           {items.map((it) => (
             <button
               key={it.label}

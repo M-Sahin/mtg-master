@@ -511,6 +511,21 @@ await run("38-mobile-decks", { width: 390, height: 844 }, async (p) => {
   await p.waitForTimeout(1200);
   const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   if (overflow > 1) errors.push(`My decks scrolls sideways on a phone (${overflow}px)`);
+  // the deck's More menu stays on the screen
+  await p.click("[data-testid=deck-more]");
+  const box = await p.locator(".menu-list").boundingBox();
+  console.log(`phone deck menu: ${Math.round(box?.x ?? -1)}–${Math.round((box?.x ?? 0) + (box?.width ?? 0))}px of 390px`);
+  if (!box || box.x < 0 || box.x + box.width > 390) errors.push(`the deck menu runs off a phone screen (${JSON.stringify(box)})`);
+});
+// the result page's Export and More menus on a phone
+await run("39-mobile-result-menus", { width: 390, height: 844 }, async (p) => {
+  await toResult(p);
+  for (const m of ["export-menu", "more-menu"]) {
+    await p.click(`[data-testid=${m}]`);
+    const box = await p.locator(".menu-list").boundingBox();
+    if (!box || box.x < 0 || box.x + box.width > 390) errors.push(`${m} runs off a phone screen (${JSON.stringify(box)})`);
+    await p.keyboard.press("Escape");
+  }
 });
 await run("7-mobile-setup", { width: 390, height: 844 }, async (p) => {
   await loadSeeds(p);
