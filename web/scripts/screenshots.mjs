@@ -412,6 +412,10 @@ await run("33-result-menus", { width: 1440, height: 1000 }, async (p) => {
   await p.context().grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
   await toResult(p);
   const stats = await p.locator("[data-testid=deck-stats] .deck-stat").allInnerTexts();
+  // a site without accounts: the deck is in this browser, and the action row says so
+  const savedState = await p.locator("[data-testid=saved-state]").innerText({ timeout: 5000 }).catch(() => "");
+  console.log(`save state: "${savedState}"`);
+  if (!/Saved in this browser/.test(savedState)) errors.push(`save state on the result: "${savedState}"`);
   const bracket = await p.locator("[data-testid=bracket-card] summary").innerText();
   await p.click("[data-testid=export-menu]");
   const items = await p.locator(".menu-list [role=menuitem]").allInnerTexts();
@@ -476,12 +480,12 @@ await run("36-save-ask", { width: 1440, height: 1000 }, async (p) => {
   await p.route("**/api/auth/session", (r) => r.fulfill({ json: { enabled: true, providers: ["email"], user: null } }));
   await p.goto(base, { waitUntil: "networkidle" });
   await toResult(p);
-  const ask = await p.locator("[data-testid=save-ask]").innerText({ timeout: 8000 }).catch(() => "");
+  const ask = await p.locator("[data-testid=save-to-account]").innerText({ timeout: 8000 }).catch(() => "");
   await p.click("[data-testid=save-to-account]");
   const title = await p.locator("dialog.login-modal[open] h3").innerText({ timeout: 5000 }).catch(() => "");
   const intent = await p.evaluate(() => localStorage.getItem("hundredfold:save-after-login"));
-  console.log(`save prompt: "${ask.split("\n")[0].slice(0, 70)}"; dialog "${title}"; will move ${intent}`);
-  if (!/Keep this deck\?/.test(ask) || title !== "Save your deck" || !intent) errors.push(`save prompt: ${ask} / ${title} / ${intent}`);
+  console.log(`save button: "${ask}"; dialog "${title}"; will move ${intent}`);
+  if (ask !== "Save to my account" || title !== "Save your deck" || !intent) errors.push(`save button: ${ask} / ${title} / ${intent}`);
 });
 // My decks, logged out: the decks in this browser, each with its actions; Open goes to the deck
 await run("37-decks-page", { width: 1440, height: 1000 }, async (p) => {

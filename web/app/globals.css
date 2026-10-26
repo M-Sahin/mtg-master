@@ -3417,3 +3417,12 @@ ul.verdict {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* "Saved to My decks": a quiet confirmation in the deck's action row */
+.btn--saved {
+  border-color: color-mix(in oklab, var(--ok) 45%, transparent);
+  color: var(--ok);
+}
+.btn--saved:hover {
+  color: var(--ink);
+}

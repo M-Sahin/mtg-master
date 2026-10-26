@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { COMMANDER_TEMPLATE, bracketInfo } from "../lib/shared/bracket";
 import { MANA_COLORS, ROLE_COLORS, averageMv, byRole, byType, curve, exportText, library, pips, price, shuffle, totalCards, isLand } from "../lib/shared/deck-utils";
 import type { Color, Deck, DeckCard, Validation } from "../lib/shared/types";
@@ -30,6 +30,7 @@ export function DeckView({
   spend,
   donationUrl,
   added,
+  saveSlot,
 }: {
   deck: Deck;
   validation: Validation;
@@ -41,6 +42,8 @@ export function DeckView({
   donationUrl?: string;
   /** Upgrade mode: cards Claude swapped in, marked "New". */
   added?: string[];
+  /** The save button (or "Saved") next to Share; the page decides what it does. */
+  saveSlot?: ReactNode;
 }) {
   const [buying, setBuying] = useState(false);
   const site = useSiteConfig();
@@ -89,6 +92,7 @@ export function DeckView({
             <DeckStats deck={deck} validation={validation} openers={openers} />
             <div className="deck-actions">
               <ShareButton deck={deck} shareD={shareD} />
+              {saveSlot}
               <button type="button" className={`btn ${buying ? "is-on" : ""}`} onClick={() => setBuying((b) => !b)} aria-expanded={buying} data-testid="buy-toggle">
                 Buy the cards
               </button>

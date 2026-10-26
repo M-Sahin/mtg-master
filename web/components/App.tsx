@@ -78,7 +78,9 @@ export default function App() {
   const acct = useAccount();
   // the deck just built, when it went into this browser only (logged out): offer to save it to an account
   const [localSave, setLocalSave] = useState<SavedDeck | null>(null);
-  const [saveAsk, setSaveAsk] = useState<"ask" | "login" | "dismissed">("ask");
+  // where the deck on screen is saved: shown as the Save button next to Share
+  const [saveState, setSaveState] = useState<"saving" | "account" | "browser" | "failed">("browser");
+  const [saveLogin, setSaveLogin] = useState(false);
   const [hasDecks, setHasDecks] = useState(false);
   const [shape, setShape] = useState<ShapeDraft>(emptyShape);
   const shapeParsed = draftToShape(shape);
@@ -323,6 +325,7 @@ export default function App() {
   };
 
   const saveToMyDecks = async (r: Result) => {
+    setSaveState("saving");
     try {
       const d = await encodeDeck(r.deck);
       const entry: SavedDeck = {
@@ -342,14 +345,53 @@ export default function App() {
       if (a.user) ok = await cloudDecks.save(entry).then(() => true, () => false);
       if (!ok) {
         myDecks.add(entry);
-        if (a.enabled && !a.user) {
-          setLocalSave(entry);
-          setSaveAsk("ask");
-        }
-      } else setLocalSave(null);
+        setLocalSave(entry);
+        setSaveState("browser");
+      } else {
+        setLocalSave(null);
+        setSaveState("account");
+      }
       setHasDecks(true);
     } catch {
-      /* the deck is still shown; it just isn't added to My decks */
+      // the deck is still shown; the Save button lets them try again
+      setSaveState("failed");
+    }
+  };
+
+  /** A deck opened from My decks or "Your last deck" is already saved somewhere. */
+  const showSaved = (r: Result) => {
+    setResult(r);
+    setLocalSave(null);
+    setSaveState(acct.user ? "account" : "browser");
+    setPhase("result");
+  };
+
+  /** Logged out: keep the deck in this browser for now, and move it into the account after logging in. */
+  const saveToAccount = async () => {
+    if (!result) return;
+    try {
+      let entry = localSave;
+      if (!entry) {
+        const d = await encodeDeck(result.deck);
+        entry = myDecks.list().find((x) => x.d === d) ?? null;
+        if (!entry) {
+          entry = { id: d.slice(-12) + Date.now().toString(36), at: Date.now(), name: result.deck.name, commander: result.deck.commander.name, partner: result.deck.partner?.name, colors: result.deck.colorIdentity, d };
+          myDecks.add(entry);
+        }
+        setLocalSave(entry);
+      }
+      if (acct.user) {
+        // logged in but the save didn't go through earlier: try again
+        setSaveState("saving");
+        await cloudDecks.save(entry);
+        setSaveState("account");
+        return;
+      }
+      saveAfterLogin.set([entry.id]);
+      setSaveLogin(true);
+    } catch (e) {
+      setSaveState("failed");
+      setError((e as Error).message);
     }
   };
 
@@ -411,8 +453,7 @@ export default function App() {
       try {
         const r = await resolveDeck(h.d);
         if (h.kind === "open") {
-          setResult({ ...r, usage: h.usage, model: h.model });
-          setPhase("result");
+          showSaved({ ...r, usage: h.usage, model: h.model });
           return;
         }
         if (h.kind === "rebuild") {
@@ -486,10 +527,7 @@ export default function App() {
               <button
                 type="button"
                 className="welcome-deck"
-                onClick={() => {
-                  setResult(saved);
-                  setPhase("result");
-                }}
+                onClick={() => showSaved(saved)}
               >
                 <IdentityPips colors={saved.deck.colorIdentity} size={13} /> {saved.deck.name}
               </button>
@@ -664,29 +702,6 @@ export default function App() {
 
       {phase === "result" && result ? (
         <main>
-          {localSave && saveAsk === "ask" && acct.enabled && !acct.user && localSave.name === result.deck.name ? (
-            <div className="save-ask" data-testid="save-ask">
-              <p>
-                <strong>Keep this deck?</strong> It&apos;s saved in this browser only. A free account keeps it on every device: no password, just your email.
-              </p>
-              <span className="save-ask-actions">
-                <button
-                  type="button"
-                  className="btn btn--brass"
-                  onClick={() => {
-                    saveAfterLogin.set([localSave.id]);
-                    setSaveAsk("login");
-                  }}
-                  data-testid="save-to-account"
-                >
-                  Save to my account
-                </button>
-                <button type="button" className="btn btn--quiet" onClick={() => setSaveAsk("dismissed")}>
-                  Not now
-                </button>
-              </span>
-            </div>
-          ) : null}
           {result.swaps ? <UpgradeSummary swaps={result.swaps} /> : null}
           <DeckView
             deck={result.deck}
@@ -696,13 +711,28 @@ export default function App() {
             onRebuild={ready ? build : undefined}
             spend={result.model ? (result.free ? `Free build with ${modelInfo(result.model)?.label ?? result.model}` : result.usage ? `Built with ${modelInfo(result.model)?.label ?? result.model}: ${spendText(result.usage, result.model)}` : undefined) : undefined}
             donationUrl={config?.donationUrl ?? undefined}
+            saveSlot={
+              saveState === "saving" ? (
+                <button type="button" className="btn" disabled>
+                  Saving…
+                </button>
+              ) : saveState === "account" || (saveState === "browser" && acct.loaded && !acct.enabled) ? (
+                <a className="btn btn--saved" href="/decks" data-testid="saved-state" title="Open My decks">
+                  <span aria-hidden>✓</span> {saveState === "account" ? "Saved to My decks" : "Saved in this browser"}
+                </a>
+              ) : (
+                <button type="button" className="btn" onClick={() => void saveToAccount()} data-testid="save-to-account">
+                  {saveState === "failed" ? "Save deck" : "Save to my account"}
+                </button>
+              )
+            }
           />
         </main>
       ) : null}
 
       <LoginDialog
-        open={saveAsk === "login"}
-        onClose={() => setSaveAsk("ask")}
+        open={saveLogin}
+        onClose={() => setSaveLogin(false)}
         title="Save your deck"
         lead="Log in, or make an account with just your email. Your deck moves into it, and you'll find it under My decks."
         next="/decks"
