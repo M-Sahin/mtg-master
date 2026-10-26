@@ -435,11 +435,17 @@ await run("33-result-menus", { width: 1440, height: 1000 }, async (p) => {
 await run("34-mobile-follow", { width: 390, height: 844 }, async (p) => {
   await loadSeeds(p);
   await p.click("[data-testid=build]");
-  await p.waitForFunction(() => document.querySelectorAll(".log-tool").length >= 3, null, { timeout: 60000 });
-  await p.waitForTimeout(1200);
-  const pos = await p.evaluate(() => ({ y: Math.round(window.scrollY), caret: Math.round(document.querySelector(".log-caret")?.getBoundingClientRect().top ?? -1), h: window.innerHeight }));
-  console.log(`phone build: scrolled to ${pos.y}px, newest line at ${pos.caret}px of ${pos.h}px`);
-  if (pos.caret < 0 || pos.caret > pos.h) errors.push(`the phone build screen doesn't follow the log (${JSON.stringify(pos)})`);
+  // while Claude searches, the newest log line is on screen…
+  await p.waitForFunction(() => document.querySelectorAll(".log-tool").length >= 1, null, { timeout: 60000 });
+  await p.waitForTimeout(900);
+  const pos = await p.evaluate(() => ({ y: Math.round(window.scrollY), caret: Math.round(document.querySelector(".log-caret")?.getBoundingClientRect().top ?? -1), h: window.innerHeight, writing: document.querySelectorAll(".cell.is-in").length > 1 }));
+  // …and while it writes the list, the grid is
+  await p.waitForFunction(() => document.querySelectorAll(".cell.is-in").length > 30, null, { timeout: 60000 });
+  await p.waitForTimeout(900);
+  const grid = await p.evaluate(() => Math.round(document.querySelector(".forge-hundred")?.getBoundingClientRect().top ?? -1));
+  console.log(`phone build: while searching scrolled to ${pos.y}px, newest line at ${pos.caret}px of ${pos.h}px${pos.writing ? " (already writing)" : ""}; while writing the grid is at ${grid}px`);
+  if (!pos.writing && (pos.caret < 0 || pos.caret > pos.h)) errors.push(`the phone build screen doesn't follow the log (${JSON.stringify(pos)})`);
+  if (grid < -20 || grid > pos.h / 2) errors.push(`the phone build screen doesn't show the grid while writing (${grid}px)`);
 });
 await run("7-mobile-setup", { width: 390, height: 844 }, async (p) => {
   await loadSeeds(p);
