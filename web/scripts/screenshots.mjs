@@ -203,6 +203,8 @@ await run("16-collection", { width: 1440, height: 1000 }, async (p) => {
 await run("17-bracket-checker", { width: 1440, height: 1000 }, async (p) => {
   await p.goto(`${base}/bracket`, { waitUntil: "networkidle" });
   await p.fill("[data-testid=bracket-list]", "Commander\n1 Meren of Clan Nel Toth\n\nDeck\n1 Sol Ring\n1 Demonic Tutor\n1 Bolas's Citadel\n1 Gravecrawler\n1 Phyrexian Altar\n1 Sakura-Tribe Elder\n10 Swamp\n10 Forest");
+  // the bot check (Turnstile, with Cloudflare's test keys in CI) loads under the security policy
+  await p.waitForSelector("iframe[src*='challenges.cloudflare.com']", { state: "attached", timeout: 20000 }).catch(() => errors.push("the Turnstile widget didn't load on /bracket"));
   await p.click("text=Check the bracket");
   await p.waitForSelector(".bracket-badge", { timeout: 60000 });
   const badge = await p.locator(".bracket-badge strong").innerText();

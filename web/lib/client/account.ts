@@ -58,7 +58,7 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const account = {
-  sendLink: (email: string, next: string) => call<{ sent: boolean }>("/api/auth/email", { method: "POST", body: JSON.stringify({ email, next }) }),
+  sendLink: (email: string, next: string, turnstile?: string) => call<{ sent: boolean }>("/api/auth/email", { method: "POST", body: JSON.stringify({ email, next, turnstile }) }),
   oauthHref: (provider: string, next: string) => `/api/auth/oauth?provider=${encodeURIComponent(provider)}&next=${encodeURIComponent(next)}`,
   async logout() {
     await call("/api/auth/logout", { method: "POST", body: "{}" });

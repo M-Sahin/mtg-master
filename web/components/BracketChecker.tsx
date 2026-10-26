@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { BracketReport } from "../lib/server/bracket-check";
 import { OpenersView } from "./OpenersView";
 import { SiteHeader } from "./SiteHeader";
+import { useHumanCheck } from "./useHumanCheck";
 
 const EXAMPLE = "Commander\n1 Meren of Clan Nel Toth\n\nDeck\n1 Sol Ring\n1 Sakura-Tribe Elder\n1 Viscera Seer\n…";
 
@@ -12,12 +13,14 @@ export default function BracketChecker() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<BracketReport | null>(null);
+  const human = useHumanCheck("bracket");
 
   const check = async () => {
     setBusy(true);
     setError(null);
     try {
-      const r = await fetch("/api/bracket", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ list }) });
+      const turnstile = await human.take();
+      const r = await fetch("/api/bracket", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ list, turnstile }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "The check failed.");
       setReport(j);
@@ -46,8 +49,9 @@ export default function BracketChecker() {
             <span className="opt-hint">Works with exports from Moxfield, Archidekt, MTG Arena and MTGO, or any &ldquo;1 Card name&rdquo; list. Put the commander under a &ldquo;Commander&rdquo; heading, or first, followed by an empty line.</span>
           </label>
           <div className="bracket-actions">
-            <button type="button" className="btn btn--big btn--brass" onClick={check} disabled={busy || !list.trim()}>
-              {busy ? "Checking…" : "Check the bracket"}
+            {human.widget}
+            <button type="button" className="btn btn--big btn--brass" onClick={check} disabled={busy || !list.trim() || !human.ready}>
+              {busy ? "Checking…" : human.ready ? "Check the bracket" : "One moment…"}
             </button>
             <label className="btn">
               Upload a .txt file

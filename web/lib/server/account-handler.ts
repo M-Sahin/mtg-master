@@ -71,6 +71,7 @@ export { resetRateLimits as resetLimits } from "./ratelimit";
 
 function friendly(e: unknown): string {
   if (e instanceof SupabaseError) {
+    if (/captcha/i.test(e.message)) return "The check that you're not a bot didn't pass. Reload the page and try again.";
     if (/rate limit|too many|email rate/i.test(e.message)) return "Too many login emails were sent just now. Try again in a little while, or log in with Discord or Google.";
     if (/deck limit/i.test(e.message)) return "Your account has 1,000 decks, the most it can keep. Delete some to save new ones.";
     if (e.status === 401 || e.status === 403) return "Your session ended. Log in again.";
@@ -108,7 +109,8 @@ export async function handleEmail(request: Request, deps: Deps = {}): Promise<Re
   const verifier = pkceVerifier();
   const secure = isSecure(request);
   try {
-    await sendMagicLink(cfg, email, `${site}/auth/callback`, await pkceChallenge(verifier), deps.fetch);
+    const captcha = typeof body?.turnstile === "string" && body.turnstile.length <= 2048 ? body.turnstile : undefined;
+    await sendMagicLink(cfg, email, `${site}/auth/callback`, await pkceChallenge(verifier), deps.fetch, captcha);
   } catch (e) {
     return json({ error: friendly(e) }, 502);
   }

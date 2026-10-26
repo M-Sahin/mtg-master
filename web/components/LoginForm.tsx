@@ -2,6 +2,7 @@
 // Log in with an email link, Discord or Google. Accounts are optional: everything works without one.
 import { useState } from "react";
 import { account, herePath, useAccount } from "../lib/client/account";
+import { useHumanCheck } from "./useHumanCheck";
 
 const PROVIDER_LABEL: Record<string, string> = { discord: "Log in with Discord", google: "Log in with Google" };
 
@@ -12,11 +13,12 @@ export function LoginForm({ next }: { next?: string }) {
   const [sent, setSent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const back = next ?? herePath();
+  const human = useHumanCheck("login");
   const send = async () => {
     setBusy(true);
     setError(null);
     try {
-      await account.sendLink(email.trim(), back);
+      await account.sendLink(email.trim(), back, await human.take());
       setSent(email.trim());
     } catch (e) {
       setError((e as Error).message);
@@ -50,9 +52,10 @@ export function LoginForm({ next }: { next?: string }) {
             }}
           >
             <input className="field" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" aria-label="Email address" data-testid="login-email" />
-            <button type="submit" className="btn btn--brass" disabled={busy || !email.trim()}>
-              {busy ? "Sending…" : "Email me a login link"}
+            <button type="submit" className="btn btn--brass" disabled={busy || !email.trim() || !human.ready}>
+              {busy ? "Sending…" : human.ready ? "Email me a login link" : "One moment…"}
             </button>
+            {human.widget}
           </form>
         )
       ) : null}

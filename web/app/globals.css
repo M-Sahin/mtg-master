@@ -2643,3 +2643,9 @@ a.ev-row:hover {
   gap: 6px;
   flex: 1;
 }
+.turnstile:empty {
+  display: none;
+}
+.turnstile {
+  min-height: 0;
+}

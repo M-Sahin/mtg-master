@@ -132,8 +132,10 @@ export function resetProviderCache() {
 }
 
 /** Send a magic link (creates the account on first use). The link comes back to /auth/callback?code=… */
-export function sendMagicLink(cfg: SupabaseConfig, email: string, redirectTo: string, challenge: string, f?: Fetch) {
-  return call<unknown>(cfg, `/auth/v1/otp?redirect_to=${encodeURIComponent(redirectTo)}`, { method: "POST", body: JSON.stringify({ email, create_user: true, code_challenge: challenge, code_challenge_method: "s256" }) }, f);
+export function sendMagicLink(cfg: SupabaseConfig, email: string, redirectTo: string, challenge: string, f?: Fetch, captchaToken?: string) {
+  // with CAPTCHA on in Supabase (Auth → Bot protection), Supabase verifies the Turnstile token itself
+  const body = { email, create_user: true, code_challenge: challenge, code_challenge_method: "s256", ...(captchaToken ? { gotrue_meta_security: { captcha_token: captchaToken } } : {}) };
+  return call<unknown>(cfg, `/auth/v1/otp?redirect_to=${encodeURIComponent(redirectTo)}`, { method: "POST", body: JSON.stringify(body) }, f);
 }
 
 /** Where to send the browser for "Log in with Discord/Google". */

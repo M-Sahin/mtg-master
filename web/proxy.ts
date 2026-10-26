@@ -8,11 +8,14 @@ export function proxy(request: NextRequest) {
   const dev = process.env.NODE_ENV === "development";
   const csp = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
+    // Cloudflare Turnstile (the bot check) is added by our own script, which 'strict-dynamic'
+    // allows; the host is listed for browsers without 'strict-dynamic'
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com${dev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'", // inline style attributes (colors, card art)
     "img-src 'self' data: blob: https://cards.scryfall.io https://*.scryfall.io",
     "font-src 'self' data:",
     "connect-src 'self'",
+    "frame-src https://challenges.cloudflare.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

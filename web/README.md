@@ -58,6 +58,13 @@ To switch it on for your copy:
 
 Without these settings the app works as before: no login button, decks in the browser.
 
+## Abuse protection
+
+- **Shared rate limits** (`lib/server/ratelimit.ts`) on every route that costs something: builds, key checks, the bracket checker, login emails, deck saves, share links and share images, card lookups and prices. With the Upstash store set up, every server instance counts together, so a script can't get around a limit by landing on fresh instances; without it each instance counts on its own. Counts are kept under hashed keys (no IPs or emails in the store), IPv6 addresses count per /64, and a limited request gets a 429 with `Retry-After`. The numbers are in `LIMITS` in that file.
+- **Turnstile** (optional): with `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` set, the bracket checker and "Read my deck" need a token that the server checks with Cloudflare, and the login form sends one to Supabase. In Cloudflare, create a Turnstile widget for your domain (managed mode). In Supabase, switch on **Authentication → Bot and abuse protection → CAPTCHA**, pick Turnstile and paste the same secret: then Supabase refuses login emails without a valid token, also from scripts that call Supabase directly. Each token works once, so the login token goes only to Supabase. If Cloudflare can't be reached, requests go through and the rate limits still apply.
+- **Headers:** a strict Content Security Policy with a nonce per request (Turnstile's script and frame are the only outside ones), HSTS, no framing, `nosniff`.
+- **Supply chain:** Dependabot (`.github/dependabot.yml`), `npm audit` in CI (critical issues in shipped dependencies fail the build), and GitHub Actions pinned to commits.
+
 ## Box EV
 
 `/ev` lists every Play, Collector, Set and Draft Booster box released since 2020 with its average card value. A box's page (`/ev/dsk-play`) lets you enter what you'd pay and shows:
@@ -151,6 +158,7 @@ cd web && npm ci && npm run build && npm start
 | `ANTHROPIC_MODEL` | no | Defaults to `claude-sonnet-5-5`. `claude-opus-5-5` gives stronger decks but is slower and costs more. |
 | `AFFILIATE_TCGPLAYER`, `AFFILIATE_CARDKINGDOM`, `AFFILIATE_CARDMARKET` | no | Affiliate tags for the "Buy the cards" and "Find this box" links: a link template with `{url}` where the shop link goes (what Impact gives you for TCGplayer, e.g. `https://tcgplayer.pxf.io/c/…?u={url}`), or parameters to add to the shop link (`partner=yourname`). Without them the links work, untagged. When any is set, the page says some links are affiliate links. |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | no | Accounts and decks saved to them (see [Accounts](#accounts-optional)). `SUPABASE_PUBLISHABLE_KEY` and the `NEXT_PUBLIC_` names the Supabase Vercel integration sets work too. |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | no | Cloudflare Turnstile, the mostly invisible check that a visitor isn't a bot (see [Abuse protection](#abuse-protection)). |
 | `EV_DATA_URL` | no | Where the Box EV data is read from. Defaults to this repo's `ev-data` branch on GitHub. |
 | `BUILDS_PER_HOUR_PER_IP` | no | A best-effort limit per IP, kept per server instance (default 6). |
 | `DEMO_MODE` | no | Set it to `1` to force demo mode even when a key is set. Only the value `1` switches it on. |

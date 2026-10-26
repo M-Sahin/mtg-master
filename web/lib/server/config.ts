@@ -1,4 +1,5 @@
 import { cleanAffiliates, type Affiliates } from "../shared/buy";
+import { turnstileSiteKey } from "./turnstile";
 import { DEMO_SEEDS } from "./demo";
 import { SKILL_VERSION } from "../skill/content";
 import { parseEngine, type EngineOptions } from "./engine";
@@ -44,6 +45,8 @@ export interface PublicConfig {
   donationUrl: string | null;
   /** Affiliate tags for the buy links (lib/shared/buy.ts). */
   affiliates: Affiliates;
+  /** Cloudflare Turnstile site key (public), when the bot check is on. */
+  turnstileSiteKey: string | null;
   model: string;
   skillVersion: string;
   accessCodeRequired: boolean;
@@ -58,6 +61,7 @@ export function publicConfig(): PublicConfig {
     ownKeys: c.ownKeys,
     donationUrl: c.donationUrl,
     affiliates: c.affiliates,
+    turnstileSiteKey: turnstileSiteKey(),
     model: c.demo ? "demo (scripted)" : c.model,
     skillVersion: SKILL_VERSION,
     accessCodeRequired: Boolean(c.accessCode) && !c.demo,

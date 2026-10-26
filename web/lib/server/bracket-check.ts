@@ -11,6 +11,7 @@
 // - expected game length: 9+ turns (1), 8+ (2), 6+ (3), 4+ (4), any (5) (October 2025 update)
 // Brackets 1 and 5 are about intent and can't be told from a list alone.
 import { LIMITS, clientIp, rateLimit, tooMany } from "./ratelimit";
+import { turnstileError, verifyTurnstile } from "./turnstile";
 import { checkCombos, type Combo } from "./combos";
 import * as scry from "./scryfall";
 import { EXTRA_TURN, MLD, pairingProblem, validateDeck } from "./validate";
@@ -151,6 +152,8 @@ export async function handleBracketCheck(request: Request): Promise<Response> {
   const r = await rateLimit(LIMITS.bracket, clientIp(request));
   if (!r.ok) return tooMany("You've checked a lot of decks this hour. Try again in a bit.", r);
   const body = await request.json().catch(() => ({}));
+  const human = await verifyTurnstile(body?.turnstile, clientIp(request), "bracket");
+  if (!human.ok) return turnstileError(human);
   const text = typeof body?.list === "string" ? body.list.slice(0, 50_000) : "";
   try {
     return Response.json(await checkBracket(text));

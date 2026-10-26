@@ -4,6 +4,7 @@
 import { useState } from "react";
 import type { BracketReport } from "../lib/server/bracket-check";
 import { isBasicLand } from "../lib/shared/types";
+import { useHumanCheck } from "./useHumanCheck";
 
 export interface StartDeck {
   commander: string;
@@ -20,6 +21,7 @@ export function DeckStartPanel({ onComplete, onUpgrade, onRead, blocked }: { onC
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<BracketReport | null>(null);
   const [declined, setDeclined] = useState(false);
+  const human = useHumanCheck("bracket");
 
   const read = async (list: string) => {
     setBusy(true);
@@ -27,7 +29,8 @@ export function DeckStartPanel({ onComplete, onUpgrade, onRead, blocked }: { onC
     setReport(null);
     setDeclined(false);
     try {
-      const r = await fetch("/api/bracket", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ list }) });
+      const turnstile = await human.take();
+      const r = await fetch("/api/bracket", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ list, turnstile }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "Couldn't read that list.");
       setReport(j);
@@ -79,6 +82,7 @@ export function DeckStartPanel({ onComplete, onUpgrade, onRead, blocked }: { onC
             data-testid="deck-list"
             spellCheck={false}
           />
+          {human.widget}
           <button type="button" className="btn btn--brass" disabled={!text.trim() || busy} onClick={() => read(text)}>
             {busy ? "Reading…" : "Read my deck"}
           </button>
