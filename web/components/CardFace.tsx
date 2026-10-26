@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
 import { MANA_COLORS, parseManaCost } from "../lib/shared/deck-utils";
 import type { CardInfo, Color } from "../lib/shared/types";
 
@@ -57,7 +57,7 @@ export function CardFace({
   tilt?: boolean;
   className?: string;
   style?: CSSProperties;
-  onClick?: () => void;
+  onClick?: (e: ReactMouseEvent) => void;
   loading?: "lazy" | "eager";
 }) {
   const ref = useRef<HTMLDivElement>(null);

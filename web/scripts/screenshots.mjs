@@ -10,8 +10,8 @@ mkdirSync(out, { recursive: true });
 const browser = await chromium.launch();
 const errors = [];
 
-async function run(name, viewport, steps) {
-  const page = await browser.newPage({ viewport });
+async function run(name, viewport, steps, options = {}) {
+  const page = await browser.newPage({ viewport, ...options });
   page.on("pageerror", (e) => errors.push(`${name}: ${e}`));
   page.on("console", (m) => m.type() === "error" && errors.push(`${name}: ${m.text()}`));
   await page.goto(base, { waitUntil: "networkidle" });
@@ -69,8 +69,7 @@ await run("27-buy-cards", { width: 1440, height: 1000 }, async (p) => {
 // a card's price at each shop, with buy links
 await run("28-card-offers", { width: 1440, height: 1000 }, async (p) => {
   await toResult(p);
-  // the stacked view: click a card's name bar (the rest of it sits under the next card)
-  await p.locator(".stack-card").nth(1).locator("button, [role=button], img").first().click({ position: { x: 30, y: 8 } });
+  await p.locator(".role-grid .tile").nth(1).locator("button, [role=button], img").first().click();
   await p.waitForSelector("[data-testid=card-offers] .offer", { timeout: 20000 }).catch(() => errors.push("no shop prices in the card view"));
   const rows = await p.locator("[data-testid=card-offers] .offer").allInnerTexts();
   console.log(`card offers: ${rows.map((r) => r.replace(/\s+/g, " ")).join(" | ")}`);
@@ -423,12 +422,17 @@ await run("33-result-menus", { width: 1440, height: 1000 }, async (p) => {
   if (items.length !== 3) errors.push(`export menu has ${items.length} items`);
   if (!note) errors.push("no note after copying the list");
   if (!/Fits Bracket 3/.test(bracket)) errors.push(`bracket line: ${bracket}`);
-  const stacked = await p.locator("[data-testid=stacks] .stack-card").count();
-  await p.click("[data-testid=view-grid]");
+  // a finished deck opens in the grid; stacks are one click away
   const grid = await p.locator(".role-grid .tile").count();
-  console.log(`cards: ${stacked} in stacks, ${grid} in the grid`);
-  if (!stacked || stacked !== grid) errors.push(`stacks ${stacked} vs grid ${grid}`);
   await p.click("[data-testid=view-stacks]");
+  const stacked = await p.locator("[data-testid=stacks] .stack-card").count();
+  console.log(`cards: ${grid} in the grid (the default), ${stacked} in stacks`);
+  if (!grid || stacked !== grid) errors.push(`grid ${grid} vs stacks ${stacked}`);
+  // with a mouse a click opens the card straight away (hovering already shows it)
+  await p.locator(".stack-card").nth(2).locator("button").click({ position: { x: 30, y: 8 } });
+  const opened = await p.locator("dialog.modal[open]").count();
+  if (!opened) errors.push("a mouse click on a stacked card didn't open it");
+  await p.keyboard.press("Escape");
   await p.click("[data-testid=more-menu]");
 });
 // on a phone the build screen follows the build: the newest log line stays on screen
@@ -447,6 +451,26 @@ await run("34-mobile-follow", { width: 390, height: 844 }, async (p) => {
   if (!pos.writing && (pos.caret < 0 || pos.caret > pos.h)) errors.push(`the phone build screen doesn't follow the log (${JSON.stringify(pos)})`);
   if (grid < -20 || grid > pos.h / 2) errors.push(`the phone build screen doesn't show the grid while writing (${grid}px)`);
 });
+// stacks on a phone: the first tap pops the card out of its stack, the second opens it
+await run(
+  "35-mobile-stacks",
+  { width: 390, height: 844 },
+  async (p) => {
+    await toResult(p);
+    await p.tap("[data-testid=view-stacks]");
+    const card = p.locator(".stack-card").nth(2);
+    await card.locator("button").tap({ position: { x: 20, y: 6 } });
+    await p.waitForTimeout(400);
+    const peeked = await p.locator(".stack-card.is-peek").count();
+    const openAfterOne = await p.locator("dialog.modal[open]").count();
+    await card.locator("button").tap();
+    await p.waitForTimeout(400);
+    const openAfterTwo = await p.locator("dialog.modal[open]").count();
+    console.log(`phone stacks: first tap pops ${peeked} card (modal ${openAfterOne ? "open" : "closed"}), second tap ${openAfterTwo ? "opens it" : "doesn't open it"}`);
+    if (peeked !== 1 || openAfterOne || !openAfterTwo) errors.push(`phone stacks: peeked ${peeked}, modal after one tap ${openAfterOne}, after two ${openAfterTwo}`);
+  },
+  { hasTouch: true, isMobile: true },
+);
 await run("7-mobile-setup", { width: 390, height: 844 }, async (p) => {
   await loadSeeds(p);
   const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

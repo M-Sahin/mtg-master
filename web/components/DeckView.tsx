@@ -13,14 +13,12 @@ import { BuyLinks } from "./BuyLinks";
 import { CardOffers } from "./CardOffers";
 import { buyDeckLinks, cartLines } from "../lib/shared/buy";
 import { useSiteConfig } from "../lib/client/site-config";
-import { storage } from "../lib/client/api";
 import { CardFace, IdentityPips, ManaCost } from "./CardFace";
 import { ShareButton } from "./ShareSheet";
 import { Menu } from "./Menu";
 
 type Tab = "cards" | "list" | "numbers" | "hand";
 type CardsView = "stacks" | "grid";
-const cardsView = storage<CardsView>("hundredfold:cards-view");
 
 export function DeckView({
   deck,
@@ -48,15 +46,9 @@ export function DeckView({
   const site = useSiteConfig();
   const addedSet = useMemo(() => (added?.length ? new Set(added.map((n) => n.toLowerCase())) : undefined), [added]);
   const [tab, setTab] = useState<Tab>("cards");
-  const [view, setView] = useState<CardsView>("stacks");
-  useEffect(() => {
-    const v = cardsView.get();
-    if (v === "grid" || v === "stacks") setView(v);
-  }, []);
-  const pickView = (v: CardsView) => {
-    setView(v);
-    cardsView.set(v);
-  };
+  // every deck opens in the grid; stacks are a choice for this deck
+  const [view, setView] = useState<CardsView>("grid");
+  const pickView = (v: CardsView) => setView(v);
   const [open, setOpen] = useState<DeckCard | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const cmd = deck.commander;
@@ -187,8 +179,8 @@ export function DeckView({
               <span className="viewswitch" role="group" aria-label="Card layout">
                 {(
                   [
-                    ["stacks", "Stacks"],
                     ["grid", "Grid"],
+                    ["stacks", "Stacks"],
                   ] as [CardsView, string][]
                 ).map(([v, label]) => (
                   <button key={v} type="button" className={`viewswitch-btn ${view === v ? "is-on" : ""}`} aria-pressed={view === v} onClick={() => pickView(v)} data-testid={`view-${v}`}>
@@ -240,28 +232,7 @@ function Badges({ c, added }: { c: DeckCard; added?: Set<string> }) {
 }
 
 function CardsTab({ deck, onOpen, added, view }: { deck: Deck; onOpen: (c: DeckCard) => void; added?: Set<string>; view: CardsView }) {
-  if (view === "stacks")
-    return (
-      <div className="stacks" data-testid="stacks">
-        {byRole(deck).map((g) => (
-          <section key={g.role} className="stack-col" style={{ ["--role" as string]: ROLE_COLORS[g.role] }}>
-            <h3 className="role-title">
-              {ROLE_LABELS[g.role]} <span className="role-count">{g.count}</span>
-            </h3>
-            <div className="stack">
-              {g.cards.map((c) => (
-                <div key={c.name} className="tile stack-card">
-                  <CardFace card={c.info} name={c.name} onClick={() => onOpen(c)} />
-                  <span className="stack-badges">
-                    <Badges c={c} added={added} />
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
-    );
+  if (view === "stacks") return <Stacks deck={deck} onOpen={onOpen} added={added} />;
   return (
     <div className="roles">
       {byRole(deck).map((g) => (
@@ -280,6 +251,54 @@ function CardsTab({ deck, onOpen, added, view }: { deck: Deck; onOpen: (c: DeckC
         </section>
       ))}
     </div>
+  );
+}
+
+/**
+ * Stacks: one overlapping column per role. A tap (or a key) pops a card out of its stack, so the
+ * whole card shows; a second tap opens it. With a mouse, hovering already shows the card, so a
+ * click opens it straight away.
+ */
+function Stacks({ deck, onOpen, added }: { deck: Deck; onOpen: (c: DeckCard) => void; added?: Set<string> }) {
+  const [peek, setPeek] = useState<string | null>(null);
+  useEffect(() => {
+    if (!peek) return;
+    const away = (e: PointerEvent) => !(e.target as HTMLElement).closest?.(".stack-card") && setPeek(null);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setPeek(null);
+    document.addEventListener("pointerdown", away);
+    window.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      window.removeEventListener("keydown", key);
+    };
+  }, [peek]);
+  const click = (c: DeckCard, e: { nativeEvent: Event }) => {
+    const mouse = (e.nativeEvent as PointerEvent).pointerType === "mouse";
+    if (mouse || peek === c.name) {
+      setPeek(null);
+      onOpen(c);
+    } else setPeek(c.name);
+  };
+  return (
+    <div className="stacks" data-testid="stacks">
+        {byRole(deck).map((g) => (
+          <section key={g.role} className="stack-col" style={{ ["--role" as string]: ROLE_COLORS[g.role] }}>
+            <h3 className="role-title">
+              {ROLE_LABELS[g.role]} <span className="role-count">{g.count}</span>
+            </h3>
+            <div className="stack">
+              {g.cards.map((c) => (
+                <div key={c.name} className={`tile stack-card ${peek === c.name ? "is-peek" : ""}`} data-testid="stack-card">
+                  <CardFace card={c.info} name={c.name} onClick={(e) => click(c, e)} />
+                  <span className="stack-badges">
+                    <Badges c={c} added={added} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
   );
 }
 
