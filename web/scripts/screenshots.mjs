@@ -430,11 +430,6 @@ await run("33-result-menus", { width: 1440, height: 1000 }, async (p) => {
 });
 await run("7-mobile-setup", { width: 390, height: 844 }, async (p) => {
   await loadSeeds(p);
-  await p.evaluate(() => window.scrollTo(0, 0));
-  await p.waitForTimeout(400);
-  const bar = await p.locator("[data-testid=go-bar]").isVisible().catch(() => false);
-  console.log(`phone: sticky Build bar while the button is off screen: ${bar}`);
-  if (!bar) errors.push("no sticky Build bar on the phone");
   const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   if (overflow > 1) errors.push(`setup page scrolls sideways on a phone (${overflow}px)`);
 });

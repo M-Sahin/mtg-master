@@ -80,8 +80,6 @@ export default function App() {
   const shapeParsed = draftToShape(shape);
   const shapeReq = typeof shapeParsed === "object" ? shapeParsed : undefined;
   const shapeError = typeof shapeParsed === "string" ? shapeParsed : null;
-  const goRef = useRef<HTMLDivElement>(null);
-  const [goVisible, setGoVisible] = useState(true);
 
   const refreshFree = useCallback(() => {
     void freeBuilds().then(setFree);
@@ -106,15 +104,6 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // the phone's sticky Build bar shows while the real button is off screen
-  useEffect(() => {
-    const el = goRef.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(([e]) => setGoVisible(e.isIntersecting), { rootMargin: "0px 0px -40px 0px" });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [phase, mode]);
 
   const filledSeeds = seeds.filter(Boolean) as Seed[];
   const identity = useMemo(() => {
@@ -604,7 +593,7 @@ export default function App() {
             </details>
           </section>
 
-          <div className="go" ref={goRef}>
+          <div className="go">
             {mode === "seeds" ? (
               <button type="button" className="btn btn--big btn--brass" onClick={build} disabled={!ready || !!needCode || (!!blocked && !key.key)} data-testid="build">
                 Build my deck
@@ -618,16 +607,6 @@ export default function App() {
               </p>
             ) : null}
           </div>
-          {mode === "seeds" && !goVisible ? (
-            <div className="go-bar" data-testid="go-bar">
-              <span className="go-bar-info">
-                <IdentityPips colors={identity} size={13} /> {filledSeeds.length}/5 · Bracket {bracket}
-              </span>
-              <button type="button" className="btn btn--brass" onClick={build} disabled={!ready || !!needCode || (!!blocked && !key.key)}>
-                Build my deck
-              </button>
-            </div>
-          ) : null}
           <MyDecks onOpen={openSaved} version={decksVersion} showEmpty={decksHash} />
         </main>
       ) : null}

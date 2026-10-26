@@ -2842,9 +2842,6 @@ a.ev-row:hover {
   color: var(--faint);
   font-size: 14px;
 }
-.go-bar {
-  display: none;
-}
 .human-check {
   display: flex;
   justify-content: center;
@@ -2879,33 +2876,6 @@ a.ev-row:hover {
   }
   .options {
     gap: 20px;
-  }
-  .go-bar {
-    position: fixed;
-    left: 10px;
-    right: 10px;
-    bottom: calc(10px + env(safe-area-inset-bottom));
-    z-index: 30;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 8px 8px 8px 14px;
-    border: 1px solid var(--line-strong);
-    border-radius: 16px;
-    background: color-mix(in oklab, var(--felt) 94%, transparent);
-    backdrop-filter: blur(8px);
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
-  }
-  .go-bar-info {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--muted);
-    font-size: 14px;
-  }
-  main.setup {
-    padding-bottom: 96px;
   }
 }
 
