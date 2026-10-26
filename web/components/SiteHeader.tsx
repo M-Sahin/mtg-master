@@ -3,6 +3,7 @@
 // button on phones. Every page uses it.
 import { useEffect, useState, type ReactNode } from "react";
 import { loadConfig } from "../lib/client/site-config";
+import { AccountButton } from "./AccountButton";
 
 export type NavKey = "build" | "bracket" | "ev" | "decks" | null;
 
@@ -80,6 +81,7 @@ export function SiteHeader({ active, donationUrl, extra }: { active: NavKey; don
       <span className="nav-side">
         {extra}
         {outside}
+        <AccountButton />
       </span>
       <button type="button" className="nav-toggle" aria-expanded={open} aria-controls="nav-menu" onClick={() => setOpen((o) => !o)} data-testid="nav-toggle">
         <span className="visually-hidden">{open ? "Close menu" : "Menu"}</span>
@@ -94,7 +96,10 @@ export function SiteHeader({ active, donationUrl, extra }: { active: NavKey; don
               {l.label}
             </a>
           ))}
-          <span className="nav-menu-side">{outside}</span>
+          <span className="nav-menu-side">
+            {outside}
+            <AccountButton onNavigate={() => setOpen(false)} />
+          </span>
         </nav>
       ) : null}
     </header>

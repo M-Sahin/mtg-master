@@ -2536,3 +2536,108 @@ a.ev-row:hover {
   font-size: 14px;
   text-align: center;
 }
+
+/* ---- accounts ---- */
+.nav-login {
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+.nav-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.nav-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--brass);
+  color: var(--brass-ink);
+  font-weight: 800;
+  font-size: 13px;
+}
+.login {
+  display: grid;
+  gap: 12px;
+}
+.login-providers {
+  display: grid;
+  gap: 8px;
+}
+.login-providers .btn {
+  justify-content: center;
+}
+.login-discord {
+  background: #5865f2;
+  border-color: #5865f2;
+  color: #fff;
+}
+.login-email {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.login-email .field {
+  flex: 1 1 14rem;
+}
+.login-sent {
+  margin: 0;
+  color: var(--ok);
+}
+.login-inner {
+  display: grid;
+  gap: 14px;
+  max-width: 26rem;
+  grid-template-columns: 1fr;
+}
+.login-inner h3 {
+  margin: 0;
+}
+.account-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 18px clamp(16px, 4vw, 48px) 40px;
+  display: grid;
+  gap: 18px;
+}
+.account-page h1 {
+  font-family: var(--font-display);
+  margin: 0;
+}
+.account-danger {
+  border-color: color-mix(in oklab, var(--bad) 40%, transparent);
+}
+.btn--danger {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+.btn--danger:disabled {
+  opacity: 0.45;
+}
+.prose ul {
+  padding-left: 1.2rem;
+  color: var(--muted);
+}
+.prose h3 {
+  margin: 8px 0 0;
+}
+.mydecks-actions {
+  display: flex;
+  gap: 6px;
+}
+.mydecks-import {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.mydecks-rename {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}

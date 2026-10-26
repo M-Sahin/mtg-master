@@ -23,7 +23,7 @@ Next.js (App Router), React 19, plain CSS. No SDK dependencies beyond Next and R
 - **Box EV:** what every booster box since 2020 is worth on average at `/ev`, after selling costs, with your chance to get your price back (see [Box EV](#box-ev)). The deck view adds "Singles or boxes?": which boxes could give you the deck's cards, and what those cards cost as singles.
 - **Buy the cards:** every deck can open TCGplayer or Card Kingdom with the whole list in the cart, or copy it for a Cardmarket wants list. Clicking a card shows its price at Cardmarket, TCGplayer and Card Kingdom (cheapest printing), each with a buy link. Box EV pages link to each shop's search for the box. Affiliate tags are optional settings (see the environment variables); tagged links are marked `sponsored` and the page says so.
 - **Navbar:** Build a deck, Bracket checker, Box EV and My decks on every page, with GitHub and Support links; a menu button on phones.
-- **Saving:** "My decks" keeps your finished decks in the browser.
+- **Saving:** "My decks" keeps your finished decks in the browser. With accounts switched on (see [Accounts](#accounts-optional)), logging in with an email link, Discord or Google keeps them in your account instead, on every device, with rename and delete; decks already in the browser can be moved over.
 - **Sharing:**
   - the "Share deck" sheet: native sharing on phones, WhatsApp, Reddit (as a link, or a ready-made Markdown post with the decklist), Telegram, X and email
   - "Open in Moxfield/Archidekt", which copies the list and opens their importer
@@ -34,6 +34,27 @@ Next.js (App Router), React 19, plain CSS. No SDK dependencies beyond Next and R
 ## Bracket checker
 
 `/bracket` is a free tool: paste any Commander decklist (Moxfield, Archidekt, Arena, MTGO or plain "1 Card" lines) and it shows the lowest bracket the deck fits, the cards that decide it, and a legality check. It needs no Claude and no API key: Game Changer flags and card text come from Scryfall, combos from Commander Spellbook, and the rules are in `lib/server/bracket-check.ts` (checked against Wizards' brackets on 2026-10-25). Brackets 1 and 5 depend on intent, so the result says when a deck could also be one of those.
+
+## Accounts (optional)
+
+Logging in is optional: everything works without an account. An account keeps your decks on every device. Accounts use [Supabase](https://supabase.com) (Auth and Postgres) through its REST APIs, with no SDK.
+
+- **Sessions** are httpOnly cookies set by the app's own routes (`/api/auth/*`, `/auth/callback`). Page scripts never see a token, so the security policy stays `connect-src 'self'`.
+- **Logins** are PKCE: email magic links, and Discord or Google if you switch them on. A magic link must be opened in the browser that asked for it.
+- **Row-level security** in the database decides who sees what: each user reads, saves and deletes only their own decks, and only a deck's name can change after saving. `supabase/migrations/` has the schema; `.github/workflows/accounts.yml` runs it on a local Supabase and checks this with two real users (`scripts/check-supabase.mjs`).
+- **Deleting the account** on the account page removes the user and every deck in it, right away (a database function that can only delete the caller).
+- A saved deck is the same compressed payload as a share link. The server decodes it to fill in the name and commander, so the browser can't save something that isn't a deck. The same deck saved twice is one row, and an account keeps up to 1,000.
+
+To switch it on for your copy:
+
+1. Create a Supabase project, in an EU region if your users are in Europe.
+2. Run `web/supabase/migrations/20261026000000_accounts.sql` once: paste it into the SQL editor, or `supabase link` and `supabase db push`.
+3. In **Authentication → URL configuration**, set the Site URL to your domain and add `https://your-domain/auth/callback` (and `http://localhost:3000/auth/callback` for local development) to the redirect URLs.
+4. **Email:** Supabase's built-in email is meant for testing and sends only a few emails an hour. Before you launch, add your own SMTP server (Resend, Postmark, Brevo and others) under **Authentication → Emails**.
+5. **Discord or Google (optional):** create an OAuth app with the provider, using `https://<project>.supabase.co/auth/v1/callback` as its redirect URL, and enter its client id and secret under **Authentication → Providers**. The login dialog shows the providers that are switched on.
+6. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (or the newer publishable key as `SUPABASE_PUBLISHABLE_KEY`) in Vercel. No secret or service-role key is needed.
+
+Without these settings the app works as before: no login button, decks in the browser.
 
 ## Box EV
 
@@ -127,6 +148,7 @@ cd web && npm ci && npm run build && npm start
 | `PUBLIC_ACCESS` | no | Set it to `1` only if you really want builds open to everyone without a code. |
 | `ANTHROPIC_MODEL` | no | Defaults to `claude-sonnet-5-5`. `claude-opus-5-5` gives stronger decks but is slower and costs more. |
 | `AFFILIATE_TCGPLAYER`, `AFFILIATE_CARDKINGDOM`, `AFFILIATE_CARDMARKET` | no | Affiliate tags for the "Buy the cards" and "Find this box" links: a link template with `{url}` where the shop link goes (what Impact gives you for TCGplayer, e.g. `https://tcgplayer.pxf.io/c/…?u={url}`), or parameters to add to the shop link (`partner=yourname`). Without them the links work, untagged. When any is set, the page says some links are affiliate links. |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | no | Accounts and decks saved to them (see [Accounts](#accounts-optional)). `SUPABASE_PUBLISHABLE_KEY` and the `NEXT_PUBLIC_` names the Supabase Vercel integration sets work too. |
 | `EV_DATA_URL` | no | Where the Box EV data is read from. Defaults to this repo's `ev-data` branch on GitHub. |
 | `BUILDS_PER_HOUR_PER_IP` | no | A best-effort limit per IP, kept per server instance (default 6). |
 | `DEMO_MODE` | no | Set it to `1` to force demo mode even when a key is set. Only the value `1` switches it on. |
@@ -233,7 +255,7 @@ npm run dev                  # http://localhost:3000
 
 | Command | What it does |
 |---|---|
-| `npm test` | Unit tests (Node's test runner, bundled with esbuild): validation and partner rules, the SSE parser, the agent loop with scripted "Claude" turns, engine variants and the review pass, complete and upgrade modes, the deck analysis on real Oracle text, the opening-hand simulator, combos, own keys, collections, jobs and reconnects, share links, the bracket checker and the eval harness |
+| `npm test` | Unit tests (Node's test runner, bundled with esbuild): validation and partner rules, the SSE parser, the agent loop with scripted "Claude" turns, engine variants and the review pass, complete and upgrade modes, accounts and saved decks against a fake Supabase, the deck analysis on real Oracle text, the opening-hand simulator, combos, own keys, collections, jobs and reconnects, share links, the bracket checker and the eval harness |
 | `npm run typecheck` | TypeScript |
 | `npm run build` | Production build |
 | `node scripts/e2e-demo.mjs` | End-to-end check against a running server in demo mode (uses real Scryfall) |

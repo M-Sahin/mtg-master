@@ -334,6 +334,30 @@ await run("29-deck-shape", { width: 1440, height: 1000 }, async (p) => {
   const pill = await p.locator("[data-testid=deck-shape] summary .pill").innerText();
   if (pill !== "1 limit") errors.push(`deck shape pill: ${pill}`);
 });
+// accounts (faked in the browser: CI's site has no Supabase): the login dialog, then My decks from an account
+await run("30-login", { width: 1440, height: 1000 }, async (p) => {
+  await p.route("**/api/auth/session", (r) => r.fulfill({ json: { enabled: true, providers: ["email", "discord"], user: null } }));
+  await p.route("**/api/auth/email", (r) => r.fulfill({ json: { sent: true } }));
+  await p.goto(base, { waitUntil: "networkidle" });
+  await p.click("[data-testid=nav-login]");
+  const discord = await p.locator(".login-modal .login-discord").getAttribute("href").catch(() => "");
+  await p.fill(".login-modal [data-testid=login-email]", "player@example.com");
+  await p.click(".login-modal button[type=submit]");
+  const sent = await p.locator(".login-modal .login-sent").innerText({ timeout: 5000 }).catch(() => "");
+  console.log(`login: discord → ${discord}; email → "${sent.slice(0, 80)}"`);
+  if (!/provider=discord/.test(discord ?? "") || !/sent a login link/.test(sent)) errors.push(`login dialog: ${discord}; ${sent}`);
+});
+await run("31-account-decks", { width: 1440, height: 1000 }, async (p) => {
+  await p.route("**/api/auth/session", (r) => r.fulfill({ json: { enabled: true, providers: ["email"], user: { id: "u1", email: "player@example.com", name: "Player", provider: "email" } } }));
+  await p.route("**/api/decks", (r) =>
+    r.fulfill({ json: { decks: [{ id: "00000000-0000-4000-8000-000000000001", at: Date.now(), name: "Cloud Meren", commander: "Meren of Clan Nel Toth", colors: ["B", "G"] }] } }),
+  );
+  await p.goto(`${base}/#my-decks`, { waitUntil: "networkidle" });
+  const panel = await p.locator("[data-testid=my-decks]").innerText({ timeout: 8000 }).catch(() => "");
+  const nav = await p.locator(".nav-main + .nav-side [data-testid=nav-account]").innerText().catch(() => "");
+  console.log(`account decks: ${panel.replace(/\s+/g, " ").slice(0, 160)}; navbar: ${nav.replace(/\s+/g, " ")}`);
+  if (!/Cloud Meren/.test(panel) || !/saved to your account/.test(panel) || !/Account/.test(nav)) errors.push(`account decks: ${panel.slice(0, 100)} / ${nav}`);
+});
 await run("7-mobile-setup", { width: 390, height: 844 }, loadSeeds);
 await run("8-mobile-result", { width: 390, height: 844 }, toResult);
 

@@ -295,6 +295,8 @@ export interface SavedDeck {
   d: string;
   model?: string;
   usage?: Usage;
+  /** Saved in the account (d is loaded when opened), not in this browser. */
+  cloud?: boolean;
 }
 
 const DECKS = "hundredfold:my-decks";
@@ -312,6 +314,11 @@ export const myDecks = {
     const rest = myDecks.list().filter((x) => x.d !== deck.d);
     try {
       localStorage.setItem(DECKS, JSON.stringify([deck, ...rest].slice(0, MAX_DECKS)));
+    } catch {}
+  },
+  clear() {
+    try {
+      localStorage.removeItem(DECKS);
     } catch {}
   },
   remove(id: string) {

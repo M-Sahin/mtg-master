@@ -11,6 +11,7 @@ import { CollectionPanel, type Collection } from "./CollectionPanel";
 import { KeyPanel, type KeyState } from "./KeyPanel";
 import { MyDecks } from "./MyDecks";
 import { SiteHeader } from "./SiteHeader";
+import { cloudDecks, loadAccount } from "../lib/client/account";
 import { DeckShapeFields, draftToShape, emptyShape, type ShapeDraft } from "./DeckShapeFields";
 import { IdentityPips } from "./CardFace";
 import { DeckView } from "./DeckView";
@@ -265,7 +266,7 @@ export default function App() {
   const saveToMyDecks = async (r: Result) => {
     try {
       const d = await encodeDeck(r.deck);
-      myDecks.add({
+      const entry: SavedDeck = {
         id: d.slice(-12) + Date.now().toString(36),
         at: Date.now(),
         name: r.deck.name,
@@ -274,7 +275,11 @@ export default function App() {
         colors: r.deck.colorIdentity,
         d,
         ...(r.usage && r.model ? { usage: r.usage, model: r.model } : {}),
-      });
+      };
+      // logged in: into the account; otherwise (or if that fails) into this browser
+      let saved = false;
+      if ((await loadAccount()).user) saved = await cloudDecks.save(entry).then(() => true, () => false);
+      if (!saved) myDecks.add(entry);
       setDecksVersion((v) => v + 1);
     } catch {
       /* the deck is still shown; it just isn't added to My decks */
@@ -284,7 +289,7 @@ export default function App() {
   const openSaved = async (s: SavedDeck) => {
     setError(null);
     try {
-      const r = await resolveDeck(s.d);
+      const r = await resolveDeck(s.cloud ? await cloudDecks.payload(s.id) : s.d);
       setResult({ ...r, usage: s.usage, model: s.model });
       setPhase("result");
       window.scrollTo({ top: 0, behavior: "smooth" });

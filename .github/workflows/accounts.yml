@@ -1,0 +1,45 @@
+name: accounts
+
+# Runs the accounts migration on a local Supabase and checks the row-level security with two
+# real users (web/scripts/check-supabase.mjs). No secrets needed.
+
+on:
+  push:
+    paths: ["web/supabase/**", "web/lib/server/supabase.ts", "web/lib/server/account-handler.ts", "web/scripts/check-supabase.mjs", ".github/workflows/accounts.yml"]
+  pull_request:
+    paths: ["web/supabase/**", "web/lib/server/supabase.ts", "web/lib/server/account-handler.ts", "web/scripts/check-supabase.mjs", ".github/workflows/accounts.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Install
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Start a local Supabase with the migration
+        run: |
+          [ -f supabase/config.toml ] || supabase init
+          supabase start -x studio,imgproxy,edge-runtime,logflare,vector,realtime,storage-api
+          supabase status -o env | tee supabase.env
+      - name: Check the accounts
+        run: |
+          set -a; . ./supabase.env; set +a
+          export SUPABASE_URL="${API_URL}"
+          export SUPABASE_ANON_KEY="${ANON_KEY:-$PUBLISHABLE_KEY}"
+          export SUPABASE_SERVICE_ROLE_KEY="${SERVICE_ROLE_KEY:-$SECRET_KEY}"
+          node scripts/check-supabase.mjs
