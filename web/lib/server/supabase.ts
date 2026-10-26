@@ -167,7 +167,8 @@ export function rest<T>(cfg: SupabaseConfig, token: string, path: string, init: 
 
 function jwtPayload(token: string): Record<string, any> | null {
   try {
-    const p = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    const bin = atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"));
+    const p = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (ch) => ch.charCodeAt(0)))); // UTF-8 names stay intact
     return p && typeof p === "object" ? p : null;
   } catch {
     return null;
@@ -219,10 +220,32 @@ export async function requestAuth(request: Request, cfg: SupabaseConfig, f?: Fet
     const s = await refreshSession(cfg, rt, f);
     return { user: s.user, token: s.access_token, setCookies: sessionCookies(s, secure) };
   } catch (e) {
-    // a refresh token that's revoked or expired ends the session; a network error doesn't
-    if (e instanceof SupabaseError && e.status >= 400 && e.status < 500) return { user: null, setCookies: clearSessionCookies(secure) };
+    // a refresh token that's revoked, used up or expired ends the session; a rate limit, an
+    // outage or a network error doesn't (the cookies stay and the next request tries again)
+    if (refreshIsDead(e)) return { user: null, setCookies: clearSessionCookies(secure) };
     throw e;
   }
+}
+
+export function refreshIsDead(e: unknown): boolean {
+  return e instanceof SupabaseError && [400, 401, 403, 404].includes(e.status) && !/rate limit|too many/i.test(e.message);
+}
+
+/**
+ * The site's own address, for login redirects. Never taken from request headers on a real
+ * deployment (a forged Host / X-Forwarded-Host could send login links elsewhere): SITE_URL,
+ * else Vercel's own URLs (production domain, or this preview), else localhost for development.
+ * null = unknown: logins are refused until SITE_URL is set.
+ */
+export function siteOrigin(request: Request): string | null {
+  const site = process.env.SITE_URL?.trim();
+  if (site && /^https?:\/\/[^\s/"'<>]+\/?$/.test(site)) return site.replace(/\/+$/, "");
+  if (process.env.VERCEL) {
+    const host = process.env.VERCEL_ENV === "production" ? process.env.VERCEL_PROJECT_PRODUCTION_URL : process.env.VERCEL_URL;
+    if (host) return `https://${host.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`;
+  }
+  const u = new URL(request.url);
+  return /^(localhost|127\.0\.0\.1)$/.test(u.hostname) ? u.origin : null;
 }
 
 export function publicUser(u: AuthUser) {

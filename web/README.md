@@ -53,6 +53,7 @@ To switch it on for your copy:
 4. **Email:** Supabase's built-in email is meant for testing and sends only a few emails an hour. Before you launch, add your own SMTP server (Resend, Postmark, Brevo and others) under **Authentication → Emails**.
 5. **Discord or Google (optional):** create an OAuth app with the provider, using `https://<project>.supabase.co/auth/v1/callback` as its redirect URL, and enter its client id and secret under **Authentication → Providers**. The login dialog shows the providers that are switched on.
 6. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (or the newer publishable key as `SUPABASE_PUBLISHABLE_KEY`) in Vercel. No secret or service-role key is needed.
+7. Outside Vercel, also set `SITE_URL` (for example `https://decks.example.com`). Login links are built from it, never from request headers, so a forged `Host` header can't send someone's login link to another site. Without it, logins only work on `localhost`. On Vercel the production domain is used, and a preview deployment uses its own URL: add `https://*-your-team.vercel.app/auth/callback` to the redirect URLs if you want to log in on previews. Keep the list exact otherwise, without broad wildcards.
 
 Without these settings the app works as before: no login button, decks in the browser.
 

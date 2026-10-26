@@ -37,9 +37,12 @@ export function MyDecks({ onOpen, version, showEmpty = false }: { onOpen: (d: Sa
     setImporting(true);
     setError(null);
     try {
-      await cloudDecks.importMany(local);
-      myDecks.clear(); // they're in the account now
-      setLocal([]);
+      const r = await cloudDecks.importMany(local);
+      // only clear this browser when every deck made it into the account
+      if (!r.skipped) {
+        myDecks.clear();
+        setLocal([]);
+      } else setError(`${r.skipped} deck${r.skipped === 1 ? "" : "s"} couldn't be read and stay${r.skipped === 1 ? "s" : ""} in this browser.`);
       setCloud(await cloudDecks.list());
     } catch (e) {
       setError((e as Error).message);

@@ -2,12 +2,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { handleCallback, handleDeck, handleDecks, handleDeleteAccount, handleEmail, handleOAuth, handleSession, resetLimits } from "../lib/server/account-handler";
-import { pkceChallenge, requestAuth, resetProviderCache, safeNext, supabaseConfig, tokenUser } from "../lib/server/supabase";
+import { pkceChallenge, requestAuth, resetProviderCache, safeNext, siteOrigin, supabaseConfig, tokenUser } from "../lib/server/supabase";
 import { encodeDeck } from "../lib/shared/share";
 import type { Deck } from "../lib/shared/types";
 
 const cfg = { url: "https://proj.supabase.co", anonKey: "anon-key" };
 const SITE = "https://hundredfoldz.example";
+process.env.SITE_URL = SITE; // login links always point here, whatever the request's headers say
 
 const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const jwt = (claims: Record<string, unknown>) => `${b64({ alg: "HS256" })}.${b64({ role: "authenticated", ...claims })}.sig`;
@@ -179,4 +180,43 @@ test("one deck: ids are checked, rename trims, delete account needs confirming",
   const del = await handleDeleteAccount(req("/api/account/delete", { method: "POST", cookies: { hf_at: token }, body: { confirm: "delete" } }), { config: cfg, fetch: f });
   assert.equal(del.status, 200);
   assert.ok(setCookies(del).some((c) => /^hf_rt=;.*Max-Age=0/.test(c)), "logged out after deleting");
+});
+
+test("login links never use the request's host headers on a real deployment", () => {
+  const keep = { ...process.env };
+  try {
+    const spoofed = new Request("https://hundredfoldz.example/api/auth/email", { headers: { host: "evil.example", "x-forwarded-host": "evil.example" } });
+    assert.equal(siteOrigin(spoofed), SITE);
+    delete process.env.SITE_URL;
+    assert.equal(siteOrigin(spoofed), null, "unknown address: logins refused until SITE_URL is set");
+    Object.assign(process.env, { VERCEL: "1", VERCEL_ENV: "production", VERCEL_PROJECT_PRODUCTION_URL: "hundredfoldz.app" });
+    assert.equal(siteOrigin(spoofed), "https://hundredfoldz.app");
+    Object.assign(process.env, { VERCEL_ENV: "preview", VERCEL_URL: "hf-git-x-murat.vercel.app" });
+    assert.equal(siteOrigin(spoofed), "https://hf-git-x-murat.vercel.app", "previews log in on themselves");
+    delete process.env.VERCEL;
+    assert.equal(siteOrigin(new Request("http://localhost:3000/x")), "http://localhost:3000");
+  } finally {
+    process.env = keep;
+  }
+});
+
+test("a rate-limited or failing refresh keeps the session; names keep their accents", async () => {
+  const { f } = fakeSupabase(() => ({ status: 429, body: { msg: "Request rate limit reached" } }));
+  await assert.rejects(requestAuth(req("/", { cookies: { hf_at: stale(), hf_rt: "good" } }), cfg, f));
+  const down = fakeSupabase(() => ({ status: 503, body: { msg: "down" } }));
+  await assert.rejects(requestAuth(req("/", { cookies: { hf_rt: "good" } }), cfg, down.f));
+  const me = await (await handleSession(req("/api/auth/session", { cookies: { hf_at: stale(), hf_rt: "good" } }), { config: cfg, fetch: f })).json();
+  assert.equal(me.user, null);
+  const named = jwt({ sub: "u9", exp: Math.floor(Date.now() / 1000) + 3600, user_metadata: { full_name: "Müråt 🃏" } });
+  assert.equal(tokenUser(named)?.user_metadata?.full_name, "Müråt 🃏");
+});
+
+test("made-up user ids can't flush the login-email limit", async () => {
+  resetLimits();
+  const { f } = fakeSupabase((c) => (c.url.includes("/auth/v1/otp") ? { body: {} } : { status: 201, body: [] }));
+  for (let i = 0; i < 3; i++) await handleEmail(req("/api/auth/email", { method: "POST", body: { email: "target@example.com" } }), { config: cfg, fetch: f });
+  // a flood of saves with forged tokens and random ids
+  for (let i = 0; i < 6000; i++) await handleDecks(req("/api/decks", { method: "POST", cookies: { hf_at: fresh(`x${i}`) }, body: {} }), { config: cfg, fetch: f });
+  const r = await handleEmail(req("/api/auth/email", { method: "POST", body: { email: "target@example.com" } }), { config: cfg, fetch: f });
+  assert.equal(r.status, 429, "the email limit still holds");
 });

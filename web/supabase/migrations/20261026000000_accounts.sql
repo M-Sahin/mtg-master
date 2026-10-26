@@ -35,8 +35,8 @@ create policy "decks: change own" on public.decks for update to authenticated us
 create policy "decks: delete own" on public.decks for delete to authenticated using ((select auth.uid()) = user_id);
 
 -- only the name can change after saving; the rest is the deck as built
-revoke all on public.decks from anon;
-revoke update on public.decks from authenticated;
+-- Supabase's default privileges grant everything on new tables; keep only what the app needs
+revoke all on public.decks from anon, authenticated;
 grant select, insert, delete on public.decks to authenticated;
 grant update (name, updated_at) on public.decks to authenticated;
 
@@ -45,6 +45,8 @@ create or replace function public.decks_before_write() returns trigger
 language plpgsql set search_path = '' as $$
 begin
   if tg_op = 'INSERT' then
+    -- one insert at a time per user, so parallel saves can't pass the cap together
+    perform pg_advisory_xact_lock(hashtext(new.user_id::text));
     if (select count(*) from public.decks where user_id = new.user_id) >= 1000 then
       raise exception 'deck limit reached (1000 per account)' using errcode = 'P0001';
     end if;

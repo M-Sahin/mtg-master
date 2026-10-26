@@ -352,7 +352,8 @@ await run("31-account-decks", { width: 1440, height: 1000 }, async (p) => {
   await p.route("**/api/decks", (r) =>
     r.fulfill({ json: { decks: [{ id: "00000000-0000-4000-8000-000000000001", at: Date.now(), name: "Cloud Meren", commander: "Meren of Clan Nel Toth", colors: ["B", "G"] }] } }),
   );
-  await p.goto(`${base}/#my-decks`, { waitUntil: "networkidle" });
+  // a real load (not just a hash change), so the page asks the faked endpoints
+  await p.goto(`${base}/?account=1#my-decks`, { waitUntil: "networkidle" });
   const panel = await p.locator("[data-testid=my-decks]").innerText({ timeout: 8000 }).catch(() => "");
   const nav = await p.locator(".nav-main + .nav-side [data-testid=nav-account]").innerText().catch(() => "");
   console.log(`account decks: ${panel.replace(/\s+/g, " ").slice(0, 160)}; navbar: ${nav.replace(/\s+/g, " ")}`);

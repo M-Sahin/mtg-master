@@ -1,7 +1,6 @@
 // Accounts and saved decks: framework-independent handlers behind the /api/auth, /auth and
 // /api/decks routes (lib/server/supabase.ts does the talking to Supabase).
 import { decodePayload } from "../shared/share";
-import { canonicalOrigin } from "./share-handler";
 import {
   COOKIE,
   clearSessionCookies,
@@ -20,6 +19,7 @@ import {
   sendMagicLink,
   sessionCookies,
   signOut,
+  siteOrigin,
   supabaseConfig,
   SupabaseError,
   type Fetch,
@@ -61,13 +61,17 @@ function sameOrigin(request: Request): boolean {
 
 const clientIp = (r: Request) => (r.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || r.headers.get("x-real-ip")?.trim() || "unknown";
 
-const hits = new Map<string, number[]>();
-export function limited(key: string, perHour: number, now = Date.now()): boolean {
-  const recent = (hits.get(key) ?? []).filter((t) => now - t < 3_600_000);
+// best-effort limits per instance; one map per kind, so filling one (e.g. with made-up user ids)
+// can't flush another (like the login-email limits)
+const hits = new Map<string, Map<string, number[]>>();
+export function limited(kind: string, key: string, perHour: number, now = Date.now()): boolean {
+  const m = hits.get(kind) ?? new Map<string, number[]>();
+  hits.set(kind, m);
+  const recent = (m.get(key) ?? []).filter((t) => now - t < 3_600_000);
   const over = recent.length >= perHour;
   if (!over) recent.push(now);
-  hits.set(key, recent);
-  if (hits.size > 5000) hits.delete(hits.keys().next().value as string);
+  m.set(key, recent);
+  if (m.size > 5000) m.delete(m.keys().next().value as string);
   return over;
 }
 export const resetLimits = () => hits.clear();
@@ -101,11 +105,13 @@ export async function handleEmail(request: Request, deps: Deps = {}): Promise<Re
   const body = await request.json().catch(() => null);
   const email = String(body?.email ?? "").trim().toLowerCase();
   if (!EMAIL.test(email)) return json({ error: "That doesn't look like an email address." }, 400);
-  if (limited(`ip:${clientIp(request)}`, 10) || limited(`email:${email}`, 3)) return json({ error: "Too many login emails. Wait a bit, then try again." }, 429);
+  const site = siteOrigin(request);
+  if (!site) return json({ error: "Set SITE_URL on this server to use logins." }, 500);
+  if (limited("email-ip", clientIp(request), 10) || limited("email", email, 3)) return json({ error: "Too many login emails. Wait a bit, then try again." }, 429);
   const verifier = pkceVerifier();
   const secure = isSecure(request);
   try {
-    await sendMagicLink(cfg, email, `${canonicalOrigin(request)}/auth/callback`, await pkceChallenge(verifier), deps.fetch);
+    await sendMagicLink(cfg, email, `${site}/auth/callback`, await pkceChallenge(verifier), deps.fetch);
   } catch (e) {
     return json({ error: friendly(e) }, 502);
   }
@@ -119,9 +125,11 @@ export async function handleOAuth(request: Request, deps: Deps = {}): Promise<Re
   const u = new URL(request.url);
   const provider = u.searchParams.get("provider");
   if (provider !== "discord" && provider !== "google") return json({ error: "Unknown login provider." }, 400);
+  const site = siteOrigin(request);
+  if (!site) return json({ error: "Set SITE_URL on this server to use logins." }, 500);
   const verifier = pkceVerifier();
   const secure = isSecure(request);
-  return redirect(oauthUrl(cfg, provider, `${canonicalOrigin(request)}/auth/callback`, await pkceChallenge(verifier)), [
+  return redirect(oauthUrl(cfg, provider, `${site}/auth/callback`, await pkceChallenge(verifier)), [
     cookie(COOKIE.verifier, verifier, 900, secure),
     cookie(COOKIE.next, safeNext(u.searchParams.get("next")), 900, secure),
   ]);
@@ -157,8 +165,9 @@ export async function handleLogout(request: Request, deps: Deps = {}): Promise<R
   const cfg = cfgOf(deps);
   if (!cfg) return OFF();
   if (!sameOrigin(request)) return json({ error: "Bad request." }, 403);
-  const token = readCookies(request)[COOKIE.access];
-  if (token) await signOut(cfg, token, deps.fetch);
+  // a fresh token (refreshed if the old one expired), so Supabase ends the session too
+  const auth = await requestAuth(request, cfg, deps.fetch).catch(() => null);
+  if (auth && "token" in auth) await signOut(cfg, auth.token, deps.fetch);
   return json({ ok: true }, 200, clearSessionCookies(isSecure(request)));
 }
 
@@ -253,13 +262,13 @@ export async function handleDecks(request: Request, deps: Deps = {}): Promise<Re
       const rows = await rest<any[]>(cfg, auth.token, `decks?select=${LIST}&order=created_at.desc&limit=1000`, { method: "GET" }, deps.fetch);
       return json({ decks: rows.map(toCloud) }, 200, auth.setCookies);
     }
-    if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
-    if (!sameOrigin(request)) return json({ error: "Bad request." }, 403);
-    if (Number(request.headers.get("content-length") ?? 0) > 1_200_000) return json({ error: "Too much at once." }, 413);
-    if (limited(`save:${auth.user.id}`, 120)) return json({ error: "Too many saves this hour." }, 429, auth.setCookies);
+    if (request.method !== "POST") return json({ error: "Method not allowed." }, 405, auth.setCookies);
+    if (!sameOrigin(request)) return json({ error: "Bad request." }, 403, auth.setCookies);
+    if (Number(request.headers.get("content-length") ?? 0) > 1_200_000) return json({ error: "Too much at once." }, 413, auth.setCookies);
     const body = await request.json().catch(() => null);
     const items: unknown[] = Array.isArray(body?.decks) ? body.decks.slice(0, 100) : body?.d ? [body] : [];
     if (!items.length) return json({ error: "No deck to save." }, 400, auth.setCookies);
+    if (limited("save", auth.user.id, 120) || limited("save-ip", clientIp(request), 300)) return json({ error: "Too many saves this hour." }, 429, auth.setCookies);
     const rows = [];
     let skipped = 0;
     for (const x of items) {
@@ -291,7 +300,7 @@ export async function handleDeck(request: Request, id: string, deps: Deps = {}):
       if (!rows.length) return json({ error: "Unknown deck." }, 404, auth.setCookies);
       return json({ deck: { ...toCloud(rows[0]), d: rows[0].d } }, 200, auth.setCookies);
     }
-    if (!sameOrigin(request)) return json({ error: "Bad request." }, 403);
+    if (!sameOrigin(request)) return json({ error: "Bad request." }, 403, auth.setCookies);
     if (request.method === "PATCH") {
       const body = await request.json().catch(() => null);
       const name = String(body?.name ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
@@ -304,7 +313,7 @@ export async function handleDeck(request: Request, id: string, deps: Deps = {}):
       await rest(cfg, auth.token, where, { method: "DELETE" }, deps.fetch);
       return json({ deleted: true }, 200, auth.setCookies);
     }
-    return json({ error: "Method not allowed." }, 405);
+    return json({ error: "Method not allowed." }, 405, auth.setCookies);
   } catch (e) {
     return json({ error: friendly(e) }, 502, auth.setCookies);
   }
