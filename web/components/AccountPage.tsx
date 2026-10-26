@@ -50,7 +50,7 @@ export default function AccountPage() {
           <section className="panel">
             <h3>Log in</h3>
             {loginError ? <p className="error">{loginError}</p> : null}
-            <LoginForm next="/#my-decks" />
+            <LoginForm next="/decks" />
           </section>
         ) : null}
         {acct.user ? (
@@ -61,7 +61,7 @@ export default function AccountPage() {
                 Logged in {acct.user.email ? `as ${acct.user.email}` : ""} with {acct.user.provider === "email" ? "an email link" : acct.user.provider[0].toUpperCase() + acct.user.provider.slice(1)}. Your decks are saved to this account, so they're on every device you log in on.
               </p>
               <div className="deck-actions">
-                <a className="btn btn--brass" href="/#my-decks">
+                <a className="btn btn--brass" href="/decks">
                   My decks
                 </a>
                 <button type="button" className="btn" onClick={() => void account.logout()}>

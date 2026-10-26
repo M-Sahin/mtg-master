@@ -21,7 +21,8 @@ const out = join(root, ".test-build", "accounts.mjs");
 mkdirSync(dirname(entry), { recursive: true });
 writeFileSync(entry, `export * from "../lib/server/account-handler"; export { encodeDeck } from "../lib/shared/share";`);
 await esbuild.build({ entryPoints: [entry], bundle: true, platform: "node", format: "esm", outfile: out, logLevel: "warning" });
-const { handleDecks, handleDeck, handleDeleteAccount, encodeDeck } = await import(pathToFileURL(out).href);
+const { handleDecks, handleDeck, handleDeleteAccount, handleSavedKey, savedKeyFor, encodeDeck } = await import(pathToFileURL(out).href);
+process.env.KEY_ENCRYPTION_SECRET ||= Buffer.alloc(32, 9).toString("base64");
 
 const url = process.env.SUPABASE_URL;
 const anon = process.env.SUPABASE_ANON_KEY;
@@ -107,11 +108,32 @@ check(col.status >= 400, `even the owner can only change the name (${col.status}
 r = await handleDeck(req(`/api/decks/${savedA.id}`, a.token, { method: "PATCH", body: { name: "Renamed" } }), savedA.id, { config });
 check((await r.json()).deck?.name === "Renamed", "A renames their deck");
 
+// saved API keys: A saves one; B and logged-out visitors can't read it; only the server opens it
+const KEY = "sk-ant-api03-" + "q".repeat(40) + "LAST";
+const fakeModels = async () => [{ id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" }];
+r = await handleSavedKey(req("/api/account/key", a.token, { method: "PUT", body: { key: KEY, model: "claude-sonnet-5-5" } }), { config, listModels: fakeModels });
+check(r.status === 200, `A saves a key (${r.status})`);
+const rowA = await api(`/rest/v1/api_keys?select=sealed,last4&user_id=eq.${a.id}`, {}, service);
+check(rowA.body?.[0]?.last4 === "LAST" && !JSON.stringify(rowA.body).includes(KEY), "the key is stored sealed, with its last four");
+check((await savedKeyFor(req("/api/generate", a.token), { config }))?.key === KEY, "a build of A opens A's key");
+const bReads = await api("/rest/v1/api_keys?select=sealed", {}, anon, b.token);
+check(Array.isArray(bReads.body) && bReads.body.length === 0, "B can't read A's saved key");
+check((await savedKeyFor(req("/api/generate", b.token), { config })) === null, "a build of B gets no key");
+const anonKeys = await api("/rest/v1/api_keys?select=sealed");
+check(!Array.isArray(anonKeys.body) || anonKeys.body.length === 0, "logged out, no saved keys can be read");
+const planted = await api("/rest/v1/api_keys", { method: "POST", body: JSON.stringify({ user_id: a.id, sealed: "x".repeat(60), last4: "EVIL" }) }, anon, b.token);
+check(planted.status >= 400, `B can't write a key into A's account (${planted.status})`);
+// a sealed key copied into B's row doesn't open for B
+await api("/rest/v1/api_keys", { method: "POST", body: JSON.stringify({ user_id: b.id, sealed: rowA.body?.[0]?.sealed, last4: "LAST" }) }, anon, b.token);
+check((await savedKeyFor(req("/api/generate", b.token), { config })) === null, "A's sealed key copied to B doesn't open for B");
+
 // delete the account: the decks go with it
 r = await handleDeleteAccount(req("/api/account/delete", a.token, { method: "POST", body: { confirm: "delete" } }), { config });
 check(r.status === 200, `A deletes their account (${r.status})`);
 const left = await api(`/rest/v1/decks?select=id&user_id=eq.${a.id}`, {}, service);
 check(Array.isArray(left.body) && left.body.length === 0, `A's decks are gone (${left.body?.length})`);
+const keysLeft = await api(`/rest/v1/api_keys?select=user_id&user_id=eq.${a.id}`, {}, service);
+check(Array.isArray(keysLeft.body) && keysLeft.body.length === 0, "A's saved key is gone");
 const gone = await api(`/auth/v1/admin/users/${a.id}`, {}, service);
 check(gone.status === 404, `A's user is gone (${gone.status})`);
 const bDelete = await api("/rest/v1/rpc/delete_own_account", { method: "POST", body: "{}" });

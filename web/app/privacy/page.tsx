@@ -15,13 +15,14 @@ export default function Page() {
         <h3>Without an account</h3>
         <ul>
           <li>Your decks, settings and (if you choose) your Claude API key are kept in your own browser. They aren&apos;t sent to us except to do what you ask, like building a deck.</li>
-          <li>An API key you paste is sent with each build to make it, and is never stored on the server or in logs.</li>
+          <li>An API key you keep in your browser is sent with each build to make it, and isn&apos;t stored on the server or in logs.</li>
           <li>Share links contain the deck. Short share links store the deck on our server so the link can open it.</li>
         </ul>
         <h3>With an account</h3>
         <ul>
           <li>We store your email address (or the name your Discord or Google login gives us) and the decks you save, in a Supabase database in the EU.</li>
           <li>Login uses cookies that are needed to keep you logged in. There are no tracking or advertising cookies.</li>
+          <li>If you choose to save your Claude API key to your account, it&apos;s stored encrypted (AES-256-GCM) with a key that only our server has, and used only to run your builds. It&apos;s never shown again, not even to you; you can remove it at any time, and it&apos;s deleted with your account.</li>
           <li>Free builds are counted with a random id in a cookie (no name, no email), and per IP address per day. The counts are stored hashed and expire after a year.</li>
           <li>You can delete your account and all your decks at any time on the account page. It happens right away.</li>
         </ul>

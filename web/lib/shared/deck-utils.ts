@@ -132,3 +132,9 @@ export function shuffle<T>(arr: T[], rnd: () => number = Math.random): T[] {
 export function parseManaCost(cost: string): string[] {
   return [...cost.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]);
 }
+
+/** The seeds a deck was built from (commander first), when all five are known. */
+export function deckSeeds(deck: Deck): string[] | null {
+  const seeds = [...(deck.commander.seed ? [deck.commander.name] : []), ...deck.cards.filter((c) => c.seed).map((c) => c.name)];
+  return seeds.length === 5 ? seeds : null;
+}

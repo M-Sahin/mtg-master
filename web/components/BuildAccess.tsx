@@ -21,7 +21,7 @@ export function BuildStatus({ config, access, keyState, free, onSheet, deckMode 
   if (access === "own")
     line = (
       <>
-        Building with your key (…{keyState.key.slice(-4)}) on {modelInfo(keyState.model)?.label ?? keyState.model}. {addKey("Change")}
+        Building with your key (…{keyState.saved?.last4 ?? keyState.key.slice(-4)}{keyState.saved ? ", saved to your account" : ""}) on {modelInfo(keyState.model)?.label ?? keyState.model}. {addKey("Change")}
       </>
     );
   else if (access === "free")
@@ -36,7 +36,7 @@ export function BuildStatus({ config, access, keyState, free, onSheet, deckMode 
         {free?.blocked ? "Today's free builds are used up." : `You've used your ${config.freeBuilds.limit} free builds.`} {config.ownKeys ? <>{addKey("Add your Claude API key")} to keep building, on any model.</> : null}
       </>
     );
-  else if (config.mode === "demo" && !keyState.key && deckMode)
+  else if (config.mode === "demo" && !keyState.key && !keyState.saved && deckMode)
     line = config.ownKeys ? (
       <>
         Completing or upgrading a deck needs a Claude API key. {addKey("Add yours", "Completing or upgrading a deck needs a Claude API key. You pay Anthropic directly: about 25 cents a deck on Sonnet.")}.
@@ -44,7 +44,7 @@ export function BuildStatus({ config, access, keyState, free, onSheet, deckMode 
     ) : (
       "Completing or upgrading a deck needs a Claude API key on this site."
     );
-  else if (config.mode === "demo" && !keyState.key)
+  else if (config.mode === "demo" && !keyState.key && !keyState.saved)
     line = config.ownKeys ? (
       <>
         Without an API key this builds the demo deck. {addKey("Add your Claude API key", "Building your own seeds needs a Claude API key. You pay Anthropic directly: about 25 cents a deck on Sonnet.")} to build your own.
@@ -60,7 +60,7 @@ export function BuildStatus({ config, access, keyState, free, onSheet, deckMode 
 }
 
 /** The key sheet: a dialog with the key panel. `lead` says why it opened. */
-export function KeySheet({ open, lead, value, onChange, onClose, onDone }: { open: boolean; lead?: string; value: KeyState; onChange: (v: KeyState) => void; onClose: () => void; onDone: () => void }) {
+export function KeySheet({ open, lead, value, onChange, onClose, onDone, canSave = false }: { open: boolean; lead?: string; value: KeyState; onChange: (v: KeyState) => void; onClose: () => void; onDone: () => void; canSave?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
@@ -72,10 +72,10 @@ export function KeySheet({ open, lead, value, onChange, onClose, onDone }: { ope
   return (
     <dialog ref={ref} className="modal keysheet" onClose={onClose} onClick={(e) => e.target === ref.current && onClose()} aria-label="Your Claude API key" data-testid="key-sheet">
       <div className="keysheet-inner">
-        <KeyPanel value={value} onChange={onChange} lead={lead} onDone={onDone} />
+        <KeyPanel value={value} onChange={onChange} lead={lead} onDone={onDone} canSave={canSave} />
         <div className="keysheet-actions">
           <button type="button" className="btn btn--quiet" onClick={onClose}>
-            {value.key ? "Done" : "Not now"}
+            {value.key || value.saved ? "Done" : "Not now"}
           </button>
         </div>
       </div>

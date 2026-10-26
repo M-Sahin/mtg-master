@@ -14,7 +14,7 @@ const LINKS: { key: NavKey; href: string; label: string }[] = [
   { key: "build", href: "/", label: "Build a deck" },
   { key: "bracket", href: "/bracket", label: "Bracket checker" },
   { key: "ev", href: "/ev", label: "Box EV" },
-  { key: "decks", href: "/#my-decks", label: "My decks" },
+  { key: "decks", href: "/decks", label: "My decks" },
 ];
 
 export function Mark() {

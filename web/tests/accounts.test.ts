@@ -1,7 +1,8 @@
 // Accounts: PKCE logins, cookie sessions, and the deck API, against a fake Supabase.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { handleCallback, handleDeck, handleDecks, handleDeleteAccount, handleEmail, handleOAuth, handleSession, resetLimits, saveBuildForUser } from "../lib/server/account-handler";
+import { handleCallback, handleDeck, handleDecks, handleDeleteAccount, handleEmail, handleOAuth, handleSavedKey, handleSession, resetLimits, saveBuildForUser, savedKeyFor } from "../lib/server/account-handler";
+import { openKey, sealKey } from "../lib/server/key-vault";
 import { pkceChallenge, requestAuth, resetProviderCache, safeNext, siteOrigin, supabaseConfig, tokenUser } from "../lib/server/supabase";
 import { encodeDeck } from "../lib/shared/share";
 import type { Deck } from "../lib/shared/types";
@@ -236,4 +237,94 @@ test("a finished build is saved to the builder's account with their token, never
   assert.equal(await saveBuildForUser(fresh("u7"), deck as unknown as Deck, {}, { config: null, fetch: f }), false);
   assert.equal(calls.length, before);
   assert.ok(!calls.some((c) => c.url.includes("grant_type=refresh_token")));
+});
+
+const SECRET = Buffer.alloc(32, 7).toString("base64");
+const KEY = "sk-ant-api03-" + "k".repeat(40) + "WXYZ";
+
+test("key vault: sealed per user, opens only for that user and that secret", async () => {
+  const keep = process.env.KEY_ENCRYPTION_SECRET;
+  process.env.KEY_ENCRYPTION_SECRET = SECRET;
+  try {
+    const sealed = await sealKey(KEY, "u1");
+    assert.ok(!sealed.includes("sk-ant") && /^[A-Za-z0-9_-]+$/.test(sealed));
+    assert.notEqual(sealed, await sealKey(KEY, "u1"), "a fresh IV every time");
+    assert.equal(await openKey(sealed, "u1"), KEY);
+    assert.equal(await openKey(sealed, "u2"), null, "copied to another user's row: doesn't open");
+    process.env.KEY_ENCRYPTION_SECRET = Buffer.alloc(32, 8).toString("base64");
+    assert.equal(await openKey(sealed, "u1"), null, "another secret: doesn't open");
+  } finally {
+    if (keep === undefined) delete process.env.KEY_ENCRYPTION_SECRET;
+    else process.env.KEY_ENCRYPTION_SECRET = keep;
+  }
+});
+
+test("saved key: checked with Anthropic, stored sealed with its last four, never sent back; builds can open it", async () => {
+  const keep = process.env.KEY_ENCRYPTION_SECRET;
+  process.env.KEY_ENCRYPTION_SECRET = SECRET;
+  resetLimits();
+  let row: any = null;
+  const { f, calls } = fakeSupabase((c) => {
+    if (!c.url.includes("/rest/v1/api_keys")) return undefined;
+    if (c.method === "POST") {
+      row = c.body;
+      return { status: 201 };
+    }
+    if (c.method === "GET") return { body: row ? [c.url.includes("sealed") ? { sealed: row.sealed, model: row.model } : { last4: row.last4, model: row.model }] : [] };
+    if (c.method === "PATCH") {
+      row = { ...row, ...c.body };
+      return { status: 204 };
+    }
+    if (c.method === "DELETE") {
+      row = null;
+      return { status: 204 };
+    }
+  });
+  const listModels = async (k: string) => {
+    if (k !== KEY) throw new Error("Claude API 401: invalid x-api-key");
+    return [{ id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" }];
+  };
+  const deps = { config: cfg, fetch: f, listModels };
+  const cookies = { hf_at: fresh("u9") };
+  try {
+    let r = await handleSavedKey(req("/api/account/key", { cookies }), deps);
+    assert.deepEqual(await r.json(), { saved: false, vault: true });
+    // logged out: no
+    r = await handleSavedKey(req("/api/account/key", { method: "PUT", body: { key: KEY } }), deps);
+    assert.equal(r.status, 401);
+    // another site can't post a key into the account
+    r = await handleSavedKey(req("/api/account/key", { method: "PUT", cookies, body: { key: KEY }, origin: "https://evil.example" }), deps);
+    assert.equal(r.status, 403);
+    // a key Anthropic refuses isn't saved
+    r = await handleSavedKey(req("/api/account/key", { method: "PUT", cookies, body: { key: "sk-ant-api03-" + "n".repeat(40) } }), deps);
+    assert.equal(r.status, 400);
+    assert.equal(row, null);
+    r = await handleSavedKey(req("/api/account/key", { method: "PUT", cookies, body: { key: KEY, model: "claude-opus-5-5" } }), deps);
+    const saved = await r.json();
+    assert.equal(r.status, 200);
+    assert.equal(saved.last4, "WXYZ");
+    assert.ok(!JSON.stringify(saved).includes(KEY), "the key isn't in the answer");
+    assert.equal(row.user_id, "u9");
+    assert.ok(!JSON.stringify(row).includes(KEY), "the key isn't stored in plain text");
+    assert.equal(await openKey(row.sealed, "u9"), KEY);
+    r = await handleSavedKey(req("/api/account/key", { cookies }), deps);
+    assert.deepEqual(await r.json(), { saved: true, vault: true, last4: "WXYZ", model: "claude-opus-5-5" });
+    // a build opens it on the server
+    const forBuild = await savedKeyFor(req("/api/generate", { cookies }), { config: cfg, fetch: f });
+    assert.equal(forBuild?.key, KEY);
+    assert.equal(forBuild?.model, "claude-opus-5-5");
+    r = await handleSavedKey(req("/api/account/key", { method: "PATCH", cookies, body: { model: "claude-sonnet-5-5" } }), deps);
+    assert.equal(row.model, "claude-sonnet-5-5");
+    r = await handleSavedKey(req("/api/account/key", { method: "DELETE", cookies }), deps);
+    assert.equal(row, null);
+    assert.equal(await savedKeyFor(req("/api/generate", { cookies }), { config: cfg, fetch: f }), null);
+    assert.ok(calls.every((c) => !c.url.includes(KEY)), "the key never goes into a URL");
+    // without the secret the feature is off
+    delete process.env.KEY_ENCRYPTION_SECRET;
+    r = await handleSavedKey(req("/api/account/key", { method: "PUT", cookies, body: { key: KEY } }), deps);
+    assert.equal(r.status, 503);
+  } finally {
+    if (keep === undefined) delete process.env.KEY_ENCRYPTION_SECRET;
+    else process.env.KEY_ENCRYPTION_SECRET = keep;
+  }
 });

@@ -118,6 +118,8 @@ export interface BuildAuth {
   model?: string;
   /** Turnstile token for a free build (one per build). */
   turnstile?: string;
+  /** Build with the key saved to the visitor's account (the server opens it). */
+  savedKey?: boolean;
 }
 
 export async function* generate(req: GenerateRequest, auth: BuildAuth, signal: AbortSignal, resume?: string): AsyncGenerator<StreamEvent> {
@@ -152,9 +154,9 @@ export async function* generate(req: GenerateRequest, auth: BuildAuth, signal: A
               method: "POST",
               headers: {
                 "content-type": "application/json",
-                ...(auth.apiKey ? { "x-anthropic-key": auth.apiKey } : accessCode ? { "x-access-code": accessCode } : {}),
+                ...(auth.apiKey ? { "x-anthropic-key": auth.apiKey } : auth.savedKey ? { "x-use-saved-key": "1" } : accessCode ? { "x-access-code": accessCode } : {}),
               },
-              body: JSON.stringify({ ...req, ...(auth.apiKey && auth.model ? { model: auth.model } : {}), ...(auth.turnstile ? { turnstile: auth.turnstile } : {}) }),
+              body: JSON.stringify({ ...req, ...((auth.apiKey || auth.savedKey) && auth.model ? { model: auth.model } : {}), ...(auth.turnstile ? { turnstile: auth.turnstile } : {}) }),
               signal: attempt.signal,
             })
           : await fetch(`/api/generate?job=${encodeURIComponent(job)}&from=${next}`, { signal: attempt.signal, cache: "no-store" });
@@ -354,7 +356,43 @@ export const myDecks = {
       localStorage.setItem(DECKS, JSON.stringify(myDecks.list().filter((x) => x.id !== id)));
     } catch {}
   },
+  rename(id: string, name: string) {
+    try {
+      localStorage.setItem(DECKS, JSON.stringify(myDecks.list().map((x) => (x.id === id ? { ...x, name } : x))));
+    } catch {}
+  },
 };
+
+/**
+ * A job handed from the My decks page to the build page: open a saved deck, or start a build from
+ * it. Kept for this tab only and read once.
+ */
+export interface Handoff {
+  kind: "open" | "rebuild" | "upgrade";
+  d: string;
+  usage?: Usage;
+  model?: string;
+}
+const HANDOFF = "hundredfold:handoff";
+export const handoff = {
+  set(h: Handoff) {
+    try {
+      sessionStorage.setItem(HANDOFF, JSON.stringify(h));
+    } catch {}
+  },
+  take(): Handoff | null {
+    try {
+      const h = JSON.parse(sessionStorage.getItem(HANDOFF) ?? "null") as Handoff | null;
+      sessionStorage.removeItem(HANDOFF);
+      return h && typeof h.d === "string" && ["open", "rebuild", "upgrade"].includes(h.kind) ? h : null;
+    } catch {
+      return null;
+    }
+  },
+};
+
+/** "Save to my account" before logging in: these browser decks move to the account afterwards. */
+export const saveAfterLogin = storage<string[]>("hundredfold:save-after-login");
 
 /** Rebuild a saved or shared deck with fresh card data. */
 export async function resolveDeck(d: string) {

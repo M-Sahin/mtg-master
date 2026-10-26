@@ -3,6 +3,9 @@
 import { LIMITS, clientIp, rateLimit, rateLimitAll, tooMany } from "./ratelimit";
 import { decodePayload, encodeDeck } from "../shared/share";
 import type { Deck } from "../shared/types";
+import { KEY_PATTERN, openKey, sealKey, vaultOn } from "./key-vault";
+import { friendlyModelError, listModels } from "./anthropic";
+import { MODEL_ID } from "../shared/models";
 import {
   COOKIE,
   clearSessionCookies,
@@ -344,5 +347,76 @@ export async function handleDeck(request: Request, id: string, deps: Deps = {}):
     return json({ error: "Method not allowed." }, 405, auth.setCookies);
   } catch (e) {
     return json({ error: friendly(e) }, 502, auth.setCookies);
+  }
+}
+
+// ---- a visitor's own Claude API key, saved to their account (lib/server/key-vault.ts) ----------
+
+/**
+ * GET /api/account/key: whether a key is saved ({saved, last4, model}); the key itself never
+ * comes back. PUT {key, model}: check the key with Anthropic, seal it and save it. PATCH {model}:
+ * change the model. DELETE: remove it.
+ */
+export async function handleSavedKey(request: Request, deps: Deps & { listModels?: typeof listModels } = {}): Promise<Response> {
+  const a = await authed(request, deps);
+  if ("res" in a) return a.res!;
+  const { cfg, auth } = a;
+  const off = () => json({ error: "This site doesn't save API keys to accounts." }, 503, auth.setCookies);
+  try {
+    if (request.method === "GET") {
+      if (!vaultOn()) return json({ saved: false, vault: false }, 200, auth.setCookies);
+      const rows = await rest<any[]>(cfg, auth.token, "api_keys?select=last4,model,updated_at", { method: "GET" }, deps.fetch);
+      const r = rows[0];
+      return json(r ? { saved: true, vault: true, last4: r.last4, model: r.model ?? null } : { saved: false, vault: true }, 200, auth.setCookies);
+    }
+    if (!sameOrigin(request)) return json({ error: "Bad request." }, 403, auth.setCookies);
+    if (request.method === "DELETE") {
+      await rest(cfg, auth.token, `api_keys?user_id=eq.${auth.user.id}`, { method: "DELETE" }, deps.fetch);
+      return json({ saved: false }, 200, auth.setCookies);
+    }
+    if (!vaultOn()) return off();
+    if (Number(request.headers.get("content-length") ?? 0) > 10_000) return json({ error: "Request too large." }, 413, auth.setCookies);
+    const body = await request.json().catch(() => ({}));
+    const model = typeof body?.model === "string" && MODEL_ID.test(body.model) ? body.model : null;
+    if (request.method === "PATCH") {
+      await rest(cfg, auth.token, `api_keys?user_id=eq.${auth.user.id}`, { method: "PATCH", body: JSON.stringify({ model }) }, deps.fetch);
+      return json({ ok: true, model }, 200, auth.setCookies);
+    }
+    if (request.method !== "PUT") return json({ error: "Method not allowed." }, 405, auth.setCookies);
+    const key = typeof body?.key === "string" ? body.key.trim() : "";
+    if (!KEY_PATTERN.test(key)) return json({ error: "That doesn't look like a Claude API key. Keys start with sk-ant-." }, 400, auth.setCookies);
+    const lim = await rateLimitAll([
+      [LIMITS.keyCheck, `save:${auth.user.id}`],
+      [LIMITS.keyCheckIp, clientIp(request)],
+    ]);
+    if (!lim.ok) return tooMany("Too many key checks. Try again later.", lim, cookieHeaders(auth.setCookies));
+    let models: { id: string; name: string }[];
+    try {
+      models = await (deps.listModels ?? listModels)(key);
+    } catch (e) {
+      return json({ error: friendlyModelError(e) }, 400, auth.setCookies);
+    }
+    const row = { user_id: auth.user.id, sealed: await sealKey(key, auth.user.id), last4: key.slice(-4), model };
+    await rest(cfg, auth.token, "api_keys?on_conflict=user_id", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(row) }, deps.fetch);
+    return json({ saved: true, last4: row.last4, model, models }, 200, auth.setCookies);
+  } catch (e) {
+    return json({ error: friendly(e) }, e instanceof SupabaseError && e.status === 401 ? 401 : 502, auth.setCookies);
+  }
+}
+
+/** For a build: the logged-in visitor's saved key, opened. Null when there's none (or no login). */
+export async function savedKeyFor(request: Request, deps: Deps = {}): Promise<{ key: string; model: string | null; setCookies: string[] } | null> {
+  const cfg = cfgOf(deps);
+  if (!cfg || !vaultOn()) return null;
+  const auth = await requestAuth(request, cfg, deps.fetch).catch(() => null);
+  if (!auth?.user) return null;
+  try {
+    const rows = await rest<any[]>(cfg, auth.token, "api_keys?select=sealed,model", { method: "GET" }, deps.fetch);
+    const r = rows[0];
+    if (!r) return null;
+    const key = await openKey(r.sealed, auth.user.id);
+    return key && KEY_PATTERN.test(key) ? { key, model: r.model ?? null, setCookies: auth.setCookies } : null;
+  } catch {
+    return null;
   }
 }

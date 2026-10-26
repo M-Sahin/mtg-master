@@ -1,13 +1,16 @@
 "use client";
 // "Use your own Claude API key": guided setup, key check, remember/forget, model picker.
 // Lives in the key sheet (BuildAccess): the setup page itself only shows a one-line status.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { checkKey, keyStore } from "../lib/client/api";
+import { savedKey } from "../lib/client/account";
 import { DEFAULT_MODEL, MODELS, modelInfo } from "../lib/shared/models";
 
 export interface KeyState {
-  key: string; // "" = no key
+  key: string; // "" = no key in this browser
   model: string;
+  /** A key saved to the account (sealed on the server): only its last four characters are here. */
+  saved?: { last4: string };
 }
 
 const MODEL_NAME = "hundredfold:model";
@@ -36,7 +39,7 @@ function fitModel(wanted: string, list: ModelList): string {
   return list[0]?.id ?? DEFAULT_MODEL;
 }
 
-export function KeyPanel({ value, onChange, lead, onDone }: { value: KeyState; onChange: (v: KeyState) => void; lead?: ReactNode; onDone?: () => void }) {
+export function KeyPanel({ value, onChange, lead, onDone, canSave = false }: { value: KeyState; onChange: (v: KeyState) => void; lead?: ReactNode; onDone?: () => void; canSave?: boolean }) {
   const [draft, setDraft] = useState("");
   const [remember, setRemember] = useState(true);
   const [checking, setChecking] = useState(false);
@@ -45,6 +48,32 @@ export function KeyPanel({ value, onChange, lead, onDone }: { value: KeyState; o
   const [showAll, setShowAll] = useState(false);
   const [help, setHelp] = useState(false);
   const [forgotten, setForgotten] = useState(false);
+  const [toAccount, setToAccount] = useState(true); // save a new key to the account (when logged in)
+  const [savingAcct, setSavingAcct] = useState(false);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+
+  // logged in: a key saved to the account is used when this browser has none
+  useEffect(() => {
+    if (!canSave) {
+      // logged out: the account's key isn't available anymore
+      if (valueRef.current.saved) onChange({ key: valueRef.current.key, model: valueRef.current.model });
+      return;
+    }
+    let live = true;
+    savedKey
+      .get()
+      .then((r) => {
+        const v = valueRef.current;
+        if (!live || !r.saved || !r.last4 || v.key) return;
+        onChange({ key: "", model: r.model && MODELS.some((m) => m.id === r.model) ? r.model : v.model || DEFAULT_MODEL, saved: { last4: r.last4 } });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSave]);
 
   // load a remembered key and model once
   useEffect(() => {
@@ -79,6 +108,18 @@ export function KeyPanel({ value, onChange, lead, onDone }: { value: KeyState; o
     setChecking(true);
     setError(null);
     try {
+      if (canSave && toAccount) {
+        // checked with Anthropic and sealed on the server; this browser keeps only the last four characters
+        const r = await savedKey.save(key, value.model || DEFAULT_MODEL);
+        const model = fitModel(value.model || DEFAULT_MODEL, r.models);
+        if (model !== r.model) void savedKey.setModel(model).catch(() => {});
+        keyStore.forget();
+        setModels(r.models);
+        onChange({ key: "", model, saved: { last4: r.last4 } });
+        setDraft("");
+        onDone?.();
+        return;
+      }
       const list = await checkKey(key);
       setModels(list);
       cacheModels(key, list);
@@ -109,13 +150,67 @@ export function KeyPanel({ value, onChange, lead, onDone }: { value: KeyState; o
     try {
       localStorage.setItem(MODEL_NAME, model);
     } catch {}
+    if (value.saved && !value.key) void savedKey.setModel(model).catch(() => {});
     onChange({ ...value, model });
+  };
+
+  /** A key from this browser into the account. */
+  const moveToAccount = async () => {
+    setSavingAcct(true);
+    setError(null);
+    try {
+      const r = await savedKey.save(value.key, value.model);
+      keyStore.forget();
+      onChange({ key: "", model: value.model, saved: { last4: r.last4 } });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSavingAcct(false);
+    }
+  };
+  const removeSaved = async () => {
+    setError(null);
+    try {
+      await savedKey.remove();
+      onChange({ key: "", model: value.model });
+    } catch (e) {
+      setError((e as Error).message);
+    }
   };
 
   const available = models ?? [];
   const recommended = MODELS.filter((m) => !models || available.some((a) => a.id === m.id));
   const others = available.filter((a) => !MODELS.some((m) => m.id === a.id));
   const chosen = modelInfo(value.model);
+
+  if (value.saved && !value.key) {
+    return (
+      <section className="keypanel" aria-label="Your Claude API key">
+        <div className="panel-head">
+          <h3>Your Claude API key</h3>
+          <span className="pill pill--ok">Saved to your account</span>
+        </div>
+        <p className="panel-sub">
+          Key ending in <code>…{value.saved.last4}</code>. It&apos;s stored encrypted with your account and used on every device you log in on; it never comes back to the browser.{" "}
+          <button type="button" className="link" onClick={() => void removeSaved()} data-testid="remove-saved-key">
+            Remove it from my account
+          </button>
+        </p>
+        {error ? <p className="error">{error}</p> : null}
+        <label className="opt">
+          <span className="opt-label">Model</span>
+          <select className="field" value={value.model} onChange={(e) => pickModel(e.target.value)}>
+            {MODELS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <span className="opt-hint">{chosen?.hint ?? "No cost estimate for this model."}</span>
+        </label>
+      </section>
+    );
+  }
 
   if (value.key) {
     return (
@@ -125,11 +220,19 @@ export function KeyPanel({ value, onChange, lead, onDone }: { value: KeyState; o
           <span className={`pill ${error ? "pill--warn" : "pill--ok"}`}>{error ? "Check failed" : models ? "Key works" : "Checking…"}</span>
         </div>
         <p className="panel-sub">
-          Key ending in <code>…{value.key.slice(-4)}</code>, {remember ? "remembered on this device" : "kept for this tab only"}. It goes with each build and is never stored on the server.{" "}
+          Key ending in <code>…{value.key.slice(-4)}</code>, {remember ? "remembered on this device" : "kept for this tab only"}. It goes with each build and isn&apos;t stored on the server.{" "}
           <button type="button" className="link" onClick={forget}>
             Forget key
           </button>
         </p>
+        {canSave ? (
+          <p className="panel-sub">
+            <button type="button" className="btn btn--small" onClick={() => void moveToAccount()} disabled={savingAcct} data-testid="key-to-account">
+              {savingAcct ? "Saving…" : "Save it to my account"}
+            </button>{" "}
+            so it works on every device you log in on.
+          </p>
+        ) : null}
         {error ? <p className="error">{error}</p> : null}
         <label className="opt">
           <span className="opt-label">Model</span>
@@ -217,9 +320,16 @@ export function KeyPanel({ value, onChange, lead, onDone }: { value: KeyState; o
           </button>
         </div>
       </form>
-      <label className="check">
-        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember it on this device
-      </label>
+      {canSave ? (
+        <label className="check">
+          <input type="checkbox" checked={toAccount} onChange={(e) => setToAccount(e.target.checked)} data-testid="save-key-to-account" /> Save it to my account (encrypted), so every device I log in on can use it
+        </label>
+      ) : null}
+      {!canSave || !toAccount ? (
+        <label className="check">
+          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember it on this device
+        </label>
+      ) : null}
       {forgotten ? <p className="opt-hint">Removed from this browser. If you saved it in your password manager, it&apos;s still there.</p> : null}
       {error ? <p className="error">{error}</p> : null}
     </section>

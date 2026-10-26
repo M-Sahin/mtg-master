@@ -10,12 +10,12 @@ import { DEMO_SEEDS, demoCaller } from "./demo";
 import { claimFreeBuild, freeRefusal, freeStatus, visitor } from "./free-builds";
 import { turnstileError, verifyTurnstile } from "./turnstile";
 import { COOKIE, readCookies } from "./supabase";
-import { saveBuildForUser } from "./account-handler";
+import { saveBuildForUser, savedKeyFor } from "./account-handler";
 import type { Budget, GenerateRequest, StreamEvent } from "../shared/types";
 import { MAX_COLLECTION } from "../shared/types";
 
-/** Claude API keys look like sk-ant-…; anything else is rejected before it reaches Anthropic. */
-export const KEY_PATTERN = /^sk-ant-[A-Za-z0-9_-]{20,200}$/;
+import { KEY_PATTERN } from "./key-vault";
+export { KEY_PATTERN };
 
 /** Best-effort client address (behind Vercel or a reverse proxy). */
 export { clientIp };
@@ -138,7 +138,17 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
   const ip = clientIp(request);
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY) return Response.json({ error: "Request too large." }, { status: 413 });
   // the visitor's own key: used for this build only, never stored or logged
-  const userKey = (request.headers.get("x-anthropic-key") ?? "").trim();
+  let userKey = (request.headers.get("x-anthropic-key") ?? "").trim();
+  // or the key saved to the visitor's account (sealed on the server; the browser never has it)
+  let savedModel: string | null = null;
+  let savedCookies: string[] = [];
+  if (!userKey && request.headers.get("x-use-saved-key") === "1") {
+    const saved = await savedKeyFor(request);
+    if (!saved) return Response.json({ error: "The key saved to your account couldn't be used. Log in again, or add your key again.", code: "saved_key" }, { status: 400 });
+    userKey = saved.key;
+    savedModel = saved.model;
+    savedCookies = saved.setCookies;
+  }
   if (userKey) {
     if (!cfg.ownKeys) return Response.json({ error: "This site doesn't accept personal API keys." }, { status: 403 });
     if (!KEY_PATTERN.test(userKey)) return Response.json({ error: "That doesn't look like a Claude API key (they start with sk-ant-)." }, { status: 400 });
@@ -201,7 +211,8 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
   }
   const wanted = typeof (body as any)?.model === "string" ? String((body as any).model).trim() : "";
   // free builds always use the free model: stronger ones need the visitor's own key
-  const model = userKey ? (MODEL_ID.test(wanted) ? wanted : DEFAULT_MODEL) : free ? free.model : cfg.model;
+  const model = userKey ? (MODEL_ID.test(wanted) ? wanted : savedModel && MODEL_ID.test(savedModel) ? savedModel : DEFAULT_MODEL) : free ? free.model : cfg.model;
+  for (const c of savedCookies) headers.append("set-cookie", c);
   const callModel = override?.callModel ?? (userKey ? anthropicCaller(userKey) : demo ? demoCaller(override?.demoSpeed ?? 1) : anthropicCaller(cfg.apiKey));
   const engine = demo ? cfg.engine : free ? { ...cfg.liveEngine, effort: free.effort as typeof cfg.liveEngine.effort } : cfg.liveEngine;
   const id = newJobId();

@@ -27,7 +27,7 @@ export function ShareButton({ deck, shareD }: { deck: Deck; shareD?: string }) {
   );
 }
 
-function ShareSheet({ deck, shareD, onClose }: { deck: Deck; shareD?: string; onClose: () => void }) {
+export function ShareSheet({ deck, shareD, onClose }: { deck: Deck; shareD?: string; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);

@@ -2,18 +2,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BRACKETS, type BracketNumber } from "../lib/shared/bracket";
 import { DeckStartPanel, splitBasics, type StartDeck } from "./DeckStartPanel";
-import { MANA_COLORS } from "../lib/shared/deck-utils";
+import { MANA_COLORS, deckSeeds } from "../lib/shared/deck-utils";
 import type { Budget, Color, Deck, GenerateRequest, StreamEvent, Swap, Usage, Validation } from "../lib/shared/types";
-import { cardByName, freeBuilds, generate, getConfig, myDecks, randomCard, resolveDeck, runningBuild, stopBuild, storage, type FreeBuilds, type PublicConfig, type SavedDeck } from "../lib/client/api";
+import { cardByName, freeBuilds, generate, getConfig, handoff, myDecks, randomCard, resolveDeck, runningBuild, saveAfterLogin, stopBuild, storage, type FreeBuilds, type PublicConfig, type SavedDeck } from "../lib/client/api";
 import { costUsd, formatCost, formatTokens, modelInfo } from "../lib/shared/models";
 import { EXAMPLES, sameSeeds } from "../lib/shared/examples";
 import { encodeDeck } from "../lib/shared/share";
 import { CollectionPanel, type Collection } from "./CollectionPanel";
 import type { KeyState } from "./KeyPanel";
 import { BuildStatus, KeySheet, type Access } from "./BuildAccess";
-import { MyDecks } from "./MyDecks";
+import { LoginDialog } from "./LoginDialog";
 import { SiteHeader } from "./SiteHeader";
-import { cloudDecks, loadAccount } from "../lib/client/account";
+import { cloudDecks, loadAccount, useAccount } from "../lib/client/account";
 import { DeckShapeFields, draftToShape, emptyShape, type ShapeDraft } from "./DeckShapeFields";
 import { IdentityPips } from "./CardFace";
 import { DeckView } from "./DeckView";
@@ -68,14 +68,18 @@ export default function App() {
   const [key, setKey] = useState<KeyState>({ key: "", model: "" });
   const keyRef = useRef(key);
   keyRef.current = key;
+  const hasOwn = !!(key.key || key.saved); // a key in this browser, or one saved to the account
   const [free, setFree] = useState<FreeBuilds | null>(null);
   const [sheet, setSheet] = useState<{ lead?: string } | null>(null);
   const pending = useRef<GenerateRequest | null>(null);
   const human = useHumanCheck("build");
   const [collection, setCollection] = useState<Collection | null>(null);
   const [usage, setUsage] = useState<{ usage: Usage; model?: string } | null>(null);
-  const [decksVersion, setDecksVersion] = useState(0);
-  const [decksHash, setDecksHash] = useState(false);
+  const acct = useAccount();
+  // the deck just built, when it went into this browser only (logged out): offer to save it to an account
+  const [localSave, setLocalSave] = useState<SavedDeck | null>(null);
+  const [saveAsk, setSaveAsk] = useState<"ask" | "login" | "dismissed">("ask");
+  const [hasDecks, setHasDecks] = useState(false);
   const [shape, setShape] = useState<ShapeDraft>(emptyShape);
   const shapeParsed = draftToShape(shape);
   const shapeReq = typeof shapeParsed === "object" ? shapeParsed : undefined;
@@ -93,6 +97,7 @@ export default function App() {
       })
       .catch(() => setConfig(null));
     setSaved(lastDeck.get());
+    setHasDecks(myDecks.list().length > 0);
     setAccessCode(savedCode.get() ?? "");
     // the phone reloaded the tab mid-build: show the seeds again and pick the build back up
     const running = runningBuild.get();
@@ -115,12 +120,12 @@ export default function App() {
 
   const problems = filledSeeds.map(seedProblem).filter(Boolean) as string[];
   const ready = filledSeeds.length === 5 && filledSeeds.every((s) => s.info && !s.loading) && problems.length === 0 && !shapeError;
-  const needCode = config?.accessCodeRequired && !accessCode.trim() && !key.key;
+  const needCode = config?.accessCodeRequired && !accessCode.trim() && !hasOwn;
   const blocked = config?.setupProblem ?? null;
 
   /** How a build of `req` would run right now. */
   const accessFor = (req: Pick<GenerateRequest, "seeds" | "mode"> | null): Access => {
-    if (keyRef.current.key) return "own";
+    if (keyRef.current.key || keyRef.current.saved) return "own";
     if (!config) return "none";
     if (config.mode === "live") {
       if (config.freeBuilds) return !free || free.remaining > 0 ? "free" : "none";
@@ -246,7 +251,7 @@ export default function App() {
     abort.current = ctl;
     jobId.current = resume;
     const own = keyRef.current; // the key this tab shows (another tab may have saved a different one)
-    const isFree = !own.key && how === "free";
+    const isFree = !own.key && !own.saved && how === "free";
     // a free build carries a fresh bot-check token (before the screen changes, while the widget is on the page)
     const turnstile = isFree && !resume ? await human.take() : undefined;
     setPhase("forging");
@@ -270,7 +275,7 @@ export default function App() {
     let spent: { usage: Usage; model?: string } | null = null;
     let freeUsed = false;
     try {
-      for await (const ev of generate(req, { accessCode, apiKey: own.key || undefined, model: own.model || undefined, turnstile }, ctl.signal, resume)) {
+      for await (const ev of generate(req, { accessCode, apiKey: own.key || undefined, savedKey: !own.key && !!own.saved, model: own.model || undefined, turnstile }, ctl.signal, resume)) {
         if (!jobId.current) jobId.current = runningBuild.get()?.job;
         handle(ev);
         if (ev.type === "usage") {
@@ -280,6 +285,10 @@ export default function App() {
         if (ev.type === "deck") got = { deck: ev.deck, validation: ev.validation, ...(ev.swaps ? { swaps: ev.swaps } : {}) };
         if (ev.type === "error") {
           if (ev.code === "free_used") freeUsed = true;
+          else if (ev.code === "saved_key") {
+            setKey((k) => ({ key: k.key, model: k.model }));
+            setError(ev.message);
+          }
           else setError(ev.message);
         }
       }
@@ -329,23 +338,18 @@ export default function App() {
       };
       // logged in: into the account; otherwise (or if that fails) into this browser
       let ok = false;
-      if ((await loadAccount()).user) ok = await cloudDecks.save(entry).then(() => true, () => false);
-      if (!ok) myDecks.add(entry);
-      setDecksVersion((v) => v + 1);
+      const a = await loadAccount();
+      if (a.user) ok = await cloudDecks.save(entry).then(() => true, () => false);
+      if (!ok) {
+        myDecks.add(entry);
+        if (a.enabled && !a.user) {
+          setLocalSave(entry);
+          setSaveAsk("ask");
+        }
+      } else setLocalSave(null);
+      setHasDecks(true);
     } catch {
       /* the deck is still shown; it just isn't added to My decks */
-    }
-  };
-
-  const openSaved = async (s: SavedDeck) => {
-    setError(null);
-    try {
-      const r = await resolveDeck(s.cloud ? await cloudDecks.payload(s.id) : s.d);
-      setResult({ ...r, usage: s.usage, model: s.model });
-      setPhase("result");
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (e) {
-      setError((e as Error).message);
     }
   };
 
@@ -391,19 +395,51 @@ export default function App() {
     setPhase("setup");
   };
 
-  // "My decks" in the navbar: /#my-decks opens the setup screen at the saved decks
+  // old links to /#my-decks: the decks have their own page now
   useEffect(() => {
-    const onHash = () => {
-      const on = window.location.hash === "#my-decks";
-      setDecksHash(on);
-      if (!on) return;
-      setPhase((p) => (p === "forging" ? p : "setup"));
-      setTimeout(() => document.getElementById("my-decks")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
-    };
-    onHash();
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    if (window.location.hash === "#my-decks") window.location.replace("/decks");
   }, []);
+
+  // from the My decks page: open a deck, or build from it (once the site's config is known)
+  const handed = useRef(false);
+  useEffect(() => {
+    if (!config || handed.current) return;
+    handed.current = true;
+    const h = handoff.take();
+    if (!h) return;
+    void (async () => {
+      try {
+        const r = await resolveDeck(h.d);
+        if (h.kind === "open") {
+          setResult({ ...r, usage: h.usage, model: h.model });
+          setPhase("result");
+          return;
+        }
+        if (h.kind === "rebuild") {
+          const s = deckSeeds(r.deck);
+          if (!s) {
+            setError("This deck wasn't built from five seeds, so it can't be built again. Try “Improve it with Claude” instead.");
+            return;
+          }
+          const cmd = r.deck.commander.seed ? r.deck.commander.name : null;
+          void loadSeeds(s, cmd);
+          const b = ([1, 2, 3, 4] as const).find((x) => x === r.deck.bracket) ?? 3;
+          setBracket(b);
+          start({ seeds: s, commander: cmd, budget, theme, bracket: b });
+          return;
+        }
+        // upgrade: every card stays a candidate, the commander and the plan stay
+        const cards = r.deck.cards.map((c) => ({ name: c.name, qty: c.qty }));
+        const { names, basics } = splitBasics(cards);
+        const b = ([1, 2, 3, 4] as const).find((x) => x === r.deck.bracket) ?? 3;
+        setBracket(b);
+        start({ mode: "upgrade", seeds: names, basics, commander: r.deck.commander.name, partner: r.deck.partner?.name ?? null, budget, theme, bracket: b });
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config]);
 
   const restart = () => {
     setPhase("setup");
@@ -424,14 +460,14 @@ export default function App() {
   };
 
   const moreSet = [theme.trim() ? 1 : 0, shapeReq ? 1 : 0, collection ? 1 : 0].reduce((a, b) => a + b, 0);
-  const examples = config?.mode === "demo" && !key.key ? EXAMPLES.filter((e) => sameSeeds(e.seeds, config.demoSeeds)) : EXAMPLES;
+  const examples = config?.mode === "demo" && !hasOwn ? EXAMPLES.filter((e) => sameSeeds(e.seeds, config.demoSeeds)) : EXAMPLES;
   const tint = tintSource.length ? tintSource : null;
-  const goHint = blocked && !key.key ? blocked : mode === "deck" ? null : !ready ? (problems.length ? problems[0] : `Add ${5 - filledSeeds.length} more card${5 - filledSeeds.length === 1 ? "" : "s"} to start.`) : needCode ? "Enter the access code to start." : "One to three minutes. You can leave the page while it builds.";
+  const goHint = blocked && !hasOwn ? blocked : mode === "deck" ? null : !ready ? (problems.length ? problems[0] : `Add ${5 - filledSeeds.length} more card${5 - filledSeeds.length === 1 ? "" : "s"} to start.`) : needCode ? "Enter the access code to start." : "One to three minutes. You can leave the page while it builds.";
 
   return (
     <div className="app" style={tint ? tintStyle(tint) : undefined}>
       <SiteHeader
-        active={phase === "setup" && decksHash ? "decks" : "build"}
+        active="build"
         donationUrl={config ? (config.donationUrl ?? null) : undefined}
         extra={
           config?.mode === "demo" && !config.ownKeys ? (
@@ -572,7 +608,7 @@ export default function App() {
                 ))}
               </div>
             </fieldset>
-            {config?.accessCodeRequired && !key.key ? (
+            {config?.accessCodeRequired && !hasOwn ? (
               <label className="opt">
                 <span className="opt-label">Access code</span>
                 <input className="field" type="password" value={accessCode} onChange={(e) => setAccessCode(e.target.value)} placeholder="Ask the person who runs this app" autoComplete="off" />
@@ -595,7 +631,7 @@ export default function App() {
 
           <div className="go">
             {mode === "seeds" ? (
-              <button type="button" className="btn btn--big btn--brass" onClick={build} disabled={!ready || !!needCode || (!!blocked && !key.key)} data-testid="build">
+              <button type="button" className="btn btn--big btn--brass" onClick={build} disabled={!ready || !!needCode || (!!blocked && !hasOwn)} data-testid="build">
                 Build my deck
               </button>
             ) : null}
@@ -607,13 +643,17 @@ export default function App() {
               </p>
             ) : null}
           </div>
-          <MyDecks onOpen={openSaved} version={decksVersion} showEmpty={decksHash} />
+          {hasDecks ? (
+            <p className="all-decks">
+              <a href="/decks">All your decks</a>
+            </p>
+          ) : null}
         </main>
       ) : null}
 
       {phase === "forging" ? (
         <main>
-          <ForgeView log={log} draft={draft} commander={draftCmd} filled={filled} elapsed={elapsed} onCancel={cancel} spend={usage && usage.model !== "demo" && key.key ? spendText(usage.usage, usage.model) : undefined} />
+          <ForgeView log={log} draft={draft} commander={draftCmd} filled={filled} elapsed={elapsed} onCancel={cancel} spend={usage && usage.model !== "demo" && hasOwn ? spendText(usage.usage, usage.model) : undefined} />
           {error ? (
             <p className="error" role="alert">
               {error}
@@ -624,6 +664,29 @@ export default function App() {
 
       {phase === "result" && result ? (
         <main>
+          {localSave && saveAsk === "ask" && acct.enabled && !acct.user && localSave.name === result.deck.name ? (
+            <div className="save-ask" data-testid="save-ask">
+              <p>
+                <strong>Keep this deck?</strong> It&apos;s saved in this browser only. A free account keeps it on every device: no password, just your email.
+              </p>
+              <span className="save-ask-actions">
+                <button
+                  type="button"
+                  className="btn btn--brass"
+                  onClick={() => {
+                    saveAfterLogin.set([localSave.id]);
+                    setSaveAsk("login");
+                  }}
+                  data-testid="save-to-account"
+                >
+                  Save to my account
+                </button>
+                <button type="button" className="btn btn--quiet" onClick={() => setSaveAsk("dismissed")}>
+                  Not now
+                </button>
+              </span>
+            </div>
+          ) : null}
           {result.swaps ? <UpgradeSummary swaps={result.swaps} /> : null}
           <DeckView
             deck={result.deck}
@@ -637,6 +700,14 @@ export default function App() {
         </main>
       ) : null}
 
+      <LoginDialog
+        open={saveAsk === "login"}
+        onClose={() => setSaveAsk("ask")}
+        title="Save your deck"
+        lead="Log in, or make an account with just your email. Your deck moves into it, and you'll find it under My decks."
+        next="/decks"
+      />
+
       <KeySheet
         open={!!sheet}
         lead={sheet?.lead}
@@ -647,10 +718,11 @@ export default function App() {
           setSheet(null);
         }}
         onDone={keyDone}
+        canSave={!!config?.keyVault && !!acct.user}
       />
 
       {/* the bot check for free builds: on every screen, so "Build another version" has a token too */}
-      {config?.freeBuilds && !key.key ? <div className="human-check">{human.widget}</div> : null}
+      {config?.freeBuilds && !hasOwn ? <div className="human-check">{human.widget}</div> : null}
 
       <footer className="foot">
         <p>

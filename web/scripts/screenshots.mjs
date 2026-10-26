@@ -372,12 +372,12 @@ await run("31-account-decks", { width: 1440, height: 1000 }, async (p) => {
   await p.route("**/api/decks", (r) =>
     r.fulfill({ json: { decks: [{ id: "00000000-0000-4000-8000-000000000001", at: Date.now(), name: "Cloud Meren", commander: "Meren of Clan Nel Toth", colors: ["B", "G"] }] } }),
   );
-  // a real load (not just a hash change), so the page asks the faked endpoints
-  await p.goto(`${base}/?account=1#my-decks`, { waitUntil: "networkidle" });
-  const panel = await p.locator("[data-testid=my-decks]").innerText({ timeout: 8000 }).catch(() => "");
+  await p.goto(`${base}/decks`, { waitUntil: "networkidle" });
+  await p.waitForSelector("[data-testid=deck-card]", { timeout: 8000 }).catch(() => {});
+  const panel = await p.locator(".decks-page").innerText({ timeout: 8000 }).catch(() => "");
   const nav = await p.locator(".nav-main + .nav-side [data-testid=nav-account]").innerText().catch(() => "");
   console.log(`account decks: ${panel.replace(/\s+/g, " ").slice(0, 160)}; navbar: ${nav.replace(/\s+/g, " ")}`);
-  if (!/Cloud Meren/.test(panel) || !/saved to your account/.test(panel) || !/Account/.test(nav)) errors.push(`account decks: ${panel.slice(0, 100)} / ${nav}`);
+  if (!/Cloud Meren/.test(panel) || !/in your account/.test(panel) || !/Account/.test(nav)) errors.push(`account decks: ${panel.slice(0, 100)} / ${nav}`);
   if (!(await p.locator(".nav-main .nav-link", { hasText: "My decks" }).count())) errors.push("My decks missing from the menu when logged in");
 });
 // free builds (faked in the browser: CI's site has no Claude key): the count, then the key sheet when they're used up
@@ -471,6 +471,43 @@ await run(
   },
   { hasTouch: true, isMobile: true },
 );
+// logged out on a site with accounts: a finished deck offers to move into an account
+await run("36-save-ask", { width: 1440, height: 1000 }, async (p) => {
+  await p.route("**/api/auth/session", (r) => r.fulfill({ json: { enabled: true, providers: ["email"], user: null } }));
+  await p.goto(base, { waitUntil: "networkidle" });
+  await toResult(p);
+  const ask = await p.locator("[data-testid=save-ask]").innerText({ timeout: 8000 }).catch(() => "");
+  await p.click("[data-testid=save-to-account]");
+  const title = await p.locator("dialog.login-modal[open] h3").innerText({ timeout: 5000 }).catch(() => "");
+  const intent = await p.evaluate(() => localStorage.getItem("hundredfold:save-after-login"));
+  console.log(`save prompt: "${ask.split("\n")[0].slice(0, 70)}"; dialog "${title}"; will move ${intent}`);
+  if (!/Keep this deck\?/.test(ask) || title !== "Save your deck" || !intent) errors.push(`save prompt: ${ask} / ${title} / ${intent}`);
+});
+// My decks, logged out: the decks in this browser, each with its actions; Open goes to the deck
+await run("37-decks-page", { width: 1440, height: 1000 }, async (p) => {
+  await toResult(p);
+  await p.goto(`${base}/decks`, { waitUntil: "networkidle" });
+  await p.waitForSelector("[data-testid=deck-card]", { timeout: 8000 }).catch(() => errors.push("no deck on the My decks page"));
+  await p.waitForTimeout(1200); // the commander art
+  const card = await p.locator("[data-testid=deck-card]").first().innerText();
+  await p.locator("[data-testid=deck-card]").first().hover();
+  await p.click("[data-testid=deck-more]");
+  const items = await p.locator(".menu-list [role=menuitem]").allInnerTexts();
+  console.log(`my decks: ${card.replace(/\s+/g, " ").slice(0, 120)}; menu ${items.join(" | ")}`);
+  if (!items.some((i) => /Improve it/.test(i)) || !items.includes("Delete")) errors.push(`deck menu: ${items.join(", ")}`);
+  await p.screenshot({ path: `${out}/37-decks-page.png`, fullPage: true });
+  await p.keyboard.press("Escape");
+  await p.click("[data-testid=deck-card] >> text=Open");
+  await p.waitForSelector(".deck", { timeout: 30000 }).catch(() => errors.push("Open on My decks didn't show the deck"));
+});
+await run("38-mobile-decks", { width: 390, height: 844 }, async (p) => {
+  await toResult(p);
+  await p.goto(`${base}/decks`, { waitUntil: "networkidle" });
+  await p.waitForSelector("[data-testid=deck-card]", { timeout: 8000 }).catch(() => {});
+  await p.waitForTimeout(1200);
+  const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  if (overflow > 1) errors.push(`My decks scrolls sideways on a phone (${overflow}px)`);
+});
 await run("7-mobile-setup", { width: 390, height: 844 }, async (p) => {
   await loadSeeds(p);
   const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

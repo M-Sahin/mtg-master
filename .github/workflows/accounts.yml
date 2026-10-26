@@ -5,9 +5,9 @@ name: accounts
 
 on:
   push:
-    paths: ["web/supabase/**", "web/lib/server/supabase.ts", "web/lib/server/account-handler.ts", "web/scripts/check-supabase.mjs", ".github/workflows/accounts.yml"]
+    paths: ["web/supabase/**", "web/lib/server/supabase.ts", "web/lib/server/account-handler.ts", "web/lib/server/key-vault.ts", "web/scripts/check-supabase.mjs", ".github/workflows/accounts.yml"]
   pull_request:
-    paths: ["web/supabase/**", "web/lib/server/supabase.ts", "web/lib/server/account-handler.ts", "web/scripts/check-supabase.mjs", ".github/workflows/accounts.yml"]
+    paths: ["web/supabase/**", "web/lib/server/supabase.ts", "web/lib/server/account-handler.ts", "web/lib/server/key-vault.ts", "web/scripts/check-supabase.mjs", ".github/workflows/accounts.yml"]
   workflow_dispatch:
 
 permissions:

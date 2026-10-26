@@ -56,7 +56,13 @@ To switch it on for your copy:
 7. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (or the newer publishable key as `SUPABASE_PUBLISHABLE_KEY`) in Vercel. No secret or service-role key is needed.
 8. Outside Vercel, also set `SITE_URL` (for example `https://decks.example.com`). Login links are built from it, never from request headers, so a forged `Host` header can't send someone's login link to another site. Without it, logins only work on `localhost`. On Vercel the production domain is used, and a preview deployment uses its own URL: add `https://*-your-team.vercel.app/auth/callback` to the redirect URLs if you want to log in on previews. Keep the list exact otherwise, without broad wildcards.
 
+9. **Saved API keys (optional):** run `web/supabase/migrations/20261027000000_api_keys.sql` the same way and set `KEY_ENCRYPTION_SECRET` (`openssl rand -base64 32`, type Secret on Vercel). Logged-in visitors then get "Save it to my account" in the key sheet.
+
 Without these settings the app works as before: no login button, decks in the browser.
+
+- **My decks** (`/decks`) lists the account's decks (or this browser's), with the commander's art, when each was made and the model. Each deck can be opened, shared, improved by Claude (up to 10 swaps), built again from its five seeds, renamed and deleted. Building needs a key or a free build, like any build.
+- **Save to my account:** a deck built while logged out offers to move into an account. The login dialog opens, and after logging in the deck moves over by itself. When someone is logged in, the server also saves each finished build to the account, so it's there even if the browser was closed mid-build.
+- **Saved API keys** are sealed by the server with AES-256-GCM (`lib/server/key-vault.ts`), with the user's id as additional data, and stored with their last four characters only. The browser never gets a saved key back: a build asks the server to use it (`x-use-saved-key`), and the server opens it for that build. Row-level security keeps each row to its owner, and deleting the account deletes the key.
 
 ## Abuse protection
 
@@ -162,6 +168,7 @@ cd web && npm ci && npm run build && npm start
 | `ANTHROPIC_MODEL` | no | Defaults to `claude-sonnet-5-5`. `claude-opus-5-5` gives stronger decks but is slower and costs more. |
 | `AFFILIATE_TCGPLAYER`, `AFFILIATE_CARDKINGDOM`, `AFFILIATE_CARDMARKET` | no | Affiliate tags for the "Buy the cards" and "Find this box" links: a link template with `{url}` where the shop link goes (what Impact gives you for TCGplayer, e.g. `https://tcgplayer.pxf.io/c/…?u={url}`), or parameters to add to the shop link (`partner=yourname`). Without them the links work, untagged. When any is set, the page says some links are affiliate links. |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | no | Accounts and decks saved to them (see [Accounts](#accounts-optional)). `SUPABASE_PUBLISHABLE_KEY` and the `NEXT_PUBLIC_` names the Supabase Vercel integration sets work too. |
+| `KEY_ENCRYPTION_SECRET` | no | Lets logged-in visitors save their own Claude API key to their account. 32 random bytes, base64 (`openssl rand -base64 32`). Keys are sealed with it (AES-256-GCM, bound to the user's id), so the database alone can't reveal them. Changing it makes saved keys unreadable (people add theirs again). Needs [accounts](#accounts-optional) and the `api_keys` migration. |
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | no | Cloudflare Turnstile, the mostly invisible check that a visitor isn't a bot (see [Abuse protection](#abuse-protection)). |
 | `EV_DATA_URL` | no | Where the Box EV data is read from. Defaults to this repo's `ev-data` branch on GitHub. |
 | `BUILDS_PER_HOUR_PER_IP` | no | A best-effort limit per IP, kept per server instance (default 6). |

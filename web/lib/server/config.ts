@@ -4,6 +4,8 @@ import { DEMO_SEEDS } from "./demo";
 import { SKILL_VERSION } from "../skill/content";
 import { parseEngine, type EngineOptions } from "./engine";
 import { freeConfig } from "./free-builds";
+import { vaultOn } from "./key-vault";
+import { supabaseConfig } from "./supabase";
 import { modelInfo } from "../shared/models";
 
 function engineFromEnv(demo: boolean): EngineOptions {
@@ -52,6 +54,8 @@ export interface PublicConfig {
   affiliates: Affiliates;
   /** Free builds on this site's key: how many per visitor, and with which model. */
   freeBuilds: { limit: number; model: string; modelLabel: string } | null;
+  /** Logged-in visitors can save their own key to their account (sealed on the server). */
+  keyVault: boolean;
   /** Cloudflare Turnstile site key (public), when the bot check is on. */
   turnstileSiteKey: string | null;
   model: string;
@@ -68,6 +72,7 @@ export function publicConfig(): PublicConfig {
     ownKeys: c.ownKeys,
     donationUrl: c.donationUrl,
     affiliates: c.affiliates,
+    keyVault: c.ownKeys && vaultOn() && !!supabaseConfig(),
     freeBuilds: c.free ? { limit: c.free.perVisitor, model: c.free.model, modelLabel: modelInfo(c.free.model)?.label ?? c.free.model } : null,
     turnstileSiteKey: turnstileSiteKey(),
     model: c.demo ? "demo (scripted)" : c.model,

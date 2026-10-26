@@ -92,3 +92,11 @@ export const cloudDecks = {
 
 /** The current page, to come back to after logging in. */
 export const herePath = () => (typeof window === "undefined" ? "/" : `${window.location.pathname}${window.location.hash}`);
+
+/** The visitor's own Claude API key, saved to the account: only its last four characters come back. */
+export const savedKey = {
+  get: () => call<{ saved: boolean; vault?: boolean; last4?: string; model?: string | null }>("/api/account/key"),
+  save: (key: string, model: string) => call<{ saved: true; last4: string; model: string | null; models: { id: string; name: string }[] }>("/api/account/key", { method: "PUT", body: JSON.stringify({ key, model }) }),
+  setModel: (model: string) => call("/api/account/key", { method: "PATCH", body: JSON.stringify({ model }) }),
+  remove: () => call("/api/account/key", { method: "DELETE" }),
+};
