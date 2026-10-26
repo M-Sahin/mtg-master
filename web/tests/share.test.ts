@@ -165,7 +165,8 @@ test("/api/share: long link without a store, short /d/<id> link with one, same i
       assert.equal(await loadShare(id), d);
       assert.equal(await loadShare("nope!"), null, "bad ids never reach the store");
       assert.equal(await loadShare("zzzzzzzzz"), null);
-      assert.deepEqual(kv.seen[0].slice(0, 1).concat(kv.seen[0].slice(3)), ["SET", "EX", 31536000]);
+      const set = kv.seen.find((c: any[]) => c[0] === "SET")!;
+      assert.deepEqual(set.slice(0, 1).concat(set.slice(3)), ["SET", "EX", 31536000]);
       // only real decks get stored
       const bad = await handleShare(post({ d: "garbage" }));
       assert.equal(bad.status, 400);

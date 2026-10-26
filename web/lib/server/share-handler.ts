@@ -1,6 +1,7 @@
 // POST /api/share {d} -> { url, short }. Share links always point at the public site:
 // SITE_URL if set, else the project's production domain on Vercel (deployment URLs sit behind
 // Vercel's login by default), else the address the request came in on.
+import { LIMITS, clientIp, rateLimit } from "./ratelimit";
 import { decodePayload } from "../shared/share";
 import { kvConfig, saveShare } from "./store";
 
@@ -15,15 +16,6 @@ export function canonicalOrigin(request: Request): string {
   return `${proto}://${host}`;
 }
 
-// best-effort write limit per IP and instance, so the store can't be filled by a script
-const writes = new Map<string, number[]>();
-function tooMany(ip: string, perHour = 60, now = Date.now()) {
-  const recent = (writes.get(ip) ?? []).filter((t) => now - t < 3_600_000);
-  recent.push(now);
-  writes.set(ip, recent);
-  if (writes.size > 5000) writes.delete(writes.keys().next().value as string);
-  return recent.length > perHour;
-}
 
 export async function handleShare(request: Request): Promise<Response> {
   let body: any;
@@ -41,8 +33,9 @@ export async function handleShare(request: Request): Promise<Response> {
   const origin = canonicalOrigin(request);
   const long = `${origin}/deck?d=${d}`;
   if (!kvConfig()) return Response.json({ url: long, short: false });
-  const ip = (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || request.headers.get("x-real-ip") || "unknown";
-  if (tooMany(ip)) return Response.json({ url: long, short: false });
+  const ip = clientIp(request);
+  // past the limit: still a working (long, self-contained) link, just not a stored one
+  if (!(await rateLimit(LIMITS.share, ip)).ok) return Response.json({ url: long, short: false });
   try {
     const id = await saveShare(d);
     return Response.json({ url: `${origin}/d/${id}`, short: true });

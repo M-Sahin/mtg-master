@@ -1,4 +1,5 @@
 // Framework-independent handler for POST /api/generate (used by the Next.js route and tests).
+import { LIMITS, clientIp, rateLimit, rateLimitAll, tooMany } from "./ratelimit";
 import { cleanShape } from "../shared/shape";
 import { anthropicCaller, friendlyModelError, listModels, type ModelCaller } from "./anthropic";
 import { DEFAULT_MODEL, MODEL_ID } from "../shared/models";
@@ -13,9 +14,7 @@ import { MAX_COLLECTION } from "../shared/types";
 export const KEY_PATTERN = /^sk-ant-[A-Za-z0-9_-]{20,200}$/;
 
 /** Best-effort client address (behind Vercel or a reverse proxy). */
-export function clientIp(request: Request): string {
-  return (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || request.headers.get("x-real-ip")?.trim() || "unknown";
-}
+export { clientIp };
 
 /** Short, non-reversible tag for a key, so limits can be per key instead of per shared IP. */
 async function keyTag(key: string): Promise<string> {
@@ -64,19 +63,6 @@ export function parseRequest(body: any): GenerateRequest | string {
   return { seeds, commander, budget, theme, bracket, ...extra, ...(collection ? { collection } : {}), ...(shape ? { shape } : {}) };
 }
 
-// Per-instance rate limit (best effort: each warm Vercel instance keeps its own counts).
-const hits = new Map<string, number[]>();
-export function rateLimited(ip: string, perHour: number, now = Date.now()): boolean {
-  const recent = (hits.get(ip) ?? []).filter((t) => now - t < 3_600_000);
-  if (recent.length >= perHour) {
-    hits.set(ip, recent);
-    return true;
-  }
-  recent.push(now);
-  hits.set(ip, recent);
-  if (hits.size > 5000) hits.delete(hits.keys().next().value as string);
-  return false;
-}
 
 export interface GenerateOverride {
   callModel?: ModelCaller;
@@ -152,7 +138,11 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
   if (userKey) {
     if (!cfg.ownKeys) return Response.json({ error: "This site doesn't accept personal API keys." }, { status: 403 });
     if (!KEY_PATTERN.test(userKey)) return Response.json({ error: "That doesn't look like a Claude API key (they start with sk-ant-)." }, { status: 400 });
-    if (rateLimited(`own:${await keyTag(userKey)}`, cfg.ownKeyBuildsPerHour)) return Response.json({ error: `You've started ${cfg.ownKeyBuildsPerHour} builds in the last hour. Try again later.` }, { status: 429 });
+    const r = await rateLimitAll([
+      [LIMITS.buildOwnKey(cfg.ownKeyBuildsPerHour), await keyTag(userKey)],
+      [LIMITS.buildOwnKeyIp, ip],
+    ]);
+    if (!r.ok) return tooMany(`You've started a lot of builds in the last hour (the limit is ${cfg.ownKeyBuildsPerHour}). Try again later.`, r);
   } else if (!cfg.demo && !override?.callModel) {
     if (!cfg.accessCode && !cfg.publicAccess) {
       return Response.json({ error: "This deployment has an API key but no ACCESS_CODE. Set ACCESS_CODE (or PUBLIC_ACCESS=1) in the Vercel project settings." }, { status: 503 });
@@ -160,9 +150,8 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
     if (cfg.accessCode && request.headers.get("x-access-code") !== cfg.accessCode) {
       return Response.json({ error: "Wrong or missing access code." }, { status: 401 });
     }
-    if (rateLimited(ip, cfg.buildsPerHour)) {
-      return Response.json({ error: `You've built ${cfg.buildsPerHour} decks in the last hour. Try again later.` }, { status: 429 });
-    }
+    const r = await rateLimit(LIMITS.buildServerKey(cfg.buildsPerHour), ip);
+    if (!r.ok) return tooMany(`You've built ${cfg.buildsPerHour} decks in the last hour. Try again later.`, r);
   }
   let body: unknown;
   try {
@@ -210,7 +199,6 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
 }
 
 /** POST /api/key/check {key}: does this key work, and which models can it use? The key isn't stored. */
-const checks = new Map<string, number[]>();
 export async function handleKeyCheck(request: Request): Promise<Response> {
   const cfg = serverConfig();
   if (!cfg.ownKeys) return Response.json({ error: "This site doesn't accept personal API keys." }, { status: 403 });
@@ -218,14 +206,14 @@ export async function handleKeyCheck(request: Request): Promise<Response> {
   const body = await request.json().catch(() => ({}));
   const key = typeof body?.key === "string" ? body.key.trim() : "";
   if (!KEY_PATTERN.test(key)) return Response.json({ error: "That doesn't look like a Claude API key. Keys start with sk-ant-." }, { status: 400 });
-  // limit per IP and key together: people behind one shared address don't block each other
-  const bucket = `${clientIp(request)}:${await keyTag(key)}`;
-  const now = Date.now();
-  const recent = (checks.get(bucket) ?? []).filter((t) => now - t < 3_600_000);
-  if (recent.length >= 30) return Response.json({ error: "Too many key checks. Try again later." }, { status: 429 });
-  recent.push(now);
-  checks.set(bucket, recent);
-  if (checks.size > 5000) checks.delete(checks.keys().next().value as string);
+  // per IP and key together (people behind one shared address don't block each other), and per
+  // IP overall (so nobody can test a list of stolen keys through this server)
+  const ip = clientIp(request);
+  const r = await rateLimitAll([
+    [LIMITS.keyCheck, `${ip}:${await keyTag(key)}`],
+    [LIMITS.keyCheckIp, ip],
+  ]);
+  if (!r.ok) return tooMany("Too many key checks. Try again later.", r);
   try {
     const models = await listModels(key);
     return Response.json({ ok: true, models }, { headers: { "Cache-Control": "no-store" } });

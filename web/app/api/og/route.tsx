@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { named, previewArt } from "../../../lib/server/scryfall";
 import { decodePayload } from "../../../lib/shared/share";
 import { MANA_COLORS } from "../../../lib/shared/deck-utils";
+import { LIMITS, guard } from "../../../lib/server/ratelimit";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,8 @@ const ART_W = 470; // the art covers the right part only: less photo = a smaller
 
 // Link-preview image for shared decks (WhatsApp, Reddit, Discord, ...).
 export async function GET(request: Request) {
+  const limited = await guard(request, LIMITS.og);
+  if (limited) return limited;
   const d = new URL(request.url).searchParams.get("d") ?? "";
   let title = "Hundredfoldz";
   let sub = "Five cards in. A hundred out.";

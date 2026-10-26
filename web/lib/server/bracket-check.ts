@@ -10,6 +10,7 @@
 // - tutors: no limit since the October 2025 update (the efficient ones are Game Changers)
 // - expected game length: 9+ turns (1), 8+ (2), 6+ (3), 4+ (4), any (5) (October 2025 update)
 // Brackets 1 and 5 are about intent and can't be told from a list alone.
+import { LIMITS, clientIp, rateLimit, tooMany } from "./ratelimit";
 import { checkCombos, type Combo } from "./combos";
 import * as scry from "./scryfall";
 import { EXTRA_TURN, MLD, pairingProblem, validateDeck } from "./validate";
@@ -145,16 +146,10 @@ export async function checkBracket(text: string): Promise<BracketReport> {
   };
 }
 
-const hits = new Map<string, number[]>();
 export async function handleBracketCheck(request: Request): Promise<Response> {
   if (Number(request.headers.get("content-length") ?? 0) > 60_000) return Response.json({ error: "That list is too long." }, { status: 413 });
-  const ip = (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || request.headers.get("x-real-ip")?.trim() || "unknown";
-  const now = Date.now();
-  const recent = (hits.get(ip) ?? []).filter((t) => now - t < 3_600_000);
-  if (recent.length >= 40) return Response.json({ error: "You've checked a lot of decks this hour. Try again in a bit." }, { status: 429 });
-  recent.push(now);
-  hits.set(ip, recent);
-  if (hits.size > 5000) hits.delete(hits.keys().next().value as string);
+  const r = await rateLimit(LIMITS.bracket, clientIp(request));
+  if (!r.ok) return tooMany("You've checked a lot of decks this hour. Try again in a bit.", r);
   const body = await request.json().catch(() => ({}));
   const text = typeof body?.list === "string" ? body.list.slice(0, 50_000) : "";
   try {

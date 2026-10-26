@@ -1,6 +1,9 @@
 import { named } from "../../../../lib/server/scryfall";
+import { LIMITS, guard } from "../../../../lib/server/ratelimit";
 
 export async function GET(request: Request) {
+  const limited = await guard(request, LIMITS.named);
+  if (limited) return limited;
   const name = new URL(request.url).searchParams.get("name") ?? "";
   if (!name.trim()) return Response.json({ error: "name is required" }, { status: 400 });
   try {

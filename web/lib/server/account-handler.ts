@@ -1,5 +1,6 @@
 // Accounts and saved decks: framework-independent handlers behind the /api/auth, /auth and
 // /api/decks routes (lib/server/supabase.ts does the talking to Supabase).
+import { LIMITS, clientIp, rateLimit, rateLimitAll, tooMany } from "./ratelimit";
 import { decodePayload } from "../shared/share";
 import {
   COOKIE,
@@ -45,6 +46,12 @@ function redirect(to: string, setCookies: string[] = []): Response {
   return new Response(null, { status: 303, headers });
 }
 
+function cookieHeaders(setCookies: string[]): Headers {
+  const h = new Headers();
+  for (const c of setCookies) h.append("set-cookie", c);
+  return h;
+}
+
 const OFF = () => json({ error: "Accounts aren't set up on this site." }, 404);
 
 /** Changes must come from our own pages: SameSite cookies plus an Origin check. */
@@ -59,22 +66,8 @@ function sameOrigin(request: Request): boolean {
   }
 }
 
-const clientIp = (r: Request) => (r.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || r.headers.get("x-real-ip")?.trim() || "unknown";
 
-// best-effort limits per instance; one map per kind, so filling one (e.g. with made-up user ids)
-// can't flush another (like the login-email limits)
-const hits = new Map<string, Map<string, number[]>>();
-export function limited(kind: string, key: string, perHour: number, now = Date.now()): boolean {
-  const m = hits.get(kind) ?? new Map<string, number[]>();
-  hits.set(kind, m);
-  const recent = (m.get(key) ?? []).filter((t) => now - t < 3_600_000);
-  const over = recent.length >= perHour;
-  if (!over) recent.push(now);
-  m.set(key, recent);
-  if (m.size > 5000) m.delete(m.keys().next().value as string);
-  return over;
-}
-export const resetLimits = () => hits.clear();
+export { resetRateLimits as resetLimits } from "./ratelimit";
 
 function friendly(e: unknown): string {
   if (e instanceof SupabaseError) {
@@ -107,7 +100,11 @@ export async function handleEmail(request: Request, deps: Deps = {}): Promise<Re
   if (!EMAIL.test(email)) return json({ error: "That doesn't look like an email address." }, 400);
   const site = siteOrigin(request);
   if (!site) return json({ error: "Set SITE_URL on this server to use logins." }, 500);
-  if (limited("email-ip", clientIp(request), 10) || limited("email", email, 3)) return json({ error: "Too many login emails. Wait a bit, then try again." }, 429);
+  const lim = await rateLimitAll([
+    [LIMITS.loginEmailIp, clientIp(request)],
+    [LIMITS.loginEmail, email],
+  ]);
+  if (!lim.ok) return tooMany("Too many login emails. Wait a bit, then try again.", lim);
   const verifier = pkceVerifier();
   const secure = isSecure(request);
   try {
@@ -176,6 +173,8 @@ export async function handleDeleteAccount(request: Request, deps: Deps = {}): Pr
   const cfg = cfgOf(deps);
   if (!cfg) return OFF();
   if (!sameOrigin(request)) return json({ error: "Bad request." }, 403);
+  const lim = await rateLimit(LIMITS.accountDelete, clientIp(request));
+  if (!lim.ok) return tooMany("Too many tries. Wait a bit.", lim);
   const body = await request.json().catch(() => null);
   if (body?.confirm !== "delete") return json({ error: "Confirm by sending confirm: \"delete\"." }, 400);
   const auth = await requestAuth(request, cfg, deps.fetch).catch(() => null);
@@ -268,7 +267,11 @@ export async function handleDecks(request: Request, deps: Deps = {}): Promise<Re
     const body = await request.json().catch(() => null);
     const items: unknown[] = Array.isArray(body?.decks) ? body.decks.slice(0, 100) : body?.d ? [body] : [];
     if (!items.length) return json({ error: "No deck to save." }, 400, auth.setCookies);
-    if (limited("save", auth.user.id, 120) || limited("save-ip", clientIp(request), 300)) return json({ error: "Too many saves this hour." }, 429, auth.setCookies);
+    const lim = await rateLimitAll([
+      [LIMITS.deckSave, auth.user.id],
+      [LIMITS.deckSaveIp, clientIp(request)],
+    ]);
+    if (!lim.ok) return tooMany("Too many saves this hour.", lim, cookieHeaders(auth.setCookies));
     const rows = [];
     let skipped = 0;
     for (const x of items) {

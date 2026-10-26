@@ -322,12 +322,14 @@ test("seed problems stop the run early with a clear message", async () => {
 });
 
 test("rate limiter allows N builds per hour per IP", async () => {
-  const { rateLimited } = await import("../lib/server/generate-handler");
-  const t = 1_000_000;
-  for (let i = 0; i < 3; i++) assert.equal(rateLimited("1.2.3.4", 3, t + i), false);
-  assert.equal(rateLimited("1.2.3.4", 3, t + 10), true);
-  assert.equal(rateLimited("5.6.7.8", 3, t + 10), false);
-  assert.equal(rateLimited("1.2.3.4", 3, t + 3_600_100), false);
+  const { rateLimit, resetRateLimits } = await import("../lib/server/ratelimit");
+  resetRateLimits();
+  const rule = { kind: "test-build", max: 3 };
+  const t = 1_800_000_000_000; // the start of an hour window
+  for (let i = 0; i < 3; i++) assert.equal((await rateLimit(rule, "1.2.3.4", { now: t + i })).ok, true);
+  assert.equal((await rateLimit(rule, "1.2.3.4", { now: t + 10 })).ok, false);
+  assert.equal((await rateLimit(rule, "5.6.7.8", { now: t + 10 })).ok, true);
+  assert.equal((await rateLimit(rule, "1.2.3.4", { now: t + 3_600_100 })).ok, true, "a new hour");
 });
 
 test("the user's chosen commander is enforced", () => {

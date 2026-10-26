@@ -1,10 +1,13 @@
 // Singles or boxes? For a deck's cards: the booster boxes that can give them.
 import { deckBoxRows } from "../../../../lib/server/ev-data";
+import { LIMITS, guard } from "../../../../lib/server/ratelimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const limited = await guard(request, LIMITS.evDeck);
+  if (limited) return limited;
   if (Number(request.headers.get("content-length") ?? 0) > 40_000) return Response.json({ error: "Too many cards." }, { status: 413 });
   const body = await request.json().catch(() => null);
   const raw: unknown[] = Array.isArray(body?.cards) ? body.cards.slice(0, 120) : [];

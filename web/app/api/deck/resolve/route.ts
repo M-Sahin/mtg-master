@@ -1,10 +1,13 @@
 import { decodePayload, MAX_PARAM } from "../../../../lib/shared/share";
 import { resolveShared } from "../../../../lib/server/shared-deck";
+import { LIMITS, guard } from "../../../../lib/server/ratelimit";
 
 export const dynamic = "force-dynamic";
 
 // POST { d } -> { deck, validation }. Only Scryfall lookups (cached), no Claude calls.
 export async function POST(request: Request) {
+  const limited = await guard(request, LIMITS.resolve);
+  if (limited) return limited;
   let d = "";
   try {
     const body = await request.json();

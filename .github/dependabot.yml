@@ -1,0 +1,19 @@
+# Weekly pull requests for outdated or vulnerable dependencies. Review them like any other PR:
+# a dependency update is the classic way for bad code to get in.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
