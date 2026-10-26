@@ -8,7 +8,7 @@ import { KeyPanel, type KeyState } from "./KeyPanel";
 
 export type Access = "own" | "free" | "server" | "demo" | "none";
 
-export function BuildStatus({ config, access, keyState, free, onSheet }: { config: PublicConfig | null; access: Access; keyState: KeyState; free: FreeBuilds | null; onSheet: (lead?: string) => void }) {
+export function BuildStatus({ config, access, keyState, free, onSheet, deckMode = false }: { config: PublicConfig | null; access: Access; keyState: KeyState; free: FreeBuilds | null; onSheet: (lead?: string) => void; deckMode?: boolean }) {
   if (!config) return null;
   const strong = "Sonnet or Opus";
   const freeModel = config.freeBuilds?.modelLabel ?? "Claude Haiku";
@@ -35,6 +35,14 @@ export function BuildStatus({ config, access, keyState, free, onSheet }: { confi
       <>
         {free?.blocked ? "Today's free builds are used up." : `You've used your ${config.freeBuilds.limit} free builds.`} {config.ownKeys ? <>{addKey("Add your Claude API key")} to keep building, on any model.</> : null}
       </>
+    );
+  else if (config.mode === "demo" && !keyState.key && deckMode)
+    line = config.ownKeys ? (
+      <>
+        Completing or upgrading a deck needs a Claude API key. {addKey("Add yours", "Completing or upgrading a deck needs a Claude API key. You pay Anthropic directly: about 25 cents a deck on Sonnet.")}.
+      </>
+    ) : (
+      "Completing or upgrading a deck needs a Claude API key on this site."
     );
   else if (config.mode === "demo" && !keyState.key)
     line = config.ownKeys ? (

@@ -2854,6 +2854,9 @@ a.ev-row:hover {
   :root {
     --card-w: 26vw;
   }
+  .hand {
+    align-items: flex-start;
+  }
   .hand-slot {
     margin: 0 1.2vw;
   }
@@ -2918,6 +2921,9 @@ a.ev-row:hover {
 .keypanel {
   display: grid;
   gap: 12px;
+}
+.keypanel > .link {
+  justify-self: start;
 }
 .keysheet-actions {
   display: flex;
@@ -3150,7 +3156,23 @@ ul.verdict {
     gap: 20px 10px;
   }
   .stack-col .role-title {
-    font-size: 15px;
+    font-size: 14px;
+    gap: 6px;
+    align-items: center;
+  }
+  .stack-col .role-title::before {
+    width: 8px;
+    height: 12px;
+  }
+  .stack-col .role-count {
+    font-size: 12px;
+  }
+  /* the layout switch goes on its own line under the tabs */
+  .tabs {
+    flex-wrap: wrap;
+  }
+  .viewswitch {
+    margin: 4px 0 8px auto;
   }
   .deck-stats {
     gap: 6px 20px;

@@ -610,7 +610,7 @@ export default function App() {
                 Build my deck
               </button>
             ) : null}
-            <BuildStatus config={config} access={access} keyState={key} free={free} onSheet={openSheet} />
+            <BuildStatus config={config} access={access} keyState={key} free={free} onSheet={openSheet} deckMode={mode === "deck"} />
             {goHint ? <p className="go-hint">{goHint}</p> : null}
             {error ? (
               <p className="error" role="alert">
