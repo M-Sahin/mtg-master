@@ -502,7 +502,13 @@ await run("37-decks-page", { width: 1440, height: 1000 }, async (p) => {
   await p.screenshot({ path: `${out}/37-decks-page.png`, fullPage: true });
   await p.keyboard.press("Escape");
   await p.click("[data-testid=deck-card] >> text=Open");
+  // the "Opening …" screen first (also in the server's HTML, for slow phones), then the deck
+  const seen = await p.waitForSelector("[data-testid=opening], .deck", { timeout: 30000 }).then((e) => e.getAttribute("data-testid")).catch(() => null);
   await p.waitForSelector(".deck", { timeout: 30000 }).catch(() => errors.push("Open on My decks didn't show the deck"));
+  const html = await (await fetch(`${base}/?opening=open&name=${encodeURIComponent("Meren's Endless Harvest")}`)).text();
+  console.log(`open from My decks: first saw ${seen ?? "nothing"}; server renders the opening screen: ${/Opening <!-- -->?<strong>Meren&#x27;s Endless Harvest|Opening.*Meren/.test(html)}; url now ${new URL(p.url()).pathname + new URL(p.url()).search}`);
+  if (!/data-testid="opening"/.test(html)) errors.push("the server doesn't render the opening screen");
+  if (new URL(p.url()).search) errors.push(`the address still has ${new URL(p.url()).search}`);
 });
 await run("38-mobile-decks", { width: 390, height: 844 }, async (p) => {
   await toResult(p);

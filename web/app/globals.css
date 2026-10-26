@@ -3439,3 +3439,94 @@ ul.verdict {
     min-width: min(270px, calc(100vw - 24px));
   }
 }
+
+/* ---- "Opening …": a deck from My decks loads in the shape of the deck page ---- */
+.opening {
+  padding-top: 8px;
+}
+.opening-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: clamp(220px, 30vw, 380px);
+  padding: clamp(20px, 3.2vw, 40px);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: linear-gradient(100deg, rgba(255, 255, 255, 0.03) 30%, rgba(255, 255, 255, 0.07) 50%, rgba(255, 255, 255, 0.03) 70%) 0 0 / 300% 100%, var(--felt);
+  animation: skeleton 1.6s ease-in-out infinite;
+}
+.opening-banner p {
+  margin: 0;
+  font-size: 18px;
+  color: var(--muted);
+}
+.opening-banner strong {
+  color: var(--ink);
+  font-family: var(--font-display);
+}
+.opening-body {
+  display: grid;
+  grid-template-columns: minmax(200px, 300px) 1fr;
+  gap: clamp(20px, 3vw, 40px);
+  margin-top: 28px;
+}
+.opening-body span {
+  height: 260px;
+  border-radius: 18px;
+  background: linear-gradient(100deg, rgba(255, 255, 255, 0.02) 30%, rgba(255, 255, 255, 0.05) 50%, rgba(255, 255, 255, 0.02) 70%) 0 0 / 300% 100%;
+  animation: skeleton 1.6s ease-in-out infinite;
+}
+@keyframes skeleton {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+.spinner {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  border: 2.5px solid var(--line-strong);
+  border-top-color: var(--brass);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 640px) {
+  .opening-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .opening-body span:last-child {
+    display: none;
+  }
+}
+.deckcard--loading .deckcard-art,
+.deckcard--loading .sk {
+  background: linear-gradient(100deg, rgba(255, 255, 255, 0.03) 30%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 70%) 0 0 / 300% 100%;
+  animation: skeleton 1.6s ease-in-out infinite;
+  cursor: default;
+}
+.deckcard--loading .deckcard-art {
+  display: block;
+}
+.sk {
+  display: block;
+  height: 14px;
+  width: 70%;
+  border-radius: 6px;
+}
+.sk--title {
+  height: 22px;
+  width: 85%;
+  margin-bottom: 6px;
+}
+.sk--short {
+  width: 40%;
+  margin-bottom: 44px;
+}

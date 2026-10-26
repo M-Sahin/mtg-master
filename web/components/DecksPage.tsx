@@ -198,7 +198,19 @@ export default function DecksPage() {
           </section>
         ) : null}
 
-        <ul className="decks-grid" data-testid="my-decks">
+        <ul className="decks-grid" data-testid="my-decks" aria-busy={!acct.loaded || (signedIn && cloud === null) || undefined}>
+          {!acct.loaded || (signedIn && cloud === null && !error)
+            ? [0, 1, 2].map((i) => (
+                <li key={`loading-${i}`} className="deckcard deckcard--loading" aria-hidden>
+                  <span className="deckcard-art" />
+                  <span className="deckcard-body">
+                    <span className="sk sk--title" />
+                    <span className="sk" />
+                    <span className="sk sk--short" />
+                  </span>
+                </li>
+              ))
+            : null}
           {list.map((d) => (
             <DeckCardItem key={d.id} deck={d} onChange={(patch) => update(d, patch)} onError={setError} />
           ))}
@@ -247,8 +259,8 @@ function DeckCardItem({ deck: d, onChange, onError }: { deck: SavedDeck; onChang
     setBusy(kind);
     onError(null);
     try {
-      handoff.set({ kind, d: await payload(), usage: d.usage, model: d.model });
-      window.location.href = "/";
+      handoff.set({ kind, d: await payload(), name: d.name, usage: d.usage, model: d.model });
+      window.location.href = `/?opening=${kind}&name=${encodeURIComponent(d.name)}`;
     } catch (e) {
       onError((e as Error).message);
       setBusy(null);

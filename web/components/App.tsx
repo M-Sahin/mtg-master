@@ -1,10 +1,10 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BRACKETS, type BracketNumber } from "../lib/shared/bracket";
 import { DeckStartPanel, splitBasics, type StartDeck } from "./DeckStartPanel";
 import { MANA_COLORS, deckSeeds } from "../lib/shared/deck-utils";
 import type { Budget, Color, Deck, GenerateRequest, StreamEvent, Swap, Usage, Validation } from "../lib/shared/types";
-import { cardByName, freeBuilds, generate, getConfig, handoff, myDecks, randomCard, resolveDeck, runningBuild, saveAfterLogin, stopBuild, storage, type FreeBuilds, type PublicConfig, type SavedDeck } from "../lib/client/api";
+import { cardByName, freeBuilds, generate, getConfig, handoff, type Handoff, myDecks, randomCard, resolveDeck, runningBuild, saveAfterLogin, stopBuild, storage, type FreeBuilds, type PublicConfig, type SavedDeck } from "../lib/client/api";
 import { costUsd, formatCost, formatTokens, modelInfo } from "../lib/shared/models";
 import { EXAMPLES, sameSeeds } from "../lib/shared/examples";
 import { encodeDeck } from "../lib/shared/share";
@@ -44,7 +44,7 @@ const BUDGETS: [Budget, string, string][] = [
   ["budget", "Budget", "Under about €75"],
 ];
 
-export default function App() {
+export default function App({ opening: openingAtLoad = null }: { opening?: { kind: Handoff["kind"]; name: string } | null } = {}) {
   const [config, setConfig] = useState<PublicConfig | null>(null);
   const [mode, setMode] = useState<Mode>("seeds");
   const [seeds, setSeeds] = useState<(Seed | null)[]>([null, null, null, null, null]);
@@ -359,11 +359,12 @@ export default function App() {
   };
 
   /** A deck opened from My decks or "Your last deck" is already saved somewhere. */
-  const showSaved = (r: Result) => {
+  const showSaved = async (r: Result) => {
     setResult(r);
     setLocalSave(null);
-    setSaveState(acct.user ? "account" : "browser");
     setPhase("result");
+    window.scrollTo({ top: 0 });
+    setSaveState((await loadAccount()).user ? "account" : "browser");
   };
 
   /** Logged out: keep the deck in this browser for now, and move it into the account after logging in. */
@@ -442,20 +443,41 @@ export default function App() {
     if (window.location.hash === "#my-decks") window.location.replace("/decks");
   }, []);
 
-  // from the My decks page: open a deck, or build from it (once the site's config is known)
-  const handed = useRef(false);
-  useEffect(() => {
-    if (!config || handed.current) return;
-    handed.current = true;
+  // from the My decks page: open a deck, or build from it. The deck is fetched straight away and
+  // an "Opening …" screen shows meanwhile (before the first paint, so the setup page never flashes);
+  // builds wait for the site's config too.
+  const [opening, setOpening] = useState<{ name: string; kind: Handoff["kind"] } | null>(openingAtLoad);
+  const handed = useRef<{ h: Handoff; deck: ReturnType<typeof resolveDeck> } | null>(null);
+  useLayoutEffect(() => {
+    // the address only says "opening"; the deck itself came through this tab's storage
+    if (window.location.search.includes("opening=")) window.history.replaceState(null, "", "/");
     const h = handoff.take();
-    if (!h) return;
+    if (!h) return setOpening(null);
+    const deck = resolveDeck(h.d);
+    deck.catch(() => {}); // handled below
+    handed.current = { h, deck };
+    setOpening({ name: h.name ?? "your deck", kind: h.kind });
+    if (h.kind !== "open") return;
     void (async () => {
       try {
-        const r = await resolveDeck(h.d);
-        if (h.kind === "open") {
-          showSaved({ ...r, usage: h.usage, model: h.model });
-          return;
-        }
+        await showSaved({ ...(await deck), usage: h.usage, model: h.model });
+      } catch (e) {
+        setError(`Couldn't open the deck: ${(e as Error).message}`);
+      } finally {
+        setOpening(null);
+      }
+    })();
+  }, []);
+  useEffect(() => {
+    const got = handed.current;
+    if (!config || !got || got.h.kind === "open") return;
+    handed.current = null;
+    const { h } = got;
+    void (async () => {
+      try {
+        const r = await got.deck;
+        const b = ([1, 2, 3, 4] as const).find((x) => x === r.deck.bracket) ?? 3;
+        setBracket(b);
         if (h.kind === "rebuild") {
           const s = deckSeeds(r.deck);
           if (!s) {
@@ -464,19 +486,17 @@ export default function App() {
           }
           const cmd = r.deck.commander.seed ? r.deck.commander.name : null;
           void loadSeeds(s, cmd);
-          const b = ([1, 2, 3, 4] as const).find((x) => x === r.deck.bracket) ?? 3;
-          setBracket(b);
           start({ seeds: s, commander: cmd, budget, theme, bracket: b });
           return;
         }
         // upgrade: every card stays a candidate, the commander and the plan stay
         const cards = r.deck.cards.map((c) => ({ name: c.name, qty: c.qty }));
         const { names, basics } = splitBasics(cards);
-        const b = ([1, 2, 3, 4] as const).find((x) => x === r.deck.bracket) ?? 3;
-        setBracket(b);
         start({ mode: "upgrade", seeds: names, basics, commander: r.deck.commander.name, partner: r.deck.partner?.name ?? null, budget, theme, bracket: b });
       } catch (e) {
         setError((e as Error).message);
+      } finally {
+        setOpening(null);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -519,7 +539,20 @@ export default function App() {
         }
       />
 
-      {phase === "setup" ? (
+      {phase === "setup" && opening ? (
+        <main className="opening" aria-busy="true" data-testid="opening">
+          <div className="opening-banner">
+            <span className="spinner" aria-hidden />
+            <p>
+              {opening.kind === "open" ? "Opening" : opening.kind === "upgrade" ? "Getting ready to improve" : "Getting ready to build again"} <strong>{opening.name}</strong>…
+            </p>
+          </div>
+          <div className="opening-body" aria-hidden>
+            <span />
+            <span />
+          </div>
+        </main>
+      ) : phase === "setup" ? (
         <main className="setup">
           {saved ? (
             <p className="welcome" data-testid="last-deck">
@@ -527,7 +560,7 @@ export default function App() {
               <button
                 type="button"
                 className="welcome-deck"
-                onClick={() => showSaved(saved)}
+                onClick={() => void showSaved(saved)}
               >
                 <IdentityPips colors={saved.deck.colorIdentity} size={13} /> {saved.deck.name}
               </button>

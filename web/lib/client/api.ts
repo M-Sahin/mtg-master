@@ -370,6 +370,8 @@ export const myDecks = {
 export interface Handoff {
   kind: "open" | "rebuild" | "upgrade";
   d: string;
+  /** the deck's name, for the "Opening …" screen while it loads */
+  name?: string;
   usage?: Usage;
   model?: string;
 }
