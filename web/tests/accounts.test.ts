@@ -298,7 +298,7 @@ test("saved key: checked with Anthropic, stored sealed with its last four, never
     // a key Anthropic refuses isn't saved
     r = await handleSavedKey(req("/api/account/key", { method: "PUT", cookies, body: { key: "sk-ant-api03-" + "n".repeat(40) } }), deps);
     assert.equal(r.status, 400);
-    assert.equal(row, null);
+    assert.equal(row === null, true);
     r = await handleSavedKey(req("/api/account/key", { method: "PUT", cookies, body: { key: KEY, model: "claude-opus-5-5" } }), deps);
     const saved = await r.json();
     assert.equal(r.status, 200);
@@ -316,7 +316,7 @@ test("saved key: checked with Anthropic, stored sealed with its last four, never
     r = await handleSavedKey(req("/api/account/key", { method: "PATCH", cookies, body: { model: "claude-sonnet-5-5" } }), deps);
     assert.equal(row.model, "claude-sonnet-5-5");
     r = await handleSavedKey(req("/api/account/key", { method: "DELETE", cookies }), deps);
-    assert.equal(row, null);
+    assert.equal(row === null, true);
     assert.equal(await savedKeyFor(req("/api/generate", { cookies }), { config: cfg, fetch: f }), null);
     assert.ok(calls.every((c) => !c.url.includes(KEY)), "the key never goes into a URL");
     // without the secret the feature is off

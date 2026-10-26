@@ -30,7 +30,9 @@ create policy "api_keys: delete own" on public.api_keys for delete to authentica
 
 revoke all on public.api_keys from anon, authenticated;
 grant select, insert, delete on public.api_keys to authenticated;
-grant update (sealed, last4, model, updated_at) on public.api_keys to authenticated;
+-- saving again is an upsert (on conflict on user_id), which sets every column it inserts, so
+-- user_id is in the list; the policy above still pins it to the caller
+grant update (user_id, sealed, last4, model, updated_at) on public.api_keys to authenticated;
 
 create or replace function public.api_keys_touch() returns trigger
 language plpgsql set search_path = '' as $$
