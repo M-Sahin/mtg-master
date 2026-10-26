@@ -555,6 +555,8 @@ const offscreen = (p) =>
     return { scroll: document.documentElement.scrollWidth - W, out: [...new Set(out)].slice(0, 6) };
   });
 const sweep = async (p, what) => {
+  // measure where things end up, not mid-animation (dealt cards fly in from the side)
+  await p.evaluate(() => Promise.race([Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {}))), new Promise((r) => setTimeout(r, 3000))]));
   const r = await offscreen(p);
   if (r.scroll > 1 || r.out.length) errors.push(`phone sweep, ${what}: ${r.scroll > 1 ? `page scrolls sideways ${r.scroll}px; ` : ""}${r.out.join(", ")}`);
   return r;
