@@ -2588,10 +2588,12 @@ a.ev-row:hover {
   margin: 0;
   color: var(--ok);
 }
-.login-inner {
+.modal.login-modal {
+  max-width: min(30rem, 94vw);
+}
+.modal-inner.login-inner {
   display: grid;
   gap: 14px;
-  max-width: 26rem;
   grid-template-columns: 1fr;
 }
 .login-inner h3 {
