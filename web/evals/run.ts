@@ -119,7 +119,9 @@ function variantModel(variant: string, fallback: string): string {
 async function run(o: Record<string, string>) {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("Set ANTHROPIC_API_KEY to run evals (use a key with a spend limit).");
-  const variants = (o.variants ?? "v1,v2").split(",").map((s) => s.trim()).filter(Boolean);
+  // comma-separated, or semicolon-separated when a variant has options of its own ("v2,effort=high@haiku;v2@haiku")
+  const list = o.variants ?? "v1,v2";
+  const variants = list.split(list.includes(";") ? ";" : ",").map((s) => s.trim()).filter(Boolean);
   const model = o.model ?? "claude-sonnet-5-5";
   // "v2@haiku" builds with another model than --model, so models can be compared like engines
   const engines = variants.map((v) => parseEngine(v.split("@")[0])); // fail fast on typos

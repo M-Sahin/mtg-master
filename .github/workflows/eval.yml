@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       variants:
-        description: "Engine variants, comma-separated; the first is the baseline (e.g. v1,v2 or v1,v2-review); add @haiku, @sonnet or @opus to build a variant with that model (v2,v2@haiku)"
+        description: "Engine variants, comma-separated; the first is the baseline (e.g. v1,v2 or v1,v2-review); add @haiku, @sonnet or @opus to build a variant with that model (v2,v2@haiku); separate with ; when a variant has options (v2@haiku;v2,effort=high@haiku)"
         default: "v1,v2"
       hands:
         description: "all, a number (first N hands) or comma-separated hand ids from web/evals/hands.json"
