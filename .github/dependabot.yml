@@ -1,15 +1,7 @@
-# Weekly pull requests for outdated or vulnerable dependencies. Review them like any other PR:
-# a dependency update is the classic way for bad code to get in.
+# Weekly pull requests for outdated GitHub Actions. The skill's scripts use only Python's
+# standard library, so there are no other dependencies to watch.
 version: 2
 updates:
-  - package-ecosystem: npm
-    directory: /web
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    groups:
-      minor-and-patch:
-        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:

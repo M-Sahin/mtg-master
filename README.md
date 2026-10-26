@@ -1,107 +1,23 @@
 <div align="center">
 
-<img src="web/app/icon.svg" width="72" alt="Hundredfoldz logo">
+# MTG Master
 
-# Hundredfoldz & MTG Master
+**A Claude Skill for Magic: The Gathering.**
 
-**Five cards in. A hundred out.**
-
-Pick five Magic cards you love and Claude builds a full, legal 100-card Commander deck around them,<br>
-checked card by card on Scryfall. Powered by **MTG Master**, a Claude Skill for Magic: The Gathering.
+Pro-level play, judge-quality rules answers and deckbuilding for every format,<br>
+with card text, legality and prices checked on Scryfall instead of recalled from memory.
 
 [![tests](https://github.com/M-Sahin/mtg-master/actions/workflows/tests.yml/badge.svg)](https://github.com/M-Sahin/mtg-master/actions/workflows/tests.yml)
-[![web](https://github.com/M-Sahin/mtg-master/actions/workflows/web.yml/badge.svg)](https://github.com/M-Sahin/mtg-master/actions/workflows/web.yml)
+[![release](https://img.shields.io/github/v/release/M-Sahin/mtg-master?color=e2b04a)](https://github.com/M-Sahin/mtg-master/releases)
 [![license: MIT](https://img.shields.io/badge/license-MIT-e2b04a)](LICENSE)
 
-**[Try Hundredfoldz](https://hundredfoldz.app)** · [Install the skill](#install-the-skill) · [Host your own](web/README.md#host-your-own)
-
-<br>
-
-<img src="docs/screenshots/result.jpg" alt="A finished Commander deck on Hundredfoldz: the commander, the deck's plan, its price, land count, average mana value, opening-hand keep rate and bracket" width="900">
+[Install the skill](#install-the-skill) · [Try asking](#try-asking) · [The scripts](#the-scripts) · [Hundredfoldz, built on this skill](https://github.com/M-Sahin/hundredfoldz)
 
 </div>
 
-## What's in this repo
-
-| | |
-|---|---|
-| **[Hundredfoldz](https://hundredfoldz.app)** ([`web/`](web)) | A free, open-source Commander deckbuilder. Five seed cards and a bracket in, a complete deck out in one to three minutes, with every step shown live. |
-| **MTG Master** ([`mtg-master/`](mtg-master)) | A Claude Skill that turns Claude into a pro-level Magic player, rules judge and deckbuilder for every format. Hundredfoldz builds its decks with it. |
-
----
-
-## Hundredfoldz
-
-### Pick five cards. Watch Claude build the other 95.
-
-<table>
-<tr>
-<td width="50%"><img src="docs/screenshots/setup.jpg" alt="The setup page: five seed cards in a fanned hand, the commander, the bracket and the budget"></td>
-<td width="50%"><img src="docs/screenshots/building.jpg" alt="The live build: Claude's searches in plain words on the left, a 10 by 10 grid filling up with the deck's cards on the right"></td>
-</tr>
-<tr>
-<td><b>Five cards, a bracket, a budget.</b> Any five Commander-legal cards, a commander among them or not. Claude picks the commander if you don't.</td>
-<td><b>Every step, live.</b> What Claude is looking for, every Scryfall search, and the list filling a 10×10 grid by role. You can leave the page: the build keeps going.</td>
-</tr>
-</table>
-
-- **Checked, not guessed.** Every card is looked up on Scryfall. The server checks the deck before you see it: 100 cards, singleton, color identity, the bracket's Game Changers, mass land denial and extra turns, and early two-card combos from Commander Spellbook. A deck that fails goes back to Claude with the problems, and Claude fixes them.
-- **The numbers that matter.** A mana curve and deck balance against the usual Commander counts. How often the mana works, from 4,000 simulated opening hands. What the deck costs, and whether any booster box is a cheaper way to get it (it almost never is).
-- **Your deck, your way.** Complete a half-built deck to 100, or get up to 10 suggested upgrades for a finished one. Build only from cards you own. Set limits on creatures, lands, ramp, draw, removal, wipes or average mana value.
-- **Take it anywhere.** Share a link, copy the list for Moxfield, Archidekt or MTG Arena, or open the whole list in a shop's cart. Tap any card for its price at Cardmarket, TCGplayer and Card Kingdom.
-- **Your decks, kept.** Every deck lands in My decks: in your browser, or on every device with a free account (log in with an email link, no password).
-- **Free to use.** Three free builds on Claude Haiku. After that, or for Sonnet and Opus, bring your own Claude API key: you pay Anthropic directly, about 25 cents a deck on Sonnet.
-
-<table>
-<tr>
-<td><img src="docs/screenshots/numbers.jpg" alt="The Numbers tab: mana curve, deck balance, opening hands from simulated games and what the deck costs"></td>
-<td><img src="docs/screenshots/card.jpg" alt="A card opened from the deck: its text, why it's in the deck, and its price at three shops"></td>
-</tr>
-<tr>
-<td><b>Verdicts first.</b> Each panel says what it found before it shows the chart.</td>
-<td><b>Why it's in the deck.</b> Every card says what it does for the plan, and where to buy it.</td>
-</tr>
-</table>
-
-### Made for your phone
-
-<table>
-<tr>
-<td width="25%"><img src="docs/screenshots/phone-setup.jpg" alt="Choosing seed cards on a phone"></td>
-<td width="25%"><img src="docs/screenshots/phone-building.jpg" alt="A deck being built on a phone"></td>
-<td width="25%"><img src="docs/screenshots/phone-result.jpg" alt="A finished deck on a phone"></td>
-<td width="25%"><img src="docs/screenshots/phone-decks.jpg" alt="My decks on a phone"></td>
-</tr>
-</table>
-
-Put your phone away mid-build and the deck is still there when you come back. On a phone the build screen follows Claude, and stacked cards pop out with a tap.
-
-### Free tools, no key needed
-
-<table>
-<tr>
-<td width="50%"><img src="docs/screenshots/bracket.jpg" alt="The bracket checker: a pasted decklist and the bracket it fits, with the cards that decide it"></td>
-<td width="50%"><img src="docs/screenshots/ev.jpg" alt="Box EV: what a booster box is worth on average, and the spread over 4,000 simulated boxes"></td>
-</tr>
-<tr>
-<td><b><a href="https://hundredfoldz.app/bracket">Bracket checker</a>.</b> Paste any decklist and get the lowest bracket it fits, the cards that decide it, and a legality check.</td>
-<td><b><a href="https://hundredfoldz.app/ev">Box EV</a>.</b> What every booster box since 2020 is worth on average, and your chance of getting your money back, from 4,000 simulated boxes with daily prices.</td>
-</tr>
-</table>
-
-### Host your own
-
-Hundredfoldz is free and open source. Deploy your own copy in one click: visitors build with their own Claude API key, so the site itself needs no key. With a key of your own you can also give every visitor a few free builds (`FREE_BUILDS`).
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FM-Sahin%2Fmtg-master&root-directory=web)
-
-Docker and plain Node.js work too. [web/README.md](web/README.md) has every option: environment variables, accounts with Supabase, free builds, the bot check, Box EV data and the engine evals.
-
----
-
-## MTG Master, the Claude Skill
-
 **MTG Master** turns Claude into a pro-level Magic player, rules judge and deckbuilder. It answers rules questions with step-by-step reasoning and Comprehensive Rules citations. It builds and reviews decks for 60-card formats, Commander and Limited. Card text, legality and prices are checked against [Scryfall](https://scryfall.com) instead of being recalled from memory.
+
+## What it covers
 
 | | |
 |---|---|
@@ -112,7 +28,7 @@ Docker and plain Node.js work too. [web/README.md](web/README.md) has every opti
 | **Limited** | Pick orders, signals, 40-card construction, sealed, cube, and how to read 17lands data. |
 | **Play** | Mulligans, sequencing, combat math, who's the beatdown, and exact draw odds. |
 
-### How it works: verify, don't recall
+## How it works: verify, don't recall
 
 A language model's memory of Magic drifts in two ways. It remembers cards slightly wrong, and it doesn't know about new sets, rotations or bans. So the skill has Claude look up anything an answer depends on: Oracle text, legality, the current Standard sets, ban lists, bracket rules, metagame claims and prices.
 
@@ -128,7 +44,7 @@ A language model's memory of Magic drifts in two ways. It remembers cards slight
 
 Three small Python helpers (standard library only) do what shouldn't happen in Claude's head: card lookups, decklist validation and probability math.
 
-### Install the skill
+## Install the skill
 
 **Claude apps (claude.ai, desktop).** Skills need **code execution** switched on in your settings.
 
@@ -151,7 +67,7 @@ cp -r mtg-master /path/to/project/.claude/skills/mtg-master     # one project
 
 See the Claude Code docs: [Skills](https://code.claude.com/docs/en/skills).
 
-### Try asking
+## Try asking
 
 You don't have to name the skill. It starts on Magic topics, card names and decklists.
 
@@ -165,7 +81,7 @@ You don't have to name the skill. It starts on Magic topics, card names and deck
 
 > What are the odds I have both combo pieces by turn 4?
 
-### The scripts
+## The scripts
 
 <details>
 <summary><b><code>odds.py</code></b>: draw probabilities</summary>
@@ -226,7 +142,11 @@ Add `--json` to any command to get raw JSON. Batch lookups are split into reques
 
 </details>
 
----
+## Built with it: Hundredfoldz
+
+<a href="https://hundredfoldz.app"><img src="https://raw.githubusercontent.com/M-Sahin/hundredfoldz/main/docs/screenshots/result.jpg" alt="A finished Commander deck on Hundredfoldz" width="900"></a>
+
+**[Hundredfoldz](https://hundredfoldz.app)** is a free, open-source Commander deckbuilder that runs on this skill: pick five cards and Claude builds the other 95, checked card by card on Scryfall. Its code is in [M-Sahin/hundredfoldz](https://github.com/M-Sahin/hundredfoldz), which pins a release of this skill and builds Claude's system prompt from it.
 
 ## Repository layout
 
@@ -235,23 +155,17 @@ mtg-master/                  the skill itself (this folder is what you install)
 ├── SKILL.md                 entry point: principles, routing, answer style, decklist format
 ├── references/              lookup, rules, constructed, commander, limited
 └── scripts/                 scryfall.py, deckcheck.py, odds.py
-tests/                       offline unit tests for the skill (Scryfall is mocked with fixtures)
-web/                         Hundredfoldz, the Next.js deckbuilder built on the skill
-docs/screenshots/            the pictures in this README (made by the web app's browser checks)
-.github/workflows/           tests, web (build, tests, browser checks), accounts (database security),
-                             ev-data (daily Box EV prices), eval (engine quality), release
+tests/                       offline unit tests (Scryfall is mocked with fixtures)
+.github/workflows/           tests (unit tests, a live Scryfall check, the packaged skill) and release
 ```
 
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests -v      # the skill: offline, no dependencies
-cd web && npm install && npm test             # the app: unit tests, no network or key needed
+python3 -m unittest discover -s tests -v      # offline, no dependencies
 ```
 
-The skill's tests run fully offline, with Scryfall replaced by fixture cards in `tests/fixtures/cards.json` (shaped like real Scryfall objects, with simplified legalities, so don't use them as a reference). The probability tests are checked against `scipy`, exhaustive enumeration and a Monte Carlo simulation. CI runs them on Python 3.8 and 3.12 and packages the skill.
-
-The web app's CI builds the app, runs its tests, and drives a real browser through every screen on desktop and on a phone, including a sweep for anything that runs off a 360px screen. See [CONTRIBUTING.md](CONTRIBUTING.md) for more, and what to update when Wizards changes the rules.
+The tests run fully offline, with Scryfall replaced by fixture cards in `tests/fixtures/cards.json` (shaped like real Scryfall objects, with simplified legalities, so don't use them as a reference). The probability tests are checked against `scipy`, exhaustive enumeration and a Monte Carlo simulation. CI runs them on Python 3.8 and 3.12 and packages the skill. See [CONTRIBUTING.md](CONTRIBUTING.md) for more, and what to update when Wizards changes the rules.
 
 <details>
 <summary><b>Changelog</b> (the skill)</summary>
@@ -275,13 +189,13 @@ The web app's CI builds the app, runs its tests, and drives a real browser throu
 
 ## Credits and disclaimer
 
-Card data and images come from the [Scryfall API](https://scryfall.com/docs/api); please follow its usage guidelines (no paywalls, credit artists, cache data, keep requests 50–100 ms apart). Combos come from [Commander Spellbook](https://commanderspellbook.com), booster contents from [taw/magic-sealed-data](https://github.com/taw/magic-sealed-data) and [MTGJSON](https://mtgjson.com). The mana-source numbers are based on Frank Karsten's published analyses. Limited metrics refer to [17lands](https://www.17lands.com).
+Card data comes from the [Scryfall API](https://scryfall.com/docs/api); please follow its usage guidelines (no paywalls, credit artists, cache data, keep requests 50–100 ms apart). The mana-source numbers are based on Frank Karsten's published analyses. Limited metrics refer to [17lands](https://www.17lands.com).
 
-Hundredfoldz is unofficial Fan Content permitted under the [Fan Content Policy](https://company.wizards.com/en/legal/fancontentpolicy). Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC. It isn't affiliated with Scryfall. Magic: The Gathering is a trademark of Wizards of the Coast LLC.
+MTG Master is unofficial Fan Content permitted under the [Fan Content Policy](https://company.wizards.com/en/legal/fancontentpolicy). Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC. It isn't affiliated with Scryfall. Magic: The Gathering is a trademark of Wizards of the Coast LLC.
 
 ## Contributing and support
 
-Issues and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md) for reporting security problems. If Hundredfoldz or the skill is useful to you, you can [buy me a coffee on Ko-fi](https://ko-fi.com/msahin). It's free either way.
+Issues and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md) for reporting security problems. If the skill is useful to you, you can [buy me a coffee on Ko-fi](https://ko-fi.com/msahin). It's free either way.
 
 ## License
 

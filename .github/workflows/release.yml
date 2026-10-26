@@ -40,7 +40,7 @@ jobs:
             echo
             echo "**Install the skill:** download \`mtg-master.skill\` below and upload it in Claude (Customize → Skills), or copy the \`mtg-master/\` folder to \`~/.claude/skills/\` for Claude Code."
             echo
-            echo "**Host the web app:** see [web/README.md](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/web/README.md)."
+            echo "**The web app** built on this skill, Hundredfoldz, is in [M-Sahin/hundredfoldz](https://github.com/M-Sahin/hundredfoldz)."
           } > notes.md
           cat notes.md
       - name: Create the release
