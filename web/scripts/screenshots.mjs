@@ -201,7 +201,7 @@ await run("16-collection", { width: 1440, height: 1000 }, async (p) => {
 }
 // the free bracket checker on a short list with Game Changers and a known combo
 await run("17-bracket-checker", { width: 1440, height: 1000 }, async (p) => {
-  await p.goto(`${base}/bracket`, { waitUntil: "networkidle" });
+  await p.goto(`${base}/bracket`, { waitUntil: "load" }); // Turnstile keeps a connection open: never network-idle
   await p.fill("[data-testid=bracket-list]", "Commander\n1 Meren of Clan Nel Toth\n\nDeck\n1 Sol Ring\n1 Demonic Tutor\n1 Bolas's Citadel\n1 Gravecrawler\n1 Phyrexian Altar\n1 Sakura-Tribe Elder\n10 Swamp\n10 Forest");
   // the bot check (Turnstile, with Cloudflare's test keys in CI) loads under the security policy
   await p.waitForSelector("iframe[src*='challenges.cloudflare.com']", { state: "attached", timeout: 20000 }).catch(() => errors.push("the Turnstile widget didn't load on /bracket"));
@@ -215,7 +215,8 @@ await run("17-bracket-checker", { width: 1440, height: 1000 }, async (p) => {
 // the header must fit on one row on a phone, on every page
 for (const [name, path] of [["18-mobile-bracket", "/bracket"], ["19-mobile-home-header", "/"]]) {
   await run(name, { width: 360, height: 740 }, async (p) => {
-    await p.goto(`${base}${path}`, { waitUntil: "networkidle" });
+    await p.goto(`${base}${path}`, { waitUntil: "load" });
+    await p.waitForTimeout(800);
     const box = await p.locator("header.top").boundingBox();
     const overflow = await p.evaluate(() => Math.max(...[...document.querySelectorAll("header.top *")].map((e) => e.getBoundingClientRect().right)) - window.innerWidth);
     if (overflow > 1) errors.push(`header on ${path} runs ${Math.round(overflow)}px off the screen on a phone`);
@@ -240,7 +241,7 @@ await run("20-complete-my-deck", { width: 1440, height: 1000 }, async (p) => {
 });
 // bracket checker: upload a .txt decklist
 await run("21-bracket-upload", { width: 1440, height: 1000 }, async (p) => {
-  await p.goto(`${base}/bracket`, { waitUntil: "networkidle" });
+  await p.goto(`${base}/bracket`, { waitUntil: "load" }); // Turnstile keeps a connection open: never network-idle
   await p.setInputFiles("[data-testid=bracket-file]", { name: "deck.txt", mimeType: "text/plain", buffer: Buffer.from("Commander\n1 Meren of Clan Nel Toth\n\nDeck\n1 Sol Ring\n1 Demonic Tutor\n") });
   await p.waitForFunction(() => document.querySelector("[data-testid=bracket-list]")?.value.includes("Demonic Tutor"), null, { timeout: 5000 });
   await p.click("text=Check the bracket");
