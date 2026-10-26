@@ -1,0 +1,24 @@
+name: Bug report
+description: Something in the skill or its scripts doesn't work as it should
+labels: [bug]
+body:
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part?
+      options: [Skill instructions (SKILL.md or a reference), Skill scripts (scryfall.py, deckcheck.py, odds.py)]
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include your question to Claude and its answer, or the exact command and its output. For a deck problem, paste the decklist.
+    validations: { required: true }
+  - type: input
+    id: where
+    attributes:
+      label: Where does it run?
+      placeholder: e.g. Claude.ai, Claude desktop, Claude Code
+  - type: markdown
+    attributes:
+      value: A problem on the Hundredfoldz site? Report it in [M-Sahin/hundredfoldz](https://github.com/M-Sahin/hundredfoldz/issues).

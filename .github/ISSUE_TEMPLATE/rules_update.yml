@@ -1,0 +1,16 @@
+name: Rules or bracket update
+description: Wizards changed the rules, Commander brackets or a ban list and the skill is out of date
+labels: [rules-update]
+body:
+  - type: input
+    id: source
+    attributes:
+      label: Link to the official announcement
+      placeholder: https://magic.wizards.com/en/news/announcements/...
+    validations: { required: true }
+  - type: textarea
+    id: change
+    attributes:
+      label: What changed?
+      description: For example "Bracket 3 now allows 4 Game Changers". The Game Changers list and ban lists are read live from Scryfall; rule text lives in mtg-master/references/.
+    validations: { required: true }

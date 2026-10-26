@@ -1,34 +1,25 @@
 # Contributing
 
-Thanks for helping out. This repository has two parts:
+Thanks for helping out. This repository is the mtg-master Claude skill: Markdown plus Python (standard library only). The web app built on it, Hundredfoldz, lives in [M-Sahin/hundredfoldz](https://github.com/M-Sahin/hundredfoldz).
 
-| Part | Folder | Language | Tests |
-|---|---|---|---|
-| The mtg-master Claude skill | `mtg-master/` | Markdown + Python (standard library only) | `python -m unittest discover -s tests` |
-| Hundredfoldz, the web app | `web/` | Next.js / TypeScript | `cd web && npm test && npm run typecheck` |
-
-## Run the app locally
+## Run the tests
 
 ```bash
-cd web
-npm install
-cp .env.example .env.local   # everything in it is optional
-npm run dev
+python -m unittest discover -s tests -v
 ```
 
-Without any key, paste your own Claude API key in the page to build real decks, or load the demo seeds: the demo replays one scripted build against real Scryfall data and costs nothing. `npm test` needs no network and no key.
+They run offline, with Scryfall mocked. To try the skill itself, install your working copy in Claude Code (`ln -s "$PWD/mtg-master" ~/.claude/skills/mtg-master`) or zip it for the Claude apps (see the README).
 
 ## Changing the skill
 
 1. Edit the files in `mtg-master/`.
-2. Run `cd web && npm run sync-skill` and commit the regenerated `web/lib/skill/content.ts`. The app builds its system prompt from that copy, and CI fails when it's out of date.
-3. Add a changelog line to the main `README.md` with the new version number.
+2. Add a changelog line to `README.md` with the new version number.
+3. After the release (below), Hundredfoldz picks it up when its pinned version is moved to the new tag.
 
 ## When Wizards changes the rules
 
 - **The Game Changers list** is read live from Scryfall, so there's nothing to update.
-- **Bracket rules:** update `web/lib/shared/bracket.ts` (the limit and the wording shown to Claude and users), `web/lib/server/bracket-check.ts` (the free bracket checker's rules for every bracket) and `mtg-master/references/commander.md`. Link the official announcement in your pull request.
-- **Model prices** for the cost estimate are in `web/lib/shared/models.ts`.
+- **Bracket rules:** update `mtg-master/references/commander.md`, and link the official announcement in your pull request. Hundredfoldz has its own copy of the rules in code (see its CONTRIBUTING.md).
 - **Ban lists** come from Scryfall's legality data.
 
 ## Ground rules
