@@ -147,3 +147,11 @@ test("analyzeDeck counts real functions, sources, curve, staples and price", () 
   assert.equal(a.budgetCapEur, 75);
   assert.ok(a.priceEur > 12 && a.priceEur < 25);
 });
+
+test("win conditions that slipped into the strategy text are taken back out", async () => {
+  const { untangleText } = await import("../lib/server/validate");
+  assert.deepEqual(untangleText('Spells make tokens. ", "win_conditions": ["Shark late for X.", "Hermes makes Birds."]', []), { strategy: "Spells make tokens.", winConditions: ["Shark late for X.", "Hermes makes Birds."] });
+  assert.deepEqual(untangleText("Plain text.", '["Drain with Blood Artist", "Grave Titan"]'), { strategy: "Plain text.", winConditions: ["Drain with Blood Artist", "Grave Titan"] });
+  assert.deepEqual(untangleText('["One", "Two"]', undefined), { strategy: "", winConditions: ["One", "Two"] });
+  assert.deepEqual(untangleText('He said "go", and it went.', ["x"]), { strategy: 'He said "go", and it went.', winConditions: ["x"] });
+});

@@ -61,7 +61,7 @@ To switch it on for your copy:
 Without these settings the app works as before: no login button, decks in the browser.
 
 - **My decks** (`/decks`) lists the account's decks (or this browser's), with the commander's art, when each was made and the model. Each deck can be opened, shared, improved by Claude (up to 10 swaps), built again from its five seeds, renamed and deleted. Building needs a key or a free build, like any build.
-- **Save to my account:** a deck built while logged out offers to move into an account. The login dialog opens, and after logging in the deck moves over by itself. When someone is logged in, the server also saves each finished build to the account, so it's there even if the browser was closed mid-build.
+- **Saving is a choice.** A finished deck isn't saved until the visitor presses **Save deck**: into the account when logged in, otherwise into this browser, with "Save to my account" to move it into an account (the login dialog opens, and after logging in the deck moves over by itself). A build is still kept on the server for an hour, so closing the browser mid-build doesn't lose it.
 - **Saved API keys** are sealed by the server with AES-256-GCM (`lib/server/key-vault.ts`), with the user's id as additional data, and stored with their last four characters only. The browser never gets a saved key back: a build asks the server to use it (`x-use-saved-key`), and the server opens it for that build. Row-level security keeps each row to its owner, and deleting the account deletes the key.
 
 ## Abuse protection
@@ -160,7 +160,8 @@ cd web && npm ci && npm run build && npm start
 | `FREE_BUILDS` | no | With a server key: this many free builds per visitor (e.g. `3`), then visitors bring their own key. See [Free builds](#free-builds). |
 | `FREE_MODEL`, `FREE_EFFORT` | no | The model and effort free builds use. Default `claude-haiku-5-5` at `high`. Visitors who want Sonnet or Opus use their own key. |
 | `FREE_BUILDS_PER_IP_PER_DAY` | no | Free builds per IP address per day (default 10), so clearing cookies doesn't give anyone more. |
-| `FREE_BUILDS_PER_DAY` | no | Free builds for the whole site per day (default 300). This caps what free builds can cost you. |
+| `FREE_BUILDS_PER_DAY` | no | Free builds for the whole site per day (default 300). |
+| `FREE_TOKENS_PER_DAY` | no | Tokens all free builds together may use per day (default 150,000,000, counting input, output and cache). With `FREE_BUILDS_PER_DAY` this caps what free builds can cost you. |
 | `OWN_KEYS` | no | Visitors' own Claude API keys. Without a server key they're allowed unless you set `0`. With a server key they're off unless you set `1`, so a deployment behind an access code doesn't open up when it updates. |
 | `OWN_KEY_BUILDS_PER_HOUR` | no | Builds per own key per hour (default 20), to protect Scryfall and the server. |
 | `DONATION_URL` | no | An `https://` link (Ko-fi, GitHub Sponsors…) shown in the footer and under each finished deck, e.g. `https://ko-fi.com/yourname`. |
@@ -186,7 +187,8 @@ With `ANTHROPIC_API_KEY` and `FREE_BUILDS=3`, every visitor gets three builds on
 - **Counted three ways.** Per browser (a random id in an httpOnly cookie, kept a year), per account when logged in (so a new device doesn't reset it) and per IP address per day (`FREE_BUILDS_PER_IP_PER_DAY`). Every count has to be under its limit. On top, `FREE_BUILDS_PER_DAY` caps the whole site, so a bad day can't cost more than that many Haiku builds.
 - **In the shared store.** With Upstash configured, the counts are shared by every server instance. Keys are hashed, so the store never holds ids, user ids or addresses.
 - **Bot check.** With Turnstile on, each free build needs a fresh token.
-- **Fair.** A build that fails on our side (Claude overloaded, an error) is given back. A build the visitor stops is not.
+- **Fair, but not refundable on purpose.** A build that ends without a deck gives the visitor's free build back. It still counts toward the address's and the site's daily limits and the token budget, so failing builds on purpose can't run up the bill. A build the visitor stops isn't given back.
+- **Smaller collections.** Free builds take a collection of up to 1,000 different cards (a collection goes into the prompt). Own-key builds take 5,000.
 - **Owner builds.** The access code isn't used in this mode. Use your own key in the key sheet like everyone else.
 
 Set a monthly spend limit on the key's workspace in the Claude Console as a last line of defense.

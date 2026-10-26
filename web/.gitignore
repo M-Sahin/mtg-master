@@ -3,6 +3,7 @@ node_modules/
 out/
 .test-build/
 .vercel
+.env
 .env*.local
 next-env.d.ts
 *.tsbuildinfo

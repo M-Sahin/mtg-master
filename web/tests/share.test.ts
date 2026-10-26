@@ -121,8 +121,12 @@ function fakeKv() {
     const [op, key, value] = cmd;
     let result: unknown = null;
     if (op === "SET") {
-      data.set(key, value);
-      result = "OK";
+      // SET … NX: only when the key is free
+      if (cmd.includes("NX") && data.has(key)) result = null;
+      else {
+        data.set(key, value);
+        result = "OK";
+      }
     } else if (op === "GETEX" || op === "GET") result = data.get(key) ?? null;
     return new Response(JSON.stringify({ result }), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
@@ -166,7 +170,7 @@ test("/api/share: long link without a store, short /d/<id> link with one, same i
       assert.equal(await loadShare("nope!"), null, "bad ids never reach the store");
       assert.equal(await loadShare("zzzzzzzzz"), null);
       const set = kv.seen.find((c: any[]) => c[0] === "SET")!;
-      assert.deepEqual(set.slice(0, 1).concat(set.slice(3)), ["SET", "EX", 31536000]);
+      assert.deepEqual(set.slice(0, 1).concat(set.slice(3)), ["SET", "EX", 31536000, "NX"]);
       // only real decks get stored
       const bad = await handleShare(post({ d: "garbage" }));
       assert.equal(bad.status, 400);
@@ -174,4 +178,21 @@ test("/api/share: long link without a store, short /d/<id> link with one, same i
   } finally {
     kv.restore();
   }
+});
+
+test("a short link never overwrites a different deck stored under the same id", async () => {
+  const { saveShare, shareId } = await import("../lib/server/store");
+  await withEnv({ KV_REST_API_URL: "https://kv.example", KV_REST_API_TOKEN: "tok" }, async () => {
+    const kv = fakeKv();
+    try {
+      const d = "deckpayload" + "A".repeat(40);
+      kv.data.set(`hf:deck:${await shareId(d)}`, "someone-elses-deck");
+      const id = await saveShare(d);
+      assert.equal(id.length, 12, "a longer id");
+      assert.equal(kv.data.get(`hf:deck:${await shareId(d, 9)}`), "someone-elses-deck", "the other deck is untouched");
+      assert.equal(await saveShare(d), id, "sharing again gives the same link");
+    } finally {
+      kv.restore();
+    }
+  });
 });

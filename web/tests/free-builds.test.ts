@@ -2,13 +2,13 @@
 // address and day; failed builds are given back; stronger models need the visitor's own key.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { claimFreeBuild, freeConfig, freeStatus, resetFreeBuilds, visitor, type FreeConfig } from "../lib/server/free-builds";
+import { claimFreeBuild, freeConfig, freeStatus, resetFreeBuilds, spendFreeTokens, visitor, type FreeConfig } from "../lib/server/free-builds";
 import { handleFreeStatus, handleGenerate } from "../lib/server/generate-handler";
 import { publicConfig } from "../lib/server/config";
 import { resetRateLimits } from "../lib/server/ratelimit";
 import { installFakeScryfall } from "./fixtures";
 
-const cfg: FreeConfig = { perVisitor: 3, perIpPerDay: 5, perDay: 8, model: "claude-haiku-5-5", effort: "high" };
+const cfg: FreeConfig = { perVisitor: 3, perIpPerDay: 5, perDay: 8, tokensPerDay: 1e12, model: "claude-haiku-5-5", effort: "high" };
 const req = (cookie = "", ip = "1.2.3.4") => new Request("http://x/api/generate", { method: "POST", headers: { cookie, "x-forwarded-for": ip } });
 
 async function withEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Promise<T> {
@@ -150,7 +150,7 @@ test("a free build runs on the free model with high effort, whatever model is as
 test("with none left: 402 and a code the page can act on; the bot check comes first", () =>
   withEnv({ ANTHROPIC_API_KEY: "sk-test", FREE_BUILDS: "1" }, async () => {
     const body = JSON.stringify({ seeds: ["a", "b", "c", "d", "e"], commander: null, budget: "any" });
-    const one = { perVisitor: 1, perIpPerDay: 10, perDay: 300, model: "claude-haiku-5-5", effort: "high" };
+    const one = { perVisitor: 1, perIpPerDay: 10, perDay: 300, tokensPerDay: 1e12, model: "claude-haiku-5-5", effort: "high" };
     await claimFreeBuild(one, visitor(req(`hf_dev=${"q".repeat(24)}`)));
     const res = await handleGenerate(new Request("http://x/api/generate", { method: "POST", headers: { cookie: `hf_dev=${"q".repeat(24)}`, "x-forwarded-for": "1.2.3.4" }, body }));
     assert.equal(res.status, 402);
@@ -161,4 +161,22 @@ test("with none left: 402 and a code the page can act on; the bot check comes fi
     process.env.TURNSTILE_SECRET_KEY = "1x0000000000000000000000000000000AA";
     const bot = await handleGenerate(new Request("http://x/api/generate", { method: "POST", headers: { "x-forwarded-for": "2.2.2.2" }, body }));
     assert.equal(bot.status, 403);
+  }));
+
+test("a failed build gives back the visitor's build, not the address or site-wide counts; the token budget closes the day", () =>
+  withEnv({}, async () => {
+    const tight: FreeConfig = { ...cfg, perIpPerDay: 2, perDay: 2, tokensPerDay: 1_000_000 };
+    const v = visitor(req(`hf_dev=${"r".repeat(24)}`, "4.4.4.4"));
+    const a = await claimFreeBuild(tight, v);
+    const b = await claimFreeBuild(tight, v);
+    assert.ok(a.ok && b.ok);
+    if (a.ok) await a.refund();
+    if (b.ok) await b.refund();
+    assert.equal((await freeStatus(tight, v)).used, 0, "the visitor's builds came back");
+    // but the address already started two today: failing on purpose doesn't reset that
+    assert.deepEqual(await claimFreeBuild(tight, v), { ok: false, reason: "ip" });
+    // once today's free builds have used the token budget, nobody gets one
+    const other = visitor(req(`hf_dev=${"t".repeat(24)}`, "3.3.3.3"));
+    await spendFreeTokens(1_200_000);
+    assert.deepEqual(await claimFreeBuild({ ...tight, perDay: 99 }, other), { ok: false, reason: "site" });
   }));

@@ -84,6 +84,8 @@ jobs:
             web/package-lock.json
       - name: Publish screenshots, lockfile and e2e log to the ci-output branch
         if: always() && github.event_name != 'pull_request' && github.repository == 'M-Sahin/mtg-master'
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -e
           mkdir -p /tmp/out && cp -r shots /tmp/out/ 2>/dev/null || true
@@ -95,7 +97,7 @@ jobs:
           mkdir -p /tmp/out/web
           echo '{"git":{"deploymentEnabled":false}}' > /tmp/out/vercel.json
           cp /tmp/out/vercel.json /tmp/out/web/vercel.json
-          echo "${{ github.sha }} ${{ github.ref_name }} $(date -u +%FT%TZ)" > /tmp/out/SOURCE
+          echo "$GITHUB_SHA $REF_NAME $(date -u +%FT%TZ)" > /tmp/out/SOURCE
           cd /tmp/out
           git init -q -b ci-output
           git config user.name "github-actions[bot]"

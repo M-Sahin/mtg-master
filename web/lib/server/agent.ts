@@ -6,7 +6,7 @@ import { DraftScanner } from "./draft-scanner";
 import { parseEngine, type EngineOptions } from "./engine";
 import { systemPrompt, toolsFor, upgradePrompt, userPrompt } from "./prompt";
 import * as scry from "./scryfall";
-import { EXTRA_TURN, MLD, buildDeck, namesInSubmission, rebalanceBasics, repairCount, strictProblems, validateDeck, type SubmittedDeck } from "./validate";
+import { EXTRA_TURN, MLD, buildDeck, namesInSubmission, rebalanceBasics, repairCount, strictProblems, untangleText, validateDeck, type SubmittedDeck } from "./validate";
 import { analysisReport, analyzeDeck, detectFunctions, isLand, type DeckAnalysis } from "../shared/analysis";
 import { openerReport, simulateOpeners } from "../shared/openers";
 import { shapeCounts, shapeProblems } from "../shared/shape";
@@ -463,7 +463,7 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
           lastDeck.review = reviewNote;
           if (upgrading) {
             lastDeck.swaps = [];
-            if (typeof x.input?.strategy === "string" && x.input.strategy.trim()) lastDeck.deck = { ...lastDeck.deck, strategy: x.input.strategy.trim().slice(0, 1200) };
+            if (typeof x.input?.strategy === "string" && x.input.strategy.trim()) lastDeck.deck = { ...lastDeck.deck, strategy: untangleText(x.input.strategy, []).strategy.slice(0, 1200) };
           }
           reply("ACCEPTED (unchanged).", false);
           done = true;

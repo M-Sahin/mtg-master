@@ -7,10 +7,9 @@ import { JOB_ID, JobNotFound, jobExists, newJobId, startJob, stopJob, tailJob } 
 import { runAgent } from "./agent";
 import { serverConfig } from "./config";
 import { DEMO_SEEDS, demoCaller } from "./demo";
-import { claimFreeBuild, freeRefusal, freeStatus, visitor } from "./free-builds";
+import { claimFreeBuild, freeRefusal, freeStatus, spendFreeTokens, visitor } from "./free-builds";
 import { turnstileError, verifyTurnstile } from "./turnstile";
-import { COOKIE, readCookies } from "./supabase";
-import { saveBuildForUser, savedKeyFor } from "./account-handler";
+import { savedKeyFor } from "./account-handler";
 import type { Budget, GenerateRequest, StreamEvent } from "../shared/types";
 import { MAX_COLLECTION } from "../shared/types";
 
@@ -27,6 +26,7 @@ async function keyTag(key: string): Promise<string> {
 }
 
 const MAX_BODY = 1_500_000; // a 5000-card collection fits comfortably
+const FREE_COLLECTION = 1_000;
 
 export function parseRequest(body: any): GenerateRequest | string {
   if (!body || typeof body !== "object") return "Invalid request body.";
@@ -198,6 +198,8 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
   }
   // a free build: the visitor's bot check, then one of their free builds
   const free = !userKey && !demo && cfg.free ? cfg.free : null;
+  // a collection goes into the prompt: free builds get a smaller one, so they can't be made expensive
+  if (free && req.collection && req.collection.names.length > FREE_COLLECTION) return Response.json({ error: `Free builds can use a collection of up to ${FREE_COLLECTION.toLocaleString("en")} different cards. Add your own Claude API key for a bigger one.` }, { status: 400 });
   const headers = new Headers();
   let refund: (() => Promise<void>) | null = null;
   if (free && !override?.callModel) {
@@ -217,8 +219,6 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
   const engine = demo ? cfg.engine : free ? { ...cfg.liveEngine, effort: free.effort as typeof cfg.liveEngine.effort } : cfg.liveEngine;
   const id = newJobId();
   const started = Date.now();
-  // logged in: the finished deck also goes straight into the account (the browser may be gone by then)
-  const token = demo ? null : (readCookies(request)[COOKIE.access] ?? null);
   const run = startJob(id, async (emitRaw, signal) => {
     let usage: Record<string, number> | undefined;
     const emit = (e: StreamEvent) => {
@@ -230,13 +230,14 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
       // build that hits the hard deadline without a deck is a wasted wait
       const result = await runAgent(req, { model: demo ? "demo" : model, callModel, emit, signal, engine, ...(free ? { timeBudgetMs: 150_000 } : {}) });
       if (result) emit({ type: "deck", deck: result.deck, validation: result.validation, analysis: result.analysis, review: result.review, ...(result.swaps ? { swaps: result.swaps } : {}) });
-      if (result && token) await saveBuildForUser(token, result.deck, userKey ? { model, usage } : { model }).catch(() => false);
       // no deck and not stopped by the visitor: the free build doesn't count
       else if (!signal.aborted) await refund?.();
     } catch (e) {
       if (!signal.aborted) await refund?.();
       emit({ type: "error", message: friendlyModelError(e, !!userKey) || "Something went wrong." });
     } finally {
+      // free builds count toward the site's daily token budget, whatever the outcome
+      if (free && usage) await spendFreeTokens((usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0)).catch(() => {});
       emit({ type: "done", ms: Date.now() - started });
     }
   });

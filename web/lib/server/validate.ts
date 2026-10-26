@@ -33,6 +33,48 @@ export interface SubmittedDeck {
 
 export type Lookup = Map<string, CardInfo>;
 
+/** A list Claude sent as text: JSON (`["a", "b"]`), or the tail of one (`a", "b"]`), or one per line. */
+function listFrom(t: string): string[] {
+  const body = t.trim().replace(/^\[/, "").replace(/\]\s*\}?\s*$/, "");
+  try {
+    const v = JSON.parse(`[${body.startsWith('"') ? body : `"${body}`}]`);
+    if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
+  } catch {}
+  return body
+    .split(/"\s*,\s*"|\n+/)
+    .map((x) => x.replace(/^\s*["“]|["”]\s*$/g, "").trim())
+    .filter(Boolean);
+}
+
+/**
+ * The strategy and win conditions as the page shows them. Smaller models sometimes slip the rest of
+ * the answer into the strategy string (`…plays. ", "win_conditions": ["Drain with…", "…"]`) or send
+ * the win conditions as one string; this takes them apart again.
+ */
+export function untangleText(strategy: unknown, wins: unknown): { strategy: string; winConditions: string[] } {
+  let text = typeof strategy === "string" ? strategy : "";
+  let list = Array.isArray(wins) ? wins.map((w) => String(w ?? "").trim()).filter(Boolean) : typeof wins === "string" ? listFrom(wins) : [];
+  // a JSON key inside the text: everything from there on wasn't meant to be prose
+  const key = text.match(/["”]?\s*,?\s*\\?"(win_conditions|bracket_notes|deck_name|cards|basics)\\?"\s*:\s*/);
+  if (key && key.index !== undefined) {
+    const rest = text.slice(key.index + key[0].length);
+    text = text.slice(0, key.index);
+    if (key[1] === "win_conditions" && !list.length) list = listFrom(rest.split(/\]\s*,\s*"/)[0]);
+  }
+  // the text is (or ends in) a list of quoted items: `…", "…", "…"]`
+  const tail = text.search(/["”]\s*,\s*["“]/);
+  if (tail >= 0 && /["”]\s*\]\s*\}?\s*$/.test(text)) {
+    const items = listFrom(text.slice(tail + 1).replace(/^\s*,\s*/, ""));
+    const head = text.slice(0, tail).trim();
+    if (!list.length) list = /^\s*\[/.test(text) ? listFrom(text) : items;
+    text = /^\s*\[/.test(text) ? "" : head;
+  } else if (/^\s*\[\s*["“]/.test(text) && /\]\s*$/.test(text)) {
+    if (!list.length) list = listFrom(text);
+    text = "";
+  }
+  return { strategy: text.replace(/^\s*["“]|["”]\s*$/g, "").trim().slice(0, 1600), winConditions: list.slice(0, 8) };
+}
+
 export function namesInSubmission(s: SubmittedDeck): string[] {
   return [s.commander, s.partner ?? "", ...s.cards.map((c) => c.name), ...Object.keys(s.basics ?? {})].filter(Boolean);
 }
@@ -72,8 +114,7 @@ export function buildDeck(s: SubmittedDeck, lookup: Lookup, seeds: string[] = []
     commander,
     partner,
     cards,
-    strategy: (s.strategy ?? "").trim(),
-    winConditions: (s.win_conditions ?? []).filter(Boolean),
+    ...untangleText(s.strategy, s.win_conditions),
     bracketNotes: (s.bracket_notes ?? "").trim(),
     colorIdentity: (["W", "U", "B", "R", "G"] as Color[]).filter((c) => identity.has(c)),
   };

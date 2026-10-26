@@ -26,6 +26,11 @@ const loadSeeds = async (p) => {
   await p.waitForFunction(() => document.querySelectorAll(".flip.is-flipped").length === 5, null, { timeout: 30000 });
   await p.waitForTimeout(1500);
 };
+// "Save deck" on the result page, then wait for "Saved"
+const saveDeck = async (p) => {
+  await p.click("[data-testid=save-deck]");
+  await p.waitForSelector("[data-testid=saved-state]", { timeout: 10000 });
+};
 const toResult = async (p) => {
   await loadSeeds(p);
   await p.click("[data-testid=build]");
@@ -412,9 +417,12 @@ await run("33-result-menus", { width: 1440, height: 1000 }, async (p) => {
   await p.context().grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
   await toResult(p);
   const stats = await p.locator("[data-testid=deck-stats] .deck-stat").allInnerTexts();
-  // a site without accounts: the deck is in this browser, and the action row says so
+  // a new deck isn't saved until you ask; on a site without accounts it goes into this browser
+  const before = await p.locator("[data-testid=saved-state]").count();
+  await saveDeck(p).catch(() => {});
   const savedState = await p.locator("[data-testid=saved-state]").innerText({ timeout: 5000 }).catch(() => "");
-  console.log(`save state: "${savedState}"`);
+  console.log(`save: ${before ? "already saved (wrong)" : "not saved until asked"}; then "${savedState}"`);
+  if (before) errors.push("a new deck was saved without asking");
   if (!/Saved in this browser/.test(savedState)) errors.push(`save state on the result: "${savedState}"`);
   const bracket = await p.locator("[data-testid=bracket-card] summary").innerText();
   await p.click("[data-testid=export-menu]");
@@ -480,6 +488,7 @@ await run("36-save-ask", { width: 1440, height: 1000 }, async (p) => {
   await p.route("**/api/auth/session", (r) => r.fulfill({ json: { enabled: true, providers: ["email"], user: null } }));
   await p.goto(base, { waitUntil: "networkidle" });
   await toResult(p);
+  await saveDeck(p);
   const ask = await p.locator("[data-testid=save-to-account]").innerText({ timeout: 8000 }).catch(() => "");
   await p.click("[data-testid=save-to-account]");
   const title = await p.locator("dialog.login-modal[open] h3").innerText({ timeout: 5000 }).catch(() => "");
@@ -490,6 +499,7 @@ await run("36-save-ask", { width: 1440, height: 1000 }, async (p) => {
 // My decks, logged out: the decks in this browser, each with its actions; Open goes to the deck
 await run("37-decks-page", { width: 1440, height: 1000 }, async (p) => {
   await toResult(p);
+  await saveDeck(p); // saving is a choice now: put it in My decks first
   await p.goto(`${base}/decks`, { waitUntil: "networkidle" });
   await p.waitForSelector("[data-testid=deck-card]", { timeout: 8000 }).catch(() => errors.push("no deck on the My decks page"));
   await p.waitForTimeout(1200); // the commander art
@@ -512,6 +522,7 @@ await run("37-decks-page", { width: 1440, height: 1000 }, async (p) => {
 });
 await run("38-mobile-decks", { width: 390, height: 844 }, async (p) => {
   await toResult(p);
+  await saveDeck(p); // saving is a choice now: put it in My decks first
   await p.goto(`${base}/decks`, { waitUntil: "networkidle" });
   await p.waitForSelector("[data-testid=deck-card]", { timeout: 8000 }).catch(() => {});
   await p.waitForTimeout(1200);
@@ -615,6 +626,7 @@ await run("40-phone-sweep", { width: 360, height: 740 }, async (p) => {
   await step("share sheet", async () => p.click("text=Share deck"));
   await p.keyboard.press("Escape");
   await step("my decks", async () => {
+    await saveDeck(p); // saving is a choice now: put it in My decks first
     await p.goto(`${base}/decks`, { waitUntil: "networkidle" });
     await p.waitForSelector("[data-testid=deck-card]", { timeout: 8000 });
   });
@@ -712,6 +724,7 @@ await shot("phone-building", { width: 390, height: 844 }, async (p) => {
 await shot("phone-result", { width: 390, height: 844 }, async (p) => toResult(p), 2);
 await shot("phone-decks", { width: 390, height: 844 }, async (p) => {
   await toResult(p);
+  await saveDeck(p); // saving is a choice now: put it in My decks first
   await p.goto(`${base}/decks`, { waitUntil: "networkidle" });
   await p.waitForSelector("[data-testid=deck-card]", { timeout: 8000 });
   await p.waitForTimeout(1500);

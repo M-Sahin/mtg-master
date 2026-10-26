@@ -79,7 +79,8 @@ export default function App({ opening: openingAtLoad = null }: { opening?: { kin
   // the deck just built, when it went into this browser only (logged out): offer to save it to an account
   const [localSave, setLocalSave] = useState<SavedDeck | null>(null);
   // where the deck on screen is saved: shown as the Save button next to Share
-  const [saveState, setSaveState] = useState<"saving" | "account" | "browser" | "failed">("browser");
+  // a new deck isn't saved until the visitor presses Save
+  const [saveState, setSaveState] = useState<"unsaved" | "saving" | "account" | "browser" | "failed">("unsaved");
   const [saveLogin, setSaveLogin] = useState(false);
   const [hasDecks, setHasDecks] = useState(false);
   const [shape, setShape] = useState<ShapeDraft>(emptyShape);
@@ -307,7 +308,8 @@ export default function App({ opening: openingAtLoad = null }: { opening?: { kin
       setResult(got);
       lastDeck.set(got);
       setSaved(got);
-      void saveToMyDecks(got);
+      setLocalSave(null);
+      setSaveState("unsaved");
       // let the grid finish its last fill before revealing the deck
       setTimeout(() => {
         setPhase("result");
@@ -339,22 +341,22 @@ export default function App({ opening: openingAtLoad = null }: { opening?: { kin
         // the cost only means something when it was the visitor's own key
         ...(r.usage && r.model && !r.free ? { usage: r.usage, model: r.model } : {}),
       };
-      // logged in: into the account; otherwise (or if that fails) into this browser
-      let ok = false;
+      // logged in: into the account; otherwise into this browser
       const a = await loadAccount();
-      if (a.user) ok = await cloudDecks.save(entry).then(() => true, () => false);
-      if (!ok) {
+      if (a.user) {
+        await cloudDecks.save(entry);
+        setLocalSave(null);
+        setSaveState("account");
+      } else {
         myDecks.add(entry);
         setLocalSave(entry);
         setSaveState("browser");
-      } else {
-        setLocalSave(null);
-        setSaveState("account");
       }
       setHasDecks(true);
-    } catch {
+    } catch (e) {
       // the deck is still shown; the Save button lets them try again
       setSaveState("failed");
+      setError(`Couldn't save the deck: ${(e as Error).message}`);
     }
   };
 
@@ -749,13 +751,20 @@ export default function App({ opening: openingAtLoad = null }: { opening?: { kin
                 <button type="button" className="btn" disabled>
                   Saving…
                 </button>
-              ) : saveState === "account" || (saveState === "browser" && acct.loaded && !acct.enabled) ? (
-                <a className="btn btn--saved" href="/decks" data-testid="saved-state" title="Open My decks">
-                  <span aria-hidden>✓</span> {saveState === "account" ? "Saved to My decks" : "Saved in this browser"}
-                </a>
+              ) : saveState === "account" || saveState === "browser" ? (
+                <>
+                  <a className="btn btn--saved" href="/decks" data-testid="saved-state" title="Open My decks">
+                    <span aria-hidden>✓</span> {saveState === "account" ? "Saved to My decks" : "Saved in this browser"}
+                  </a>
+                  {saveState === "browser" && acct.enabled && !acct.user ? (
+                    <button type="button" className="btn" onClick={() => void saveToAccount()} data-testid="save-to-account">
+                      Save to my account
+                    </button>
+                  ) : null}
+                </>
               ) : (
-                <button type="button" className="btn" onClick={() => void saveToAccount()} data-testid="save-to-account">
-                  {saveState === "failed" ? "Save deck" : "Save to my account"}
+                <button type="button" className="btn" onClick={() => result && void saveToMyDecks(result)} data-testid="save-deck">
+                  Save deck
                 </button>
               )
             }

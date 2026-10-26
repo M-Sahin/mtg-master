@@ -42,10 +42,19 @@ export async function shareId(d: string, length = 9): Promise<string> {
   return id;
 }
 
+/**
+ * Store a deck for a short link. Never overwrites another deck: if the id is taken by a different
+ * deck (a hash collision, or someone who went looking for one), a longer id is used.
+ */
 export async function saveShare(d: string): Promise<string> {
-  const id = await shareId(d);
-  await kv(["SET", KEY(id), d, "EX", TTL_SECONDS]);
-  return id;
+  for (const length of [9, 12, 16]) {
+    const id = await shareId(d, length);
+    const set = await kv(["SET", KEY(id), d, "EX", TTL_SECONDS, "NX"]);
+    if (set === "OK") return id;
+    const there = await kv(["GETEX", KEY(id), "EX", TTL_SECONDS]);
+    if (there === d) return id; // the same deck shared again: same link, a year longer
+  }
+  throw new Error("Couldn't make a short link for this deck.");
 }
 
 export async function loadShare(id: string): Promise<string | null> {

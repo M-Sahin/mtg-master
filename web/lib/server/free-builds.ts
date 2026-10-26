@@ -23,6 +23,8 @@ export interface FreeConfig {
   perVisitor: number;
   perIpPerDay: number;
   perDay: number;
+  /** tokens the free builds may use per day, all visitors together (input, output and cache) */
+  tokensPerDay: number;
   model: string;
   effort: string;
 }
@@ -36,6 +38,7 @@ export function freeConfig(): FreeConfig | null {
     perVisitor,
     perIpPerDay: Math.max(1, Number(process.env.FREE_BUILDS_PER_IP_PER_DAY) || 10),
     perDay: Math.max(1, Number(process.env.FREE_BUILDS_PER_DAY) || 300),
+    tokensPerDay: Math.max(100_000, Number(process.env.FREE_TOKENS_PER_DAY) || 150_000_000),
     model: process.env.FREE_MODEL?.trim() || "claude-haiku-5-5",
     effort: ["low", "medium", "high", "xhigh", "max"].includes(effort) ? effort : "high",
   };
@@ -164,15 +167,40 @@ export async function freeStatus(cfg: FreeConfig, v: Visitor, deps: { now?: numb
   const ip = counts[keys.findIndex((k) => k.kind === "ip")];
   const site = counts[keys.findIndex((k) => k.kind === "site")];
   const remaining = Math.max(0, cfg.perVisitor - used);
-  const blocked = remaining > 0 ? (site >= cfg.perDay ? "site" : ip >= cfg.perIpPerDay ? "ip" : undefined) : undefined;
+  const [tokens] = await read([tokenKey(now)], now, deps.fetch);
+  const blocked = remaining > 0 ? (site >= cfg.perDay || tokens >= cfg.tokensPerDay ? "site" : ip >= cfg.perIpPerDay ? "ip" : undefined) : undefined;
   return { limit: cfg.perVisitor, used: Math.min(used, cfg.perVisitor), remaining: blocked ? 0 : remaining, model: cfg.model, ...(blocked ? { blocked } : {}) };
 }
 
 export type Claim = { ok: true; remaining: number; refund: () => Promise<void> } | { ok: false; reason: "used" | "ip" | "site" };
 
-/** Count one free build, if every limit allows it. `refund` gives it back (the build failed). */
+const tokenKey = (now: number) => `hf:free:tok:${dayNumber(now)}`;
+
+/** Add what a free build used to today's total (the daily token budget). */
+export async function spendFreeTokens(n: number, deps: { now?: number; fetch?: Fetch } = {}): Promise<void> {
+  const now = deps.now ?? Date.now();
+  if (!(n > 0)) return;
+  if (kvConfig()) {
+    try {
+      await pipeline([["INCRBY", tokenKey(now), Math.round(n)], ["EXPIRE", tokenKey(now), 2 * DAY, "NX"]], deps.fetch);
+      return;
+    } catch {
+      /* fall through to memory */
+    }
+  }
+  const m = memory.get(tokenKey(now));
+  memory.set(tokenKey(now), { n: (m && m.until > now ? m.n : 0) + Math.round(n), until: m && m.until > now ? m.until : now + 2 * DAY * 1000 });
+}
+
+/**
+ * Count one free build, if every limit allows it. `refund` gives the visitor's build back when it
+ * failed; the address and site-wide counts stay, so failing builds on purpose can't run up the bill.
+ */
 export async function claimFreeBuild(cfg: FreeConfig, v: Visitor, deps: { now?: number; fetch?: Fetch } = {}): Promise<Claim> {
   const now = deps.now ?? Date.now();
+  // the daily token budget: once today's free builds have used it, there are none left today
+  const [tokens] = await read([tokenKey(now)], now, deps.fetch);
+  if (tokens >= cfg.tokensPerDay) return { ok: false, reason: "site" };
   const keys = await counterKeys(v, now);
   const counts = await add(keys, 1, now, deps.fetch);
   const over = (i: number) => {
@@ -193,7 +221,12 @@ export async function claimFreeBuild(cfg: FreeConfig, v: Visitor, deps: { now?: 
     refund: async () => {
       if (refunded) return;
       refunded = true;
-      await add(keys, -1, now, deps.fetch).catch(() => {});
+      await add(
+        keys.filter((k) => k.kind === "visitor"),
+        -1,
+        now,
+        deps.fetch,
+      ).catch(() => {});
     },
   };
 }
