@@ -62,10 +62,12 @@ export function SeedHand({
                       <Crown /> {isCmd ? "Commander" : "Make commander"}
                     </button>
                   ) : null}
-                  <button type="button" className="chip chip--ghost" disabled={disabled} onClick={() => onRemove(i)} aria-label={`Remove ${s.name}`}>
-                    Remove
-                  </button>
                 </div>
+                <button type="button" className="slot-x" disabled={disabled} onClick={() => onRemove(i)} aria-label={`Remove ${s.name}`} title="Remove">
+                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+                    <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                </button>
                 {problem ? <p className="slot-problem">{problem}</p> : null}
               </>
             ) : open === i ? (

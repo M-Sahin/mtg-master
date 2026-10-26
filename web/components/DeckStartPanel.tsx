@@ -1,6 +1,6 @@
 "use client";
-// "Start from your own deck": paste or upload a decklist. If it has fewer than 100 cards,
-// ask whether Hundredfoldz should complete it; if it's complete, offer upgrade suggestions.
+// "From my decklist": paste or upload a decklist. If it has fewer than 100 cards, ask whether
+// Hundredfoldz should complete it; if it's complete, offer upgrade suggestions.
 import { useState } from "react";
 import type { BracketReport } from "../lib/server/bracket-check";
 import { isBasicLand } from "../lib/shared/types";
@@ -15,7 +15,7 @@ export interface StartDeck {
 }
 
 export function DeckStartPanel({ onComplete, onUpgrade, onRead, blocked }: { onComplete: (d: StartDeck) => void; onUpgrade?: (d: StartDeck) => void; onRead?: (r: BracketReport) => void; blocked?: string }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,22 +53,11 @@ export function DeckStartPanel({ onComplete, onUpgrade, onRead, blocked }: { onC
   const missing = report ? 100 - report.total : 0;
   const start = (r: BracketReport): StartDeck => ({ commander: r.commanders[0], partner: r.commanders[1], cards: r.cards, total: r.total, bracket: r.bracket });
   return (
-    <section className="panel deckstart" aria-label="Start from your own deck">
-      <div className="panel-head">
-        <h3>Start from your own deck</h3>
-        <span className="pill pill--quiet">optional</span>
-      </div>
-      {!open && !report ? (
-        <p className="panel-sub">
-          Half a deck already? Paste or upload it, and Hundredfoldz can complete it to 100 cards around what you have. A finished deck gets upgrade suggestions.{" "}
-          <button type="button" className="link" onClick={() => setOpen(true)}>
-            Add my deck
-          </button>
-        </p>
-      ) : null}
+    <section className="deckstart" aria-label="Start from your own deck">
+      {!report ? <p className="deckstart-intro">Paste a decklist or upload a .txt. Under 100 cards, Claude fills it up and keeps every card you have. A full deck gets up to 10 suggested swaps.</p> : null}
       {open && !report ? (
         <div className="collection-input">
-          <label className="btn">
+          <label className="btn deckstart-file">
             Upload a .txt file
             <input type="file" accept=".txt,text/plain" hidden data-testid="deck-file" onChange={(e) => file(e.target.files?.[0])} />
           </label>
@@ -104,7 +93,7 @@ export function DeckStartPanel({ onComplete, onUpgrade, onRead, blocked }: { onC
           {report.commanders.length && missing > 0 && !declined ? (
             <div className="deckstart-ask">
               <p>
-                <strong>Your deck has {report.total} cards. Do you want Hundredfoldz to complete it?</strong> Claude keeps every card you have and adds {missing} more, using the bracket, budget and wishes you set on this page.
+                <strong>Your deck has {report.total} cards. Complete it to 100?</strong> Claude keeps every card and adds {missing}, following the bracket, budget and options below.
               </p>
               <div className="deckstart-buttons">
                 <button
@@ -125,7 +114,7 @@ export function DeckStartPanel({ onComplete, onUpgrade, onRead, blocked }: { onC
           {report.commanders.length && missing === 0 && onUpgrade && !declined ? (
             <div className="deckstart-ask">
               <p>
-                <strong>Your deck is complete. Do you want Hundredfoldz to suggest upgrades?</strong> Claude keeps the plan and the commander, finds the weakest cards and suggests up to 10 swaps, each with a reason, for the bracket, budget and wishes you set on this page.
+                <strong>Your deck is complete. Look for upgrades?</strong> Claude keeps the plan and the commander and suggests up to 10 swaps, each with a reason, for the bracket and budget below.
               </p>
               <div className="deckstart-buttons">
                 <button type="button" className="btn btn--brass" disabled={!!blocked} onClick={() => onUpgrade(start(report))} data-testid="upgrade-deck">

@@ -4,7 +4,7 @@ import { COMMANDER_TEMPLATE, bracketInfo } from "../lib/shared/bracket";
 import { MANA_COLORS, ROLE_COLORS, averageMv, byRole, byType, curve, exportText, library, pips, price, shuffle, totalCards, isLand } from "../lib/shared/deck-utils";
 import type { Color, Deck, DeckCard, Validation } from "../lib/shared/types";
 import { ROLE_LABELS, isBasicLand } from "../lib/shared/types";
-import { simulateOpeners } from "../lib/shared/openers";
+import { simulateOpeners, type OpenerReport } from "../lib/shared/openers";
 import { checkShape, shapeCounts } from "../lib/shared/shape";
 import { analyzeDeck } from "../lib/shared/analysis";
 import { OpenersView } from "./OpenersView";
@@ -13,10 +13,14 @@ import { BuyLinks } from "./BuyLinks";
 import { CardOffers } from "./CardOffers";
 import { buyDeckLinks, cartLines } from "../lib/shared/buy";
 import { useSiteConfig } from "../lib/client/site-config";
+import { storage } from "../lib/client/api";
 import { CardFace, IdentityPips, ManaCost } from "./CardFace";
 import { ShareButton } from "./ShareSheet";
+import { Menu } from "./Menu";
 
 type Tab = "cards" | "list" | "numbers" | "hand";
+type CardsView = "stacks" | "grid";
+const cardsView = storage<CardsView>("hundredfold:cards-view");
 
 export function DeckView({
   deck,
@@ -44,15 +48,26 @@ export function DeckView({
   const site = useSiteConfig();
   const addedSet = useMemo(() => (added?.length ? new Set(added.map((n) => n.toLowerCase())) : undefined), [added]);
   const [tab, setTab] = useState<Tab>("cards");
+  const [view, setView] = useState<CardsView>("stacks");
+  useEffect(() => {
+    const v = cardsView.get();
+    if (v === "grid" || v === "stacks") setView(v);
+  }, []);
+  const pickView = (v: CardsView) => {
+    setView(v);
+    cardsView.set(v);
+  };
   const [open, setOpen] = useState<DeckCard | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const cmd = deck.commander;
+  // goldfished opening hands, worked out in the browser (no API calls): once, for the stats and the Numbers tab
+  const openers = useMemo(() => (deck.cards.some((c) => c.info) ? simulateOpeners(deck) : null), [deck]);
 
   const copy = async (style: "moxfield" | "arena") => {
     try {
       await navigator.clipboard.writeText(exportText(deck, style));
       setCopied(style);
-      setTimeout(() => setCopied(null), 1800);
+      setTimeout(() => setCopied(null), 2500);
     } catch {
       setCopied("error");
     }
@@ -79,32 +94,33 @@ export function DeckView({
             </p>
             <h2>{deck.name}</h2>
             <p className="deck-strategy">{deck.strategy}</p>
+            <DeckStats deck={deck} validation={validation} openers={openers} />
             <div className="deck-actions">
               <ShareButton deck={deck} shareD={shareD} />
-              <button type="button" className="btn" onClick={() => copy("moxfield")}>
-                {copied === "moxfield" ? "Copied" : "Copy list"}
-              </button>
-              <button type="button" className="btn" onClick={() => copy("arena")}>
-                {copied === "arena" ? "Copied" : "Copy for Arena"}
-              </button>
-              <button type="button" className="btn" onClick={download}>
-                Download .txt
-              </button>
               <button type="button" className={`btn ${buying ? "is-on" : ""}`} onClick={() => setBuying((b) => !b)} aria-expanded={buying} data-testid="buy-toggle">
                 Buy the cards
               </button>
-              {onRebuild ? (
-                <button type="button" className="btn btn--quiet" onClick={onRebuild}>
-                  Build another version
-                </button>
-              ) : null}
-              {onRestart ? (
-                <button type="button" className="btn btn--quiet" onClick={onRestart}>
-                  New seeds
-                </button>
-              ) : null}
+              <Menu
+                label="Export"
+                testId="export-menu"
+                items={[
+                  { label: "Copy list (Moxfield, Archidekt)", onClick: () => void copy("moxfield"), testId: "copy-list" },
+                  { label: "Copy for MTG Arena", onClick: () => void copy("arena"), testId: "copy-arena" },
+                  { label: "Download .txt", onClick: download, testId: "download-txt" },
+                ]}
+              />
+              <Menu
+                label="More"
+                className="btn btn--quiet"
+                testId="more-menu"
+                items={[...(onRebuild ? [{ label: "Build another version", onClick: onRebuild, testId: "rebuild" }] : []), ...(onRestart ? [{ label: "Start over with new seeds", onClick: onRestart, testId: "new-seeds" }] : [])]}
+              />
             </div>
-            {copied === "error" ? <p className="note">Your browser blocked the clipboard. Use Download instead.</p> : null}
+            {copied ? (
+              <p className="note" role="status">
+                {copied === "error" ? "Your browser blocked the clipboard. Use Download instead." : "Copied. Paste it into your deckbuilder."}
+              </p>
+            ) : null}
             {buying ? <BuyLinks links={buyDeckLinks(deck, site?.affiliates)} copyText={cartLines(deck).join("\n")} note={`${cartLines(deck).length} cards, basic lands left out. Each shop opens with the list filled in, so you can pick printings and see the total there.`} /> : null}
             {spend ? (
               <p className="deck-spend">
@@ -167,11 +183,25 @@ export function DeckView({
                 {label}
               </button>
             ))}
+            {tab === "cards" ? (
+              <span className="viewswitch" role="group" aria-label="Card layout">
+                {(
+                  [
+                    ["stacks", "Stacks"],
+                    ["grid", "Grid"],
+                  ] as [CardsView, string][]
+                ).map(([v, label]) => (
+                  <button key={v} type="button" className={`viewswitch-btn ${view === v ? "is-on" : ""}`} aria-pressed={view === v} onClick={() => pickView(v)} data-testid={`view-${v}`}>
+                    {label}
+                  </button>
+                ))}
+              </span>
+            ) : null}
             <span className="tabs-total">{totalCards(deck)} cards</span>
           </div>
-          {tab === "cards" ? <CardsTab deck={deck} onOpen={setOpen} added={addedSet} /> : null}
+          {tab === "cards" ? <CardsTab deck={deck} onOpen={setOpen} added={addedSet} view={view} /> : null}
           {tab === "list" ? <ListTab deck={deck} onOpen={setOpen} /> : null}
-          {tab === "numbers" ? <NumbersTab deck={deck} /> : null}
+          {tab === "numbers" ? <NumbersTab deck={deck} openers={openers} /> : null}
           {tab === "hand" ? <HandTab deck={deck} onOpen={setOpen} /> : null}
         </div>
       </div>
@@ -198,7 +228,40 @@ function ShapeCard({ deck }: { deck: Deck }) {
   );
 }
 
-function CardsTab({ deck, onOpen, added }: { deck: Deck; onOpen: (c: DeckCard) => void; added?: Set<string> }) {
+function Badges({ c, added }: { c: DeckCard; added?: Set<string> }) {
+  return (
+    <>
+      {c.qty > 1 ? <span className="tile-qty">×{c.qty}</span> : null}
+      {c.seed ? <span className="tile-seed" title="One of your seed cards">Seed</span> : null}
+      {added?.has(c.name.toLowerCase()) ? <span className="tile-seed tile-new" title="Swapped in by the upgrade">New</span> : null}
+      {c.info?.gameChanger ? <span className="tile-gc" title="Game Changer">GC</span> : null}
+    </>
+  );
+}
+
+function CardsTab({ deck, onOpen, added, view }: { deck: Deck; onOpen: (c: DeckCard) => void; added?: Set<string>; view: CardsView }) {
+  if (view === "stacks")
+    return (
+      <div className="stacks" data-testid="stacks">
+        {byRole(deck).map((g) => (
+          <section key={g.role} className="stack-col" style={{ ["--role" as string]: ROLE_COLORS[g.role] }}>
+            <h3 className="role-title">
+              {ROLE_LABELS[g.role]} <span className="role-count">{g.count}</span>
+            </h3>
+            <div className="stack">
+              {g.cards.map((c) => (
+                <div key={c.name} className="tile stack-card">
+                  <CardFace card={c.info} name={c.name} onClick={() => onOpen(c)} />
+                  <span className="stack-badges">
+                    <Badges c={c} added={added} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    );
   return (
     <div className="roles">
       {byRole(deck).map((g) => (
@@ -210,10 +273,7 @@ function CardsTab({ deck, onOpen, added }: { deck: Deck; onOpen: (c: DeckCard) =
             {g.cards.map((c) => (
               <div key={c.name} className="tile">
                 <CardFace card={c.info} name={c.name} onClick={() => onOpen(c)} />
-                {c.qty > 1 ? <span className="tile-qty">×{c.qty}</span> : null}
-                {c.seed ? <span className="tile-seed" title="One of your seed cards">Seed</span> : null}
-                {added?.has(c.name.toLowerCase()) ? <span className="tile-seed tile-new" title="Swapped in by the upgrade">New</span> : null}
-                {c.info?.gameChanger ? <span className="tile-gc" title="Game Changer">GC</span> : null}
+                <Badges c={c} added={added} />
               </div>
             ))}
           </div>
@@ -251,7 +311,11 @@ function ListTab({ deck, onOpen }: { deck: Deck; onOpen: (c: DeckCard) => void }
   );
 }
 
-function NumbersTab({ deck }: { deck: Deck }) {
+function curveVerdict(avg: number) {
+  return avg < 2.6 ? "a low, fast curve" : avg <= 3.3 ? "a typical curve" : "on the heavy side";
+}
+
+function NumbersTab({ deck, openers }: { deck: Deck; openers: OpenerReport | null }) {
   const cv = curve(deck);
   const max = Math.max(...cv, 1);
   const roles = byRole(deck);
@@ -259,6 +323,7 @@ function NumbersTab({ deck }: { deck: Deck }) {
   const p = pips(deck);
   const pipTotal = Object.values(p).reduce((a, b) => a + b, 0) || 1;
   const cost = price(deck);
+  const avg = averageMv(deck);
   const lands = deck.cards.filter(isLand).reduce((n, c) => n + c.qty, 0);
   const rows: [string, number, readonly [number, number]][] = [
     ["Lands", lands, COMMANDER_TEMPLATE.lands],
@@ -268,11 +333,17 @@ function NumbersTab({ deck }: { deck: Deck }) {
     ["Board wipes", roleCount("wipe"), COMMANDER_TEMPLATE.wipe],
     ["Protection", roleCount("protection"), COMMANDER_TEMPLATE.protection],
   ];
+  const low = rows.filter(([, n, [lo]]) => n < lo).map(([l]) => l.toLowerCase());
+  const high = rows.filter(([, n, [, hi]]) => n > hi).map(([l]) => l.toLowerCase());
+  const balance = !low.length && !high.length ? "Every count is in the usual range." : [low.length ? `${sentence(low)} ${low.length === 1 ? "is" : "are"} below the usual range` : "", high.length ? `${sentence(high, !low.length)} ${high.length === 1 ? "is" : "are"} above it` : ""].filter(Boolean).join("; ") + ".";
+  const colors = (Object.keys(p) as Color[]).filter((c) => p[c] > 0);
   return (
     <div className="numbers">
       <section className="panel">
         <h3>Mana curve</h3>
-        <p className="panel-sub">Nonland cards by mana value. Average {averageMv(deck).toFixed(2)}.</p>
+        <p className="verdict">
+          Average mana value {avg.toFixed(2)}: {curveVerdict(avg)}.
+        </p>
         <div className="curve" role="img" aria-label={`Mana curve: ${cv.map((n, i) => `${i === 7 ? "7+" : i}: ${n}`).join(", ")}`}>
           {cv.map((n, i) => (
             <div key={i} className="curve-col">
@@ -282,10 +353,22 @@ function NumbersTab({ deck }: { deck: Deck }) {
             </div>
           ))}
         </div>
+        {colors.length > 1 ? (
+          <div className="pips-row">
+            <span className="small-label">Colors in costs</span>
+            <div className="pipbar">
+              {colors.map((c) => (
+                <span key={c} style={{ flexGrow: p[c], background: MANA_COLORS[c] }} title={`${c}: ${p[c]}`}>
+                  {Math.round((p[c] / pipTotal) * 100)}%
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </section>
       <section className="panel">
-        <h3>Against the Commander template</h3>
-        <p className="panel-sub">The skill's starting point for brackets 2–3. The shaded band is the target range.</p>
+        <h3>Deck balance</h3>
+        <p className="verdict">{balance}</p>
         <div className="template">
           {rows.map(([label, n, [lo, hi]]) => {
             const scale = 40;
@@ -304,35 +387,25 @@ function NumbersTab({ deck }: { deck: Deck }) {
             );
           })}
         </div>
+        <p className="fine">Shaded: the usual range for a Commander deck in brackets 2 and 3.</p>
       </section>
-      <section className="panel">
-        <h3>Color demand</h3>
-        <p className="panel-sub">Colored mana symbols in costs.</p>
-        <div className="pipbar">
-          {(Object.keys(p) as Color[])
-            .filter((c) => p[c] > 0)
-            .map((c) => (
-              <span key={c} style={{ flexGrow: p[c], background: MANA_COLORS[c] }} title={`${c}: ${p[c]}`}>
-                {Math.round((p[c] / pipTotal) * 100)}%
-              </span>
-            ))}
-        </div>
-      </section>
-      <OpenersPanel deck={deck} />
-      <DeckBoxesPanel deck={deck} />
-      <section className="panel">
-        <h3>Price</h3>
+      {openers ? <OpenersView report={openers} /> : null}
+      <section className="panel" data-testid="deck-cost">
+        <h3>What it costs</h3>
         <p className="panel-big">€{cost.eur.toFixed(0)}</p>
-        <p className="panel-sub">Cardmarket trend prices from Scryfall, basics excluded{cost.missing ? `; ${cost.missing} card${cost.missing === 1 ? "" : "s"} without a price` : ""}. Prices change daily.</p>
+        <p className="fine">
+          Cardmarket trend prices from Scryfall, basics left out{cost.missing ? `, ${cost.missing} card${cost.missing === 1 ? "" : "s"} without a price` : ""}.
+        </p>
+        <DeckBoxesPanel deck={deck} />
       </section>
     </div>
   );
 }
 
-/** Goldfished opening hands, worked out in the browser (no API calls). */
-function OpenersPanel({ deck }: { deck: Deck }) {
-  const r = useMemo(() => (deck.cards.some((c) => c.info) ? simulateOpeners(deck) : null), [deck]);
-  return r ? <OpenersView report={r} /> : null;
+function sentence(words: string[], cap = true) {
+  const w = [...words];
+  if (cap) w[0] = w[0][0].toUpperCase() + w[0].slice(1);
+  return w.length < 2 ? w[0] : `${w.slice(0, -1).join(", ")} and ${w[w.length - 1]}`;
 }
 
 function HandTab({ deck, onOpen }: { deck: Deck; onOpen: (c: DeckCard) => void }) {
@@ -372,12 +445,37 @@ function HandTab({ deck, onOpen }: { deck: Deck; onOpen: (c: DeckCard) => void }
   );
 }
 
-function BracketCard({ deck, validation }: { deck: Deck; validation: Validation }) {
+/** The numbers most people want, in one line under the description. */
+function DeckStats({ deck, validation, openers: r }: { deck: Deck; validation: Validation; openers: OpenerReport | null }) {
+  const cost = price(deck);
+  const lands = deck.cards.filter(isLand).reduce((n, c) => n + c.qty, 0);
+  const b = bracketInfo(deck.bracket ?? 3);
+  const fits = bracketChecks(deck, validation).every(([ok]) => ok);
+  const items: [string, string][] = [
+    ["Price", `€${cost.eur.toFixed(0)}`],
+    ["Lands", String(lands)],
+    ["Average mana value", averageMv(deck).toFixed(2)],
+    ...(r ? ([["Keeps its first 7", `${Math.round(r.keep7 * 100)}%`]] as [string, string][]) : []),
+    ["Bracket", `${b.number}${fits ? " ✓" : " !"}`],
+  ];
+  return (
+    <dl className="deck-stats" data-testid="deck-stats">
+      {items.map(([k, v]) => (
+        <div key={k} className="deck-stat">
+          <dt>{k}</dt>
+          <dd>{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function bracketChecks(deck: Deck, validation: Validation): [boolean, string][] {
   const BRACKET = bracketInfo(deck.bracket ?? 3);
   const gc = validation.gameChangers;
   const mldWarn = validation.warnings.find((w) => w.includes("mass land denial"));
   const turnWarn = validation.warnings.find((w) => w.includes("extra-turn"));
-  const items: [boolean, string][] = [
+  return [
     [
       gc.length <= BRACKET.maxGameChangers,
       BRACKET.maxGameChangers >= 99 ? `${gc.length} Game Changers (no limit in Bracket 4)${gc.length ? `: ${gc.join(", ")}` : ""}` : BRACKET.maxGameChangers === 0 ? (gc.length ? `${gc.length} Game Changers: ${gc.join(", ")} (Bracket ${BRACKET.number} allows none)` : "No Game Changers") : `${gc.length} of ${BRACKET.maxGameChangers} Game Changers${gc.length ? `: ${gc.join(", ")}` : ""}`,
@@ -386,11 +484,23 @@ function BracketCard({ deck, validation }: { deck: Deck; validation: Validation 
     [!turnWarn, turnWarn ? turnWarn : "No chained extra turns"],
     [validation.total === 100, `${validation.total} cards, singleton, all in color identity`],
   ];
+}
+
+/** One line ("Fits Bracket 3") that opens to the checks; open by itself when something is off. */
+function BracketCard({ deck, validation }: { deck: Deck; validation: Validation }) {
+  const BRACKET = bracketInfo(deck.bracket ?? 3);
+  const items = bracketChecks(deck, validation);
+  const off = items.filter(([ok]) => !ok).length;
+  const known = new Set(items.map(([, t]) => t));
+  const notes = validation.warnings.filter((w) => !known.has(w));
   return (
-    <div className="bracket">
-      <h3>
-        Bracket {BRACKET.number} ({BRACKET.name}) check
-      </h3>
+    <details className={`bracket ${off ? "is-off" : ""}`} open={off > 0 || undefined} data-testid="bracket-card">
+      <summary>
+        <span className="bracket-mark" aria-hidden>
+          {off ? "!" : "✓"}
+        </span>
+        {off ? `Bracket ${BRACKET.number}: ${off} thing${off === 1 ? "" : "s"} to check` : `Fits Bracket ${BRACKET.number} (${BRACKET.name})`}
+      </summary>
       <ul>
         {items.map(([ok, text]) => (
           <li key={text} className={ok ? "is-ok" : "is-warn"}>
@@ -399,19 +509,17 @@ function BracketCard({ deck, validation }: { deck: Deck; validation: Validation 
         ))}
       </ul>
       {deck.bracketNotes ? <p className="bracket-note">{deck.bracketNotes}</p> : null}
-      {validation.warnings.filter((w) => w !== mldWarn && w !== turnWarn).length ? (
-        <details className="bracket-more">
-          <summary>Notes from the deck check</summary>
-          <ul>
-            {validation.warnings
-              .filter((w) => w !== mldWarn && w !== turnWarn)
-              .map((w) => (
-                <li key={w}>{w}</li>
-              ))}
+      {notes.length ? (
+        <>
+          <p className="bracket-note">Notes from the deck check:</p>
+          <ul className="bracket-notes">
+            {notes.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
           </ul>
-        </details>
+        </>
       ) : null}
-    </div>
+    </details>
   );
 }
 

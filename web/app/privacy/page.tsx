@@ -22,6 +22,7 @@ export default function Page() {
         <ul>
           <li>We store your email address (or the name your Discord or Google login gives us) and the decks you save, in a Supabase database in the EU.</li>
           <li>Login uses cookies that are needed to keep you logged in. There are no tracking or advertising cookies.</li>
+          <li>Free builds are counted with a random id in a cookie (no name, no email), and per IP address per day. The counts are stored hashed and expire after a year.</li>
           <li>You can delete your account and all your decks at any time on the account page. It happens right away.</li>
         </ul>
         <h3>Services we use</h3>

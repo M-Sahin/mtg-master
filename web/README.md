@@ -150,7 +150,11 @@ cd web && npm ci && npm run build && npm start
 | Variable | Required | What it does |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | no | A server key for builds without a visitor key, created at [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys). Without it, builds run on visitors' own keys, and without a key at all the app replays one scripted demo deck. |
-| `ACCESS_CODE` | yes, with a server key | Visitors have to enter this code to build on the server key. Without it, anyone who has the URL spends your credits, so server-key builds are refused until you set it. Own-key builds don't need it. |
+| `ACCESS_CODE` | yes, with a server key (unless `FREE_BUILDS` is set) | Visitors have to enter this code to build on the server key. Without it, anyone who has the URL spends your credits, so server-key builds are refused until you set it. Own-key builds don't need it. |
+| `FREE_BUILDS` | no | With a server key: this many free builds per visitor (e.g. `3`), then visitors bring their own key. See [Free builds](#free-builds). |
+| `FREE_MODEL`, `FREE_EFFORT` | no | The model and effort free builds use. Default `claude-haiku-5-5` at `high`. Visitors who want Sonnet or Opus use their own key. |
+| `FREE_BUILDS_PER_IP_PER_DAY` | no | Free builds per IP address per day (default 10), so clearing cookies doesn't give anyone more. |
+| `FREE_BUILDS_PER_DAY` | no | Free builds for the whole site per day (default 300). This caps what free builds can cost you. |
 | `OWN_KEYS` | no | Visitors' own Claude API keys. Without a server key they're allowed unless you set `0`. With a server key they're off unless you set `1`, so a deployment behind an access code doesn't open up when it updates. |
 | `OWN_KEY_BUILDS_PER_HOUR` | no | Builds per own key per hour (default 20), to protect Scryfall and the server. |
 | `DONATION_URL` | no | An `https://` link (Ko-fi, GitHub Sponsors…) shown in the footer and under each finished deck, e.g. `https://ko-fi.com/yourname`. |
@@ -168,9 +172,21 @@ cd web && npm ci && npm run build && npm start
 
 On Vercel, store `ANTHROPIC_API_KEY` and `ACCESS_CODE` as the **Secret** type. Redeploy after changing a variable, because changes only apply to new deployments.
 
+### Free builds
+
+With `ANTHROPIC_API_KEY` and `FREE_BUILDS=3`, every visitor gets three builds on your key with Claude Haiku 5.5 at high effort (about 2 cents a deck), no key needed. The line under the Build button counts them down. After that, Build opens the key sheet: visitors add their own key and build on any model. Sonnet and Opus always need the visitor's own key.
+
+- **Counted three ways.** Per browser (a random id in an httpOnly cookie, kept a year), per account when logged in (so a new device doesn't reset it) and per IP address per day (`FREE_BUILDS_PER_IP_PER_DAY`). Every count has to be under its limit. On top, `FREE_BUILDS_PER_DAY` caps the whole site, so a bad day can't cost more than that many Haiku builds.
+- **In the shared store.** With Upstash configured, the counts are shared by every server instance. Keys are hashed, so the store never holds ids, user ids or addresses.
+- **Bot check.** With Turnstile on, each free build needs a fresh token.
+- **Fair.** A build that fails on our side (Claude overloaded, an error) is given back. A build the visitor stops is not.
+- **Owner builds.** The access code isn't used in this mode. Use your own key in the key sheet like everyone else.
+
+Set a monthly spend limit on the key's workspace in the Claude Console as a last line of defense.
+
 ### Own API keys
 
-On the setup screen, visitors can paste their own Claude API key. The page walks them through making one: a Claude Console workspace with a monthly spend limit, a little credit, and a key from that workspace.
+On the setup screen, visitors can add their own Claude API key in the key sheet (it opens from the line under the Build button, or by itself when a build needs a key). The sheet walks them through making one: a Claude Console workspace with a monthly spend limit, a little credit, and a key from that workspace.
 
 - **The key stays in the browser.** It's kept in this device's storage, or for the tab only if the visitor prefers. It's sent with each build in a header, used only for that build, and never written to logs, the job store or share links. A strict Content Security Policy (`proxy.ts`, a fresh nonce per request) stops injected scripts from reading it.
 - **Password managers.** The key field is a login-style form (a hidden "Claude API key" username and a password field), so Chrome, Safari, 1Password and Bitwarden offer to save the key and fill it in later, also after clearing the cache and on other devices. The setup steps tell people to save it right away, because the Console shows a key only once, and how to replace a lost one.

@@ -3,6 +3,8 @@ import { turnstileSiteKey } from "./turnstile";
 import { DEMO_SEEDS } from "./demo";
 import { SKILL_VERSION } from "../skill/content";
 import { parseEngine, type EngineOptions } from "./engine";
+import { freeConfig } from "./free-builds";
+import { modelInfo } from "../shared/models";
 
 function engineFromEnv(demo: boolean): EngineOptions {
   if (demo) return parseEngine("v1"); // the scripted demo follows the original flow
@@ -19,6 +21,7 @@ export function serverConfig() {
   // without a server key, builds run on the visitor's own key, or the scripted demo
   const demo = process.env.DEMO_MODE === "1" || !apiKey;
   const donation = process.env.DONATION_URL?.trim() || "";
+  const free = freeConfig();
   return {
     apiKey,
     demo,
@@ -29,7 +32,9 @@ export function serverConfig() {
     buildsPerHour: Math.max(1, Number(process.env.BUILDS_PER_HOUR_PER_IP) || 6),
     // visitors may use their own Claude API key: on by default without a server key; with one,
     // only when OWN_KEYS=1 (so an access-code deployment doesn't open up to strangers on update)
-    ownKeys: apiKey ? process.env.OWN_KEYS === "1" : process.env.OWN_KEYS !== "0",
+    // (free builds turn it on too: after those, visitors carry on with their own key)
+    ownKeys: apiKey ? process.env.OWN_KEYS === "1" || (!!free && process.env.OWN_KEYS !== "0") : process.env.OWN_KEYS !== "0",
+    free,
     ownKeyBuildsPerHour: Math.max(1, Number(process.env.OWN_KEY_BUILDS_PER_HOUR) || 20),
     donationUrl: /^https:\/\/[^\s"'<>]+$/.test(donation) ? donation : null,
     affiliates: cleanAffiliates({ tcgplayer: process.env.AFFILIATE_TCGPLAYER, cardkingdom: process.env.AFFILIATE_CARDKINGDOM, cardmarket: process.env.AFFILIATE_CARDMARKET }),
@@ -45,6 +50,8 @@ export interface PublicConfig {
   donationUrl: string | null;
   /** Affiliate tags for the buy links (lib/shared/buy.ts). */
   affiliates: Affiliates;
+  /** Free builds on this site's key: how many per visitor, and with which model. */
+  freeBuilds: { limit: number; model: string; modelLabel: string } | null;
   /** Cloudflare Turnstile site key (public), when the bot check is on. */
   turnstileSiteKey: string | null;
   model: string;
@@ -61,11 +68,12 @@ export function publicConfig(): PublicConfig {
     ownKeys: c.ownKeys,
     donationUrl: c.donationUrl,
     affiliates: c.affiliates,
+    freeBuilds: c.free ? { limit: c.free.perVisitor, model: c.free.model, modelLabel: modelInfo(c.free.model)?.label ?? c.free.model } : null,
     turnstileSiteKey: turnstileSiteKey(),
     model: c.demo ? "demo (scripted)" : c.model,
     skillVersion: SKILL_VERSION,
-    accessCodeRequired: Boolean(c.accessCode) && !c.demo,
-    setupProblem: !c.demo && !c.accessCode && !c.publicAccess ? "This deployment has an API key but no ACCESS_CODE. Set ACCESS_CODE (or PUBLIC_ACCESS=1 to allow anyone) in the Vercel project settings." : null,
+    accessCodeRequired: Boolean(c.accessCode) && !c.demo && !c.free,
+    setupProblem: !c.demo && !c.free && !c.accessCode && !c.publicAccess ? "This deployment has an API key but no ACCESS_CODE. Set ACCESS_CODE (or PUBLIC_ACCESS=1 to allow anyone) in the Vercel project settings." : null,
     demoSeeds: DEMO_SEEDS,
   };
 }

@@ -111,6 +111,8 @@ export interface BuildAuth {
   /** The visitor's own Claude API key; sent with this build only. */
   apiKey?: string;
   model?: string;
+  /** Turnstile token for a free build (one per build). */
+  turnstile?: string;
 }
 
 export async function* generate(req: GenerateRequest, auth: BuildAuth, signal: AbortSignal, resume?: string): AsyncGenerator<StreamEvent> {
@@ -147,7 +149,7 @@ export async function* generate(req: GenerateRequest, auth: BuildAuth, signal: A
                 "content-type": "application/json",
                 ...(auth.apiKey ? { "x-anthropic-key": auth.apiKey } : accessCode ? { "x-access-code": accessCode } : {}),
               },
-              body: JSON.stringify({ ...req, ...(auth.apiKey && auth.model ? { model: auth.model } : {}) }),
+              body: JSON.stringify({ ...req, ...(auth.apiKey && auth.model ? { model: auth.model } : {}), ...(auth.turnstile ? { turnstile: auth.turnstile } : {}) }),
               signal: attempt.signal,
             })
           : await fetch(`/api/generate?job=${encodeURIComponent(job)}&from=${next}`, { signal: attempt.signal, cache: "no-store" });
@@ -160,11 +162,14 @@ export async function* generate(req: GenerateRequest, auth: BuildAuth, signal: A
       }
       if (res && !res.ok) {
         let msg = `Request failed (${res.status})`;
+        let code: string | undefined;
         try {
-          msg = (await res.json()).error ?? msg;
+          const j = await res.json();
+          msg = j.error ?? msg;
+          code = typeof j.code === "string" ? j.code : undefined;
         } catch {}
         if (starting) {
-          yield { type: "error", message: msg };
+          yield { type: "error", message: msg, ...(code ? { code } : {}) };
           return;
         }
         if (res.status === 404) {
@@ -213,6 +218,24 @@ export async function* generate(req: GenerateRequest, auth: BuildAuth, signal: A
     clearInterval(watchdog);
     signal.removeEventListener("abort", stop);
     if (hasDoc) document.removeEventListener("visibilitychange", onVisibility);
+  }
+}
+
+/** Free builds left for this visitor (null when the site doesn't offer them). */
+export interface FreeBuilds {
+  limit: number;
+  used: number;
+  remaining: number;
+  model: string;
+  blocked?: "ip" | "site";
+}
+export async function freeBuilds(): Promise<FreeBuilds | null> {
+  try {
+    const r = await fetch("/api/free-builds", { cache: "no-store" });
+    const j = await r.json();
+    return r.ok && j.enabled ? (j as FreeBuilds) : null;
+  } catch {
+    return null;
   }
 }
 

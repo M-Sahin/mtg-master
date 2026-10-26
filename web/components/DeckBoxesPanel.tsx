@@ -27,35 +27,17 @@ export function DeckBoxesPanel({ deck }: { deck: Deck }) {
   }, [deck]);
 
   if (failed || (rows && !rows.length)) return null;
+  const best = rows?.[0];
   return (
-    <section className="panel deckboxes" data-testid="deck-boxes">
-      <h3>Singles or boxes?</h3>
-      {!rows ? (
-        <p className="panel-sub">Looking up which booster boxes have this deck&apos;s cards…</p>
+    <div className="deckboxes" data-testid="deck-boxes">
+      <span className="small-label">Singles or boxes?</span>
+      {!best ? (
+        <p className="fine">Looking up which booster boxes have this deck&apos;s cards…</p>
       ) : (
-        <>
-          <p className="panel-sub">The booster boxes that can give you the most of this deck. A card counts once: a second copy doesn&apos;t help a singleton deck.</p>
-          <ul className="deckboxes-list">
-            {rows.slice(0, 3).map((r) => (
-              <li key={r.product.id}>
-                <a href={`/ev/${r.product.id}`}>
-                  <strong>
-                    {r.product.name.replace(/ Booster$/, "")} box
-                  </strong>
-                </a>
-                <span>
-                  {r.cards.length} of your cards can be in it ({r.cards
-                    .slice(0, 3)
-                    .map((c) => c.name)
-                    .join(", ")}
-                  {r.cards.length > 3 ? ", …" : ""}). One box gives you about <strong>{eur(r.deckValue)}</strong> of them; all {r.cards.length} cost <strong>{eur(r.singles)}</strong> as singles. The whole box averages {eur(r.product.grossBox)} in cards.
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="opt-hint">For a finished deck, singles are almost always cheaper. Open boxes for the fun of it, or see what a box is worth in <a href="/ev">Box EV</a>.</p>
-        </>
+        <p className="deckboxes-best">
+          The best box for this deck is <a href={`/ev/${best.product.id}`}>{best.product.name.replace(/ Booster$/, "")}</a>: {best.cards.length} of your cards can be in it, and one box gives you about <strong>{eur(best.deckValue)}</strong> of them. As singles, all {best.cards.length} cost <strong>{eur(best.singles)}</strong>, so singles are the cheaper way to finish the deck. <a href="/ev">Box EV</a>
+        </p>
       )}
-    </section>
+    </div>
   );
 }

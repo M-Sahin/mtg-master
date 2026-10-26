@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { describeQuery } from "../lib/shared/query-text";
 import { ROLE_COLORS } from "../lib/shared/deck-utils";
 import type { Role, Validation } from "../lib/shared/types";
 import { ROLE_LABELS } from "../lib/shared/types";
@@ -15,7 +16,7 @@ export interface DraftCell {
   role: Role;
 }
 
-const TOOL_VERB: Record<string, string> = { search_cards: "Searched Scryfall", get_cards: "Read card text", submit_deck: "Checked deck", revise_deck: "Reviewed deck" };
+const TOOL_VERB: Record<string, string> = { search_cards: "Looked for", get_cards: "Read", submit_deck: "Checked deck", revise_deck: "Reviewed deck" };
 
 export function ForgeView({
   log,
@@ -35,6 +36,7 @@ export function ForgeView({
   spend?: string; // tokens and estimated cost so far, on the visitor's key
 }) {
   const logRef = useRef<HTMLDivElement>(null);
+  const [raw, setRaw] = useState(false); // show the Scryfall queries as Claude wrote them
   useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -48,7 +50,7 @@ export function ForgeView({
     <section className="forge" aria-live="polite">
       <div className="forge-notes">
         <div className="forge-head">
-          <h2>Claude is building your deck</h2>
+          <h2>Building your deck</h2>
           <span className="forge-time">{formatTime(elapsed)}</span>
         </div>
         {spend ? <p className="forge-spend">So far: {spend}</p> : null}
@@ -56,14 +58,16 @@ export function ForgeView({
           {log.map((item, i) => {
             if (item.kind === "text") return <p key={i} className="log-text">{item.text}</p>;
             if (item.kind === "status") return <p key={i} className="log-status">{item.text}</p>;
-            if (item.kind === "tool")
+            if (item.kind === "tool") {
+              const plain = item.name === "search_cards" && !raw ? describeQuery(item.label) : null;
               return (
-                <div key={i} className={`log-tool ${item.summary ? (item.ok ? "is-ok" : "is-warn") : "is-busy"}`}>
+                <div key={i} className={`log-tool ${item.summary ? (item.ok ? "is-ok" : "is-warn") : "is-busy"}`} title={item.name === "search_cards" ? `Scryfall: ${item.label}` : undefined}>
                   <span className="log-tool-verb">{TOOL_VERB[item.name] ?? item.name}</span>
-                  <code className="log-tool-q">{item.label}</code>
-                  <span className="log-tool-res">{item.summary ?? "…"}</span>
+                  {plain ? <span className="log-tool-plain">{plain}</span> : <code className="log-tool-q">{item.label}</code>}
+                  <span className="log-tool-res">{item.summary ? item.summary.replace(/ matches$/, " found") : "…"}</span>
                 </div>
               );
+            }
             const v = item.validation;
             return (
               <div key={i} className={`log-check ${v.ok ? "is-ok" : "is-warn"}`}>
@@ -80,9 +84,16 @@ export function ForgeView({
           })}
           <span className="log-caret" aria-hidden />
         </div>
-        <button type="button" className="btn btn--quiet" onClick={onCancel}>
-          Stop building
-        </button>
+        <div className="forge-foot">
+          <button type="button" className="btn btn--quiet" onClick={onCancel}>
+            Stop building
+          </button>
+          {log.some((x) => x.kind === "tool" && x.name === "search_cards") ? (
+            <button type="button" className="link link--quiet" onClick={() => setRaw((r) => !r)} aria-pressed={raw}>
+              {raw ? "Plain words" : "Show the Scryfall queries"}
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="forge-hundred">

@@ -18,9 +18,15 @@ export function OpenersView({ report: r }: { report: OpenerReport }) {
   return (
     <section className="panel" data-testid="openers">
       <h3>Opening hands</h3>
-      <p className="panel-sub">
-        {r.games.toLocaleString("en")} goldfished games: Commander mulligans (the first is free), a land a turn, cheap ramp, and the commander as soon as the mana allows. An estimate of how the mana works, not of how the deck plays.
-      </p>
+      {problems.length ? (
+        <ul className="verdict op-problems">
+          {problems.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="verdict op-ok">The mana looks healthy. It floods (7+ lands in the first 14 cards) in {Math.round(r.flood * 100)}% of games.</p>
+      )}
       <div className="openers">
         {rows.map(([label, share, ok]) => (
           <div key={label} className="op-row">
@@ -32,15 +38,9 @@ export function OpenersView({ report: r }: { report: OpenerReport }) {
           </div>
         ))}
       </div>
-      {problems.length ? (
-        <ul className="op-problems">
-          {problems.map((p) => (
-            <li key={p}>{p}</li>
-          ))}
-        </ul>
-      ) : (
-        <p className="panel-sub op-ok">The mana looks healthy. It floods (7+ lands in the first 14 cards) in {Math.round(r.flood * 100)}% of games.</p>
-      )}
+      <p className="fine">
+        From {r.games.toLocaleString("en")} simulated games with Commander mulligans (the first is free), a land a turn and cheap ramp. It shows how the mana works, not how the deck plays.
+      </p>
     </section>
   );
 }

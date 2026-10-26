@@ -22,9 +22,9 @@ export function DeckShapeFields({ value, onChange }: { value: ShapeDraft; onChan
   return (
     <details className="opt shape" open={open || typeof parsed === "string"} onToggle={(e) => setOpen(e.currentTarget.open)} data-testid="deck-shape">
       <summary className="opt-label">
-        Deck shape <span className="pill pill--quiet">{active ? `${active} limit${active === 1 ? "" : "s"}` : "optional"}</span>
+        Deck shape {active ? <span className="pill">{`${active} limit${active === 1 ? "" : "s"}`}</span> : <span className="opt-summary-hint">min and max creatures, lands, ramp…</span>}
       </summary>
-      <p className="opt-hint">Leave a field empty for no limit. The server counts these from the card text and sends the deck back to Claude if it misses one.</p>
+      <p className="opt-hint">Empty means no limit. Counted from the card text; a deck that misses one goes back to Claude.</p>
       <div className="shape-grid">
         <span className="shape-head" />
         <span className="shape-head">Min</span>

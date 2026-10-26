@@ -51,14 +51,13 @@ export function CollectionPanel({ value, onChange, inactive }: { value: Collecti
   };
 
   return (
-    <section className="panel" aria-label="Your collection">
-      <div className="panel-head">
-        <h3>Build from your collection</h3>
-        {value ? <span className="pill">{value.names.length.toLocaleString()} cards</span> : <span className="pill pill--quiet">optional</span>}
-      </div>
+    <section className="opt collection" aria-label="Your collection">
+      <span className="opt-label">
+        Your collection {value ? <span className="pill">{value.names.length.toLocaleString()} cards</span> : null}
+      </span>
       {value ? (
         <>
-          <p className="panel-sub">
+          <p className="opt-hint">
             Loaded from {value.source}.{" "}
             <button type="button" className="link" onClick={() => setOpen((o) => !o)}>
               Replace
@@ -84,8 +83,8 @@ export function CollectionPanel({ value, onChange, inactive }: { value: Collecti
           </div>
         </>
       ) : (
-        <p className="panel-sub">
-          Export your collection from Moxfield, Archidekt, ManaBox or Deckbox as CSV, or paste a list with one card per line. It stays in your browser and is sent with your build.{" "}
+        <p className="opt-hint">
+          Build from cards you own: a CSV export from Moxfield, Archidekt, ManaBox or Deckbox, or one card per line.{" "}
           <button type="button" className="link" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
             {open ? "Cancel" : "Add my collection"}
           </button>

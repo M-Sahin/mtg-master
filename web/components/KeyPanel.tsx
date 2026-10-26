@@ -1,6 +1,7 @@
 "use client";
 // "Use your own Claude API key": guided setup, key check, remember/forget, model picker.
-import { useEffect, useState } from "react";
+// Lives in the key sheet (BuildAccess): the setup page itself only shows a one-line status.
+import { useEffect, useState, type ReactNode } from "react";
 import { checkKey, keyStore } from "../lib/client/api";
 import { DEFAULT_MODEL, MODELS, modelInfo } from "../lib/shared/models";
 
@@ -35,14 +36,14 @@ function fitModel(wanted: string, list: ModelList): string {
   return list[0]?.id ?? DEFAULT_MODEL;
 }
 
-export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onChange: (v: KeyState) => void; serverKey: boolean }) {
+export function KeyPanel({ value, onChange, lead, onDone }: { value: KeyState; onChange: (v: KeyState) => void; lead?: ReactNode; onDone?: () => void }) {
   const [draft, setDraft] = useState("");
   const [remember, setRemember] = useState(true);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<{ id: string; name: string }[] | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [help, setHelp] = useState(!serverKey);
+  const [help, setHelp] = useState(false);
   const [forgotten, setForgotten] = useState(false);
 
   // load a remembered key and model once
@@ -85,6 +86,7 @@ export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onCh
       setForgotten(false);
       onChange({ key, model: fitModel(value.model, list) });
       setDraft("");
+      onDone?.();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -117,13 +119,13 @@ export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onCh
 
   if (value.key) {
     return (
-      <section className="panel keypanel" aria-label="Your Claude API key">
+      <section className="keypanel" aria-label="Your Claude API key">
         <div className="panel-head">
           <h3>Your Claude API key</h3>
           <span className={`pill ${error ? "pill--warn" : "pill--ok"}`}>{error ? "Check failed" : models ? "Key works" : "Checking…"}</span>
         </div>
         <p className="panel-sub">
-          Key ending in <code>…{value.key.slice(-4)}</code>, {remember ? "remembered on this device" : "kept for this tab only"}. It's sent with each build and never stored on the server.{" "}
+          Key ending in <code>…{value.key.slice(-4)}</code>, {remember ? "remembered on this device" : "kept for this tab only"}. It goes with each build and is never stored on the server.{" "}
           <button type="button" className="link" onClick={forget}>
             Forget key
           </button>
@@ -162,27 +164,25 @@ export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onCh
   }
 
   return (
-    <section className="panel keypanel" aria-label="Use your own Claude API key">
+    <section className="keypanel" aria-label="Use your own Claude API key">
       <div className="panel-head">
         <h3>Use your own Claude API key</h3>
       </div>
-      <p className="panel-sub">
-        {serverKey ? "Or skip the access code: builds" : "Builds"} run on your own Claude API key, so you pay Anthropic directly for what you use. After each build you see the tokens it used and an estimate of the cost. The key stays in your browser; the server uses it for your build and doesn't keep it.
-      </p>
+      <p className="panel-sub">{lead ?? "Builds run on your key, on any Claude model, and you pay Anthropic directly: a few cents to about 50 cents a deck. The key stays in your browser."}</p>
       <button type="button" className="link" onClick={() => setHelp((h) => !h)} aria-expanded={help}>
-        {help ? "Hide the setup steps" : "How do I get a key? (about 2 minutes)"}
+        {help ? "Hide the steps" : "How do I get a key? (about 2 minutes)"}
       </button>
       {help ? (
         <ol className="keysteps">
           <li>
-            Sign in to the <a href="https://platform.claude.com" target="_blank" rel="noopener noreferrer">Claude Console</a> (a separate account from a Claude.ai subscription).
+            Sign in to the <a href="https://platform.claude.com" target="_blank" rel="noopener noreferrer">Claude Console</a>. It&apos;s a separate account from a Claude.ai subscription.
           </li>
           <li>
-            Create a workspace just for this, for example &ldquo;Hundredfoldz&rdquo;, and give it a <strong>monthly spend limit</strong>. A key from that workspace can never cost more than the limit you chose.
+            Create a workspace for this (say &ldquo;Hundredfoldz&rdquo;) with a <strong>monthly spend limit</strong>. A key from that workspace can never cost more than that.
           </li>
           <li>Add a little credit under Billing if your account has none.</li>
           <li>
-            In that workspace, create an API key. <strong>Save it in your password manager right away</strong>: the Console shows a key only once. Then paste it here.
+            Create an API key in that workspace and <strong>save it in your password manager</strong>: the Console shows it only once. Paste it here.
           </li>
         </ol>
       ) : null}
@@ -218,12 +218,9 @@ export function KeyPanel({ value, onChange, serverKey }: { value: KeyState; onCh
         </div>
       </form>
       <label className="check">
-        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember it on this device (otherwise only for this tab)
+        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember it on this device
       </label>
-      <p className="opt-hint">
-        {forgotten ? "Removed from this browser. If you saved it in your password manager, it's still there. " : ""}
-        Lost your key? Create a new one in the same workspace in the Claude Console: the spend limit stays, and you can delete the old key there.
-      </p>
+      {forgotten ? <p className="opt-hint">Removed from this browser. If you saved it in your password manager, it&apos;s still there.</p> : null}
       {error ? <p className="error">{error}</p> : null}
     </section>
   );

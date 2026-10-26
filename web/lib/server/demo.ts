@@ -92,14 +92,14 @@ export const DEMO_SUBMISSION = {
   deck_name: "Meren's Endless Harvest",
   commander: "Meren of Clan Nel Toth",
   strategy:
-    "Sacrifice creatures for value, and let Meren bring the best one back every end step. Grim Haruspex, Midnight Reaper and friends turn every death into cards, while Viscera Seer and Ashnod's Altar make sure something always dies on our terms. Board wipes are fine — we rebuild faster than anyone.",
+    "Sacrifice creatures for value, and let Meren bring the best one back every end step. Grim Haruspex, Midnight Reaper and friends turn every death into cards, while Viscera Seer and Ashnod's Altar decide when things die. After a board wipe, Meren and Living Death bring the best creatures back.",
   win_conditions: [
     "Blood Artist / Zulaport Cutthroat drains with a sac outlet",
     "Grave Titan and Massacre Wurm recurred every turn",
     "Pestilence to sweep and burn the table",
     "Living Death into a graveyard full of threats",
   ],
-  bracket_notes: "No Game Changers needed; no mass land denial, no extra turns and no early two-card infinite combos — the deck wins through incremental value.",
+  bracket_notes: "No Game Changers, mass land denial, extra turns or early two-card combos. The deck wins through steady value.",
   cards: CARDS.map(([name, role, why]) => ({ name, role, why })),
   basics: { Forest: 10, Swamp: 10 },
 };
@@ -157,6 +157,6 @@ export function demoCaller(speed = 1): ModelCaller {
         handlers,
       );
     }
-    return consumeStream(turnEvents("I have what I need. Here's the full list — 63 spells, 16 nonbasic lands and 20 basics.", [{ name: "submit_deck", input: DEMO_SUBMISSION }], speed), handlers);
+    return consumeStream(turnEvents("I have what I need. Here's the full list: 63 spells, 16 nonbasic lands and 20 basics.", [{ name: "submit_deck", input: DEMO_SUBMISSION }], speed), handlers);
   };
 }

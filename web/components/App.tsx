@@ -4,11 +4,13 @@ import { BRACKETS, type BracketNumber } from "../lib/shared/bracket";
 import { DeckStartPanel, splitBasics, type StartDeck } from "./DeckStartPanel";
 import { MANA_COLORS } from "../lib/shared/deck-utils";
 import type { Budget, Color, Deck, GenerateRequest, StreamEvent, Swap, Usage, Validation } from "../lib/shared/types";
-import { cardByName, generate, getConfig, myDecks, randomCard, resolveDeck, runningBuild, stopBuild, storage, type PublicConfig, type SavedDeck } from "../lib/client/api";
+import { cardByName, freeBuilds, generate, getConfig, myDecks, randomCard, resolveDeck, runningBuild, stopBuild, storage, type FreeBuilds, type PublicConfig, type SavedDeck } from "../lib/client/api";
 import { costUsd, formatCost, formatTokens, modelInfo } from "../lib/shared/models";
+import { EXAMPLES, sameSeeds } from "../lib/shared/examples";
 import { encodeDeck } from "../lib/shared/share";
 import { CollectionPanel, type Collection } from "./CollectionPanel";
-import { KeyPanel, type KeyState } from "./KeyPanel";
+import type { KeyState } from "./KeyPanel";
+import { BuildStatus, KeySheet, type Access } from "./BuildAccess";
 import { MyDecks } from "./MyDecks";
 import { SiteHeader } from "./SiteHeader";
 import { cloudDecks, loadAccount } from "../lib/client/account";
@@ -18,13 +20,17 @@ import { DeckView } from "./DeckView";
 import { UpgradeSummary } from "./UpgradeSummary";
 import { ForgeView, type DraftCell, type LogItem } from "./ForgeView";
 import { SeedHand, seedProblem, type Seed } from "./SeedHand";
+import { useHumanCheck } from "./useHumanCheck";
 
 type Phase = "setup" | "forging" | "result";
+type Mode = "seeds" | "deck";
 interface Result {
   deck: Deck;
   validation: Validation;
   usage?: Usage;
   model?: string;
+  /** Built on one of the site's free builds (not the visitor's key). */
+  free?: boolean;
   /** Upgrade mode: the swaps Claude made to the user's deck. */
   swaps?: Swap[];
 }
@@ -40,6 +46,7 @@ const BUDGETS: [Budget, string, string][] = [
 
 export default function App() {
   const [config, setConfig] = useState<PublicConfig | null>(null);
+  const [mode, setMode] = useState<Mode>("seeds");
   const [seeds, setSeeds] = useState<(Seed | null)[]>([null, null, null, null, null]);
   const [commander, setCommander] = useState<string | null>(null);
   const [budget, setBudget] = useState<Budget>("any");
@@ -59,6 +66,12 @@ export default function App() {
   const abort = useRef<AbortController | null>(null);
   const jobId = useRef<string | undefined>(undefined);
   const [key, setKey] = useState<KeyState>({ key: "", model: "" });
+  const keyRef = useRef(key);
+  keyRef.current = key;
+  const [free, setFree] = useState<FreeBuilds | null>(null);
+  const [sheet, setSheet] = useState<{ lead?: string } | null>(null);
+  const pending = useRef<GenerateRequest | null>(null);
+  const human = useHumanCheck("build");
   const [collection, setCollection] = useState<Collection | null>(null);
   const [usage, setUsage] = useState<{ usage: Usage; model?: string } | null>(null);
   const [decksVersion, setDecksVersion] = useState(0);
@@ -67,9 +80,20 @@ export default function App() {
   const shapeParsed = draftToShape(shape);
   const shapeReq = typeof shapeParsed === "object" ? shapeParsed : undefined;
   const shapeError = typeof shapeParsed === "string" ? shapeParsed : null;
+  const goRef = useRef<HTMLDivElement>(null);
+  const [goVisible, setGoVisible] = useState(true);
+
+  const refreshFree = useCallback(() => {
+    void freeBuilds().then(setFree);
+  }, []);
 
   useEffect(() => {
-    getConfig().then(setConfig).catch(() => setConfig(null));
+    getConfig()
+      .then((c) => {
+        setConfig(c);
+        if (c.freeBuilds) refreshFree();
+      })
+      .catch(() => setConfig(null));
     setSaved(lastDeck.get());
     setAccessCode(savedCode.get() ?? "");
     // the phone reloaded the tab mid-build: show the seeds again and pick the build back up
@@ -83,6 +107,15 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // the phone's sticky Build bar shows while the real button is off screen
+  useEffect(() => {
+    const el = goRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => setGoVisible(e.isIntersecting), { rootMargin: "0px 0px -40px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [phase, mode]);
+
   const filledSeeds = seeds.filter(Boolean) as Seed[];
   const identity = useMemo(() => {
     const set = new Set<Color>();
@@ -94,9 +127,20 @@ export default function App() {
   const problems = filledSeeds.map(seedProblem).filter(Boolean) as string[];
   const ready = filledSeeds.length === 5 && filledSeeds.every((s) => s.info && !s.loading) && problems.length === 0 && !shapeError;
   const needCode = config?.accessCodeRequired && !accessCode.trim() && !key.key;
-  // without a key (yours or the server's) only the scripted demo deck can be built
-  const demoOnly = config?.mode === "demo" && !key.key;
   const blocked = config?.setupProblem ?? null;
+
+  /** How a build of `req` would run right now. */
+  const accessFor = (req: Pick<GenerateRequest, "seeds" | "mode"> | null): Access => {
+    if (keyRef.current.key) return "own";
+    if (!config) return "none";
+    if (config.mode === "live") {
+      if (config.freeBuilds) return !free || free.remaining > 0 ? "free" : "none";
+      return "server";
+    }
+    // a site without a Claude key: only the scripted demo deck
+    return req && !req.mode && sameSeeds(req.seeds, config.demoSeeds) ? "demo" : "none";
+  };
+  const access = accessFor(mode === "seeds" ? { seeds: filledSeeds.map((s) => s.info?.name ?? s.name) } : { seeds: [], mode: "complete" });
 
   const pick = useCallback(async (slot: number, name: string) => {
     setError(null);
@@ -154,44 +198,46 @@ export default function App() {
     }
   };
 
-  const build = async () => {
-    if (!ready) return;
+  /** Every build starts here: it runs now if it can, otherwise the key sheet opens first. */
+  const start = (req: GenerateRequest) => {
     savedCode.set(accessCode.trim() || null);
-    await run({
+    const a = accessFor(req);
+    if (a === "none") {
+      if (!config?.ownKeys) {
+        setError(config?.freeBuilds ? "The free builds are used up." : "This site can only build the demo deck.");
+        return;
+      }
+      pending.current = req;
+      setSheet({
+        lead: config.freeBuilds
+          ? `You've used your ${config.freeBuilds.limit} free builds. Add your own Claude API key to keep building, on any model. You pay Anthropic directly: about 25 cents a deck on Sonnet.`
+          : req.mode
+            ? `${req.mode === "upgrade" ? "Upgrading" : "Completing"} a deck needs a Claude API key. You pay Anthropic directly: about 25 cents a deck on Sonnet.`
+            : "Building your own seeds needs a Claude API key. You pay Anthropic directly: about 25 cents a deck on Sonnet.",
+      });
+      return;
+    }
+    void run(req, undefined, a);
+  };
+
+  const build = () => {
+    if (!ready) return;
+    start({
       seeds: filledSeeds.map((s) => s.info!.name),
       commander,
       budget,
       theme,
       bracket,
       ...(shapeReq ? { shape: shapeReq } : {}),
-      ...(collection && !demoOnly ? { collection: { names: collection.names, mode: collection.mode } } : {}),
+      ...(collection && accessFor(null) !== "none" ? { collection: { names: collection.names, mode: collection.mode } } : {}),
     });
   };
 
-  /** "Yes, complete my deck": every card the user has stays; Claude fills the deck to 100. */
-  const complete = async (d: StartDeck) => {
-    savedCode.set(accessCode.trim() || null);
+  /** "Complete my deck" (under 100 cards) or "Suggest upgrades" (a full deck). */
+  const fromDeck = (kind: "complete" | "upgrade") => (d: StartDeck) => {
     const { names, basics } = splitBasics(d.cards);
-    await run({
-      mode: "complete",
-      seeds: names,
-      basics,
-      commander: d.commander,
-      partner: d.partner ?? null,
-      budget,
-      theme,
-      bracket,
-      ...(shapeReq ? { shape: shapeReq } : {}),
-      ...(collection ? { collection: { names: collection.names, mode: collection.mode } } : {}),
-    });
-  };
-
-  /** "Suggest upgrades": Claude proposes up to 10 swaps for a finished deck. */
-  const upgrade = async (d: StartDeck) => {
-    savedCode.set(accessCode.trim() || null);
-    const { names, basics } = splitBasics(d.cards);
-    await run({
-      mode: "upgrade",
+    start({
+      mode: kind,
       seeds: names,
       basics,
       commander: d.commander,
@@ -205,11 +251,15 @@ export default function App() {
   };
 
   /** Start a build, or (with `resume`) reattach to one that was running before a reload. */
-  const run = async (req: GenerateRequest, resume?: string) => {
+  const run = async (req: GenerateRequest, resume?: string, how: Access = "own") => {
     abort.current?.abort();
     const ctl = new AbortController();
     abort.current = ctl;
     jobId.current = resume;
+    const own = keyRef.current; // the key this tab shows (another tab may have saved a different one)
+    const isFree = !own.key && how === "free";
+    // a free build carries a fresh bot-check token (before the screen changes, while the widget is on the page)
+    const turnstile = isFree && !resume ? await human.take() : undefined;
     setPhase("forging");
     setLog([]);
     setDraft([]);
@@ -218,19 +268,20 @@ export default function App() {
     setError(null);
     setResult(null);
     setUsage(null);
+    window.scrollTo({ top: 0 });
     if (req.mode === "upgrade") {
       // the deck is already whole: show it in the grid while Claude looks for swaps
       setDraft([...req.seeds.map((name) => ({ name, role: "synergy" as const }))]);
       setFilled(100);
     }
-    const start = resume ? (runningBuild.get()?.at ?? Date.now()) : Date.now();
-    setElapsed(Date.now() - start);
-    const timer = setInterval(() => setElapsed(Date.now() - start), 250);
+    const startedAt = resume ? (runningBuild.get()?.at ?? Date.now()) : Date.now();
+    setElapsed(Date.now() - startedAt);
+    const timer = setInterval(() => setElapsed(Date.now() - startedAt), 250);
     let got: Result | null = null;
     let spent: { usage: Usage; model?: string } | null = null;
-    const own = key.key; // the key this tab shows (another tab may have saved a different one)
+    let freeUsed = false;
     try {
-      for await (const ev of generate(req, { accessCode, apiKey: own || undefined, model: key.model || undefined }, ctl.signal, resume)) {
+      for await (const ev of generate(req, { accessCode, apiKey: own.key || undefined, model: own.model || undefined, turnstile }, ctl.signal, resume)) {
         if (!jobId.current) jobId.current = runningBuild.get()?.job;
         handle(ev);
         if (ev.type === "usage") {
@@ -238,16 +289,20 @@ export default function App() {
           setUsage(spent);
         }
         if (ev.type === "deck") got = { deck: ev.deck, validation: ev.validation, ...(ev.swaps ? { swaps: ev.swaps } : {}) };
-        if (ev.type === "error") setError(ev.message);
+        if (ev.type === "error") {
+          if (ev.code === "free_used") freeUsed = true;
+          else setError(ev.message);
+        }
       }
     } catch (e) {
       if (!ctl.signal.aborted) setError(`The connection dropped: ${(e as Error).message}. Try again.`);
     } finally {
       clearInterval(timer);
     }
+    if (config?.freeBuilds) refreshFree();
     if (ctl.signal.aborted) return;
     if (got) {
-      if (spent && spent.model !== "demo") Object.assign(got, spent);
+      if (spent && spent.model !== "demo") Object.assign(got, spent, isFree ? { free: true } : {});
       setFilled(100);
       setResult(got);
       lastDeck.set(got);
@@ -260,6 +315,12 @@ export default function App() {
       }, 900);
     } else {
       setPhase("setup");
+      if (freeUsed) {
+        // the server says there are none left (another tab, or the daily cap): ask for a key
+        setFree((f) => (f ? { ...f, remaining: 0 } : { limit: config?.freeBuilds?.limit ?? 0, used: config?.freeBuilds?.limit ?? 0, remaining: 0, model: config?.freeBuilds?.model ?? "" }));
+        pending.current = req;
+        setSheet({ lead: "Your free builds are used up. Add your own Claude API key to keep building, on any model. You pay Anthropic directly: about 25 cents a deck on Sonnet." });
+      }
     }
   };
 
@@ -274,12 +335,13 @@ export default function App() {
         partner: r.deck.partner?.name,
         colors: r.deck.colorIdentity,
         d,
-        ...(r.usage && r.model ? { usage: r.usage, model: r.model } : {}),
+        // the cost only means something when it was the visitor's own key
+        ...(r.usage && r.model && !r.free ? { usage: r.usage, model: r.model } : {}),
       };
       // logged in: into the account; otherwise (or if that fails) into this browser
-      let saved = false;
-      if ((await loadAccount()).user) saved = await cloudDecks.save(entry).then(() => true, () => false);
-      if (!saved) myDecks.add(entry);
+      let ok = false;
+      if ((await loadAccount()).user) ok = await cloudDecks.save(entry).then(() => true, () => false);
+      if (!ok) myDecks.add(entry);
       setDecksVersion((v) => v + 1);
     } catch {
       /* the deck is still shown; it just isn't added to My decks */
@@ -360,94 +422,141 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const openSheet = (lead?: string) => {
+    pending.current = null;
+    setSheet({ lead });
+  };
+  const keyDone = () => {
+    setSheet(null);
+    // the sheet opened because a build needed a key: start that build now
+    const req = pending.current;
+    pending.current = null;
+    if (req) setTimeout(() => void run(req, undefined, "own"), 50);
+  };
+
+  const moreSet = [theme.trim() ? 1 : 0, shapeReq ? 1 : 0, collection ? 1 : 0].reduce((a, b) => a + b, 0);
+  const examples = config?.mode === "demo" && !key.key ? EXAMPLES.filter((e) => sameSeeds(e.seeds, config.demoSeeds)) : EXAMPLES;
   const tint = tintSource.length ? tintSource : null;
+  const goHint = blocked && !key.key ? blocked : mode === "deck" ? null : !ready ? (problems.length ? problems[0] : `Add ${5 - filledSeeds.length} more card${5 - filledSeeds.length === 1 ? "" : "s"} to start.`) : needCode ? "Enter the access code to start." : "One to three minutes. You can leave the page while it builds.";
+
   return (
     <div className="app" style={tint ? tintStyle(tint) : undefined}>
       <SiteHeader
         active={phase === "setup" && decksHash ? "decks" : "build"}
         donationUrl={config ? (config.donationUrl ?? null) : undefined}
         extra={
-          config ? (
-            config.mode === "demo" && !config.ownKeys ? (
-              <span className="pill pill--demo" title="No ANTHROPIC_API_KEY set: the app replays a scripted build of one sample deck.">
-                Demo mode
-              </span>
-            ) : (
-              <span className="pill nav-pill" title={`Claude model: ${config.model}`}>
-                skill {config.skillVersion}
-              </span>
-            )
+          config?.mode === "demo" && !config.ownKeys ? (
+            <span className="pill pill--demo" title="No ANTHROPIC_API_KEY set: the app replays a scripted build of one sample deck.">
+              Demo mode
+            </span>
           ) : null
         }
       />
 
       {phase === "setup" ? (
         <main className="setup">
+          {saved ? (
+            <p className="welcome" data-testid="last-deck">
+              <span>Your last deck</span>
+              <button
+                type="button"
+                className="welcome-deck"
+                onClick={() => {
+                  setResult(saved);
+                  setPhase("result");
+                }}
+              >
+                <IdentityPips colors={saved.deck.colorIdentity} size={13} /> {saved.deck.name}
+              </button>
+            </p>
+          ) : null}
           <section className="hero">
             <h1>
               Five cards in.
               <br />A hundred out.
             </h1>
-            <p className="hero-sub">Pick five cards you love. Claude builds a full Commander deck around them in the bracket you choose, checks every card on Scryfall, and shows its work while it builds. Or let it complete a deck you started.</p>
+            <p className="hero-sub">Pick five cards you love. Claude builds a 100-card Commander deck around them and checks every card on Scryfall.</p>
           </section>
 
-          <section className="mat" aria-label="Seed cards">
-            <SeedHand seeds={seeds} commander={commander} onPick={pick} onRemove={remove} onCommander={setCommander} />
-            <div className="mat-bar">
-              <span className="mat-identity">
-                {filledSeeds.length ? (
-                  <>
-                    <IdentityPips colors={identity} size={16} /> {identity.length ? `${identity.length}-color` : "Colorless"} so far, {filledSeeds.length} of 5 cards
-                  </>
-                ) : (
-                  "Your seeds can be any five Commander-legal cards, including a commander."
-                )}
-              </span>
-              <span className="mat-actions">
-                {config?.mode === "demo" ? (
-                  <button type="button" className="btn" onClick={() => loadSeeds(config.demoSeeds, config.demoSeeds[0])}>
-                    Load the demo seeds
-                  </button>
-                ) : null}
-                {filledSeeds.length < 5 ? (
-                  <button type="button" className="btn" onClick={surprise} disabled={surprising}>
-                    {surprising ? "Shuffling…" : filledSeeds.length ? "Fill the rest randomly" : "Surprise me"}
-                  </button>
-                ) : null}
-              </span>
-            </div>
-          </section>
+          <div className="modes" role="tablist" aria-label="How to start">
+            {(
+              [
+                ["seeds", "From five cards"],
+                ["deck", "From my decklist"],
+              ] as [Mode, string][]
+            ).map(([m, label]) => (
+              <button key={m} type="button" role="tab" aria-selected={mode === m} className={`mode ${mode === m ? "is-on" : ""}`} onClick={() => setMode(m)} data-testid={`mode-${m}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {mode === "seeds" ? (
+            <section className="mat" aria-label="Seed cards">
+              <SeedHand seeds={seeds} commander={commander} onPick={pick} onRemove={remove} onCommander={setCommander} />
+              <div className="mat-bar">
+                <span className="mat-identity">
+                  {filledSeeds.length ? (
+                    <>
+                      <IdentityPips colors={identity} size={16} /> {identity.length ? `${identity.length}-color` : "Colorless"} so far, {filledSeeds.length} of 5 cards
+                    </>
+                  ) : (
+                    "Any five Commander-legal cards, a commander included."
+                  )}
+                </span>
+                <span className="mat-actions">
+                  {filledSeeds.length < 5 ? (
+                    <button type="button" className="btn" onClick={surprise} disabled={surprising}>
+                      {surprising ? "Shuffling…" : filledSeeds.length ? "Fill the rest randomly" : "Surprise me"}
+                    </button>
+                  ) : null}
+                </span>
+              </div>
+              {!filledSeeds.length && config ? (
+                <div className="examples" data-testid="examples">
+                  <span className="examples-label">{examples.length === 1 ? "Or watch" : "Or try"}</span>
+                  {examples.map((e) => (
+                    <button key={e.label} type="button" className="chip chip--example" onClick={() => loadSeeds(e.seeds, e.commander)}>
+                      {examples.length === 1 ? "the demo deck: " : ""}
+                      {e.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : (
+            <section className="mat mat--deck" aria-label="Your decklist">
+              <DeckStartPanel
+                onComplete={fromDeck("complete")}
+                onUpgrade={fromDeck("upgrade")}
+                onRead={(r) => {
+                  if (r.bracket >= 1 && r.bracket <= 4) setBracket(r.bracket as BracketNumber);
+                }}
+                blocked={shapeError ? "Fix the deck shape first." : needCode ? "Enter the access code first." : undefined}
+              />
+            </section>
+          )}
 
           <section className="options" aria-label="Build options">
-            <div className="opt">
-              <span className="opt-label" id="cmd-label">
-                Commander
-              </span>
-              <p className="opt-value" aria-labelledby="cmd-label">
-                {commander ? (
-                  <>
-                    <strong>{commander}</strong>{" "}
-                    <button type="button" className="link" onClick={() => setCommander(null)}>
-                      Let Claude choose instead
-                    </button>
-                  </>
-                ) : (
-                  <>Claude picks the best commander for your seeds. To choose one yourself, use the crown on a legendary creature.</>
-                )}
-              </p>
-            </div>
-            <fieldset className="opt">
-              <legend className="opt-label">Budget</legend>
-              <div className="seg">
-                {BUDGETS.map(([v, label, hint]) => (
-                  <label key={v} className={`seg-item ${budget === v ? "is-on" : ""}`}>
-                    <input type="radio" name="budget" value={v} checked={budget === v} onChange={() => setBudget(v)} />
-                    <span className="seg-title">{label}</span>
-                    <span className="seg-hint">{hint}</span>
-                  </label>
-                ))}
+            {mode === "seeds" ? (
+              <div className="opt">
+                <span className="opt-label" id="cmd-label">
+                  Commander
+                </span>
+                <p className="opt-value" aria-labelledby="cmd-label">
+                  {commander ? (
+                    <>
+                      <strong>{commander}</strong>{" "}
+                      <button type="button" className="link" onClick={() => setCommander(null)}>
+                        Let Claude choose
+                      </button>
+                    </>
+                  ) : (
+                    <>Claude picks it. To choose yourself, tap the crown on a legendary creature.</>
+                  )}
+                </p>
               </div>
-            </fieldset>
+            ) : null}
             <fieldset className="opt">
               <legend className="opt-label">Bracket</legend>
               <div className="seg seg--four">
@@ -462,88 +571,70 @@ export default function App() {
                 ))}
               </div>
             </fieldset>
-            <DeckShapeFields value={shape} onChange={setShape} />
-            <label className="opt">
-              <span className="opt-label">Anything else?</span>
-              <input className="field" value={theme} maxLength={300} onChange={(e) => setTheme(e.target.value)} placeholder="For example: lots of tokens, no infinite combos, flavor over power" />
-            </label>
+            <fieldset className="opt">
+              <legend className="opt-label">Budget</legend>
+              <div className="seg">
+                {BUDGETS.map(([v, label, hint]) => (
+                  <label key={v} className={`seg-item ${budget === v ? "is-on" : ""}`}>
+                    <input type="radio" name="budget" value={v} checked={budget === v} onChange={() => setBudget(v)} />
+                    <span className="seg-title">{label}</span>
+                    <span className="seg-hint">{hint}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             {config?.accessCodeRequired && !key.key ? (
               <label className="opt">
                 <span className="opt-label">Access code</span>
                 <input className="field" type="password" value={accessCode} onChange={(e) => setAccessCode(e.target.value)} placeholder="Ask the person who runs this app" autoComplete="off" />
               </label>
             ) : null}
+            <details className="more" open={moreSet > 0 || !!shapeError || undefined} data-testid="more-options">
+              <summary>
+                More options {moreSet ? <span className="pill">{moreSet} set</span> : <span className="opt-summary-hint">wishes, deck shape, your collection</span>}
+              </summary>
+              <div className="more-body">
+                <label className="opt">
+                  <span className="opt-label">Anything else?</span>
+                  <input className="field" value={theme} maxLength={300} onChange={(e) => setTheme(e.target.value)} placeholder="For example: lots of tokens, no infinite combos, flavor over power" />
+                </label>
+                <DeckShapeFields value={shape} onChange={setShape} />
+                <CollectionPanel value={collection} onChange={setCollection} inactive={access === "demo" ? "The demo deck ignores your collection." : undefined} />
+              </div>
+            </details>
           </section>
 
-          <div className="panels">
-            {config?.ownKeys ? <KeyPanel value={key} onChange={setKey} serverKey={config.mode === "live"} /> : null}
-            <DeckStartPanel
-              onComplete={complete}
-              onUpgrade={upgrade}
-              onRead={(r) => {
-                if (r.bracket >= 1 && r.bracket <= 4) setBracket(r.bracket as BracketNumber);
-              }}
-              blocked={
-                shapeError
-                  ? "Fix the deck shape first."
-                  : demoOnly
-                  ? config?.ownKeys
-                    ? "Completing or upgrading a deck needs a Claude API key: add yours in the key panel."
-                    : "Completing or upgrading a deck needs a Claude API key on this site."
-                  : needCode
-                    ? "Enter the access code first."
-                    : undefined
-              }
-            />
-            <CollectionPanel value={collection} onChange={setCollection} inactive={demoOnly ? "Your collection is used once you add an API key; the demo deck ignores it." : undefined} />
-          </div>
-
-          <div className="go">
-            <button type="button" className="btn btn--big btn--brass" onClick={build} disabled={!ready || !!needCode || (!!blocked && !key.key)}>
-              Build my deck
-            </button>
-            <p className="go-hint">
-              {blocked && !key.key
-                ? blocked
-                : !ready
-                ? problems.length
-                  ? problems[0]
-                  : `Add ${5 - filledSeeds.length} more card${5 - filledSeeds.length === 1 ? "" : "s"} to start.`
-                : needCode
-                  ? config?.ownKeys
-                    ? "Enter the access code, or use your own Claude API key, to start."
-                    : "Enter the access code to start."
-                  : demoOnly
-                    ? config?.ownKeys
-                      ? "Without an API key this builds the demo deck only: load the demo seeds, or add your Claude API key above."
-                      : "Demo mode: load the demo seeds to watch a scripted build."
-                    : "Takes one to three minutes. You can watch every step, and leave the page while it builds."}
-            </p>
+          <div className="go" ref={goRef}>
+            {mode === "seeds" ? (
+              <button type="button" className="btn btn--big btn--brass" onClick={build} disabled={!ready || !!needCode || (!!blocked && !key.key)} data-testid="build">
+                Build my deck
+              </button>
+            ) : null}
+            <BuildStatus config={config} access={access} keyState={key} free={free} onSheet={openSheet} />
+            {goHint ? <p className="go-hint">{goHint}</p> : null}
             {error ? (
               <p className="error" role="alert">
                 {error}
               </p>
             ) : null}
-            {saved ? (
-              <button
-                type="button"
-                className="link"
-                onClick={() => {
-                  setResult(saved);
-                  setPhase("result");
-                }}
-              >
-                Open your last deck: {saved.deck.name}
-              </button>
-            ) : null}
           </div>
+          {mode === "seeds" && !goVisible ? (
+            <div className="go-bar" data-testid="go-bar">
+              <span className="go-bar-info">
+                <IdentityPips colors={identity} size={13} /> {filledSeeds.length}/5 · Bracket {bracket}
+              </span>
+              <button type="button" className="btn btn--brass" onClick={build} disabled={!ready || !!needCode || (!!blocked && !key.key)}>
+                Build my deck
+              </button>
+            </div>
+          ) : null}
           <MyDecks onOpen={openSaved} version={decksVersion} showEmpty={decksHash} />
         </main>
       ) : null}
 
       {phase === "forging" ? (
         <main>
-          <ForgeView log={log} draft={draft} commander={draftCmd} filled={filled} elapsed={elapsed} onCancel={cancel} spend={usage && usage.model !== "demo" ? spendText(usage.usage, usage.model) : undefined} />
+          <ForgeView log={log} draft={draft} commander={draftCmd} filled={filled} elapsed={elapsed} onCancel={cancel} spend={usage && usage.model !== "demo" && key.key ? spendText(usage.usage, usage.model) : undefined} />
           {error ? (
             <p className="error" role="alert">
               {error}
@@ -561,15 +652,31 @@ export default function App() {
             added={result.swaps?.map((s) => s.in)}
             onRestart={restart}
             onRebuild={ready ? build : undefined}
-            spend={result.usage && result.model ? `Built with ${modelInfo(result.model)?.label ?? result.model}: ${spendText(result.usage, result.model)}` : undefined}
+            spend={result.model ? (result.free ? `Free build with ${modelInfo(result.model)?.label ?? result.model}` : result.usage ? `Built with ${modelInfo(result.model)?.label ?? result.model}: ${spendText(result.usage, result.model)}` : undefined) : undefined}
             donationUrl={config?.donationUrl ?? undefined}
           />
         </main>
       ) : null}
 
+      <KeySheet
+        open={!!sheet}
+        lead={sheet?.lead}
+        value={key}
+        onChange={setKey}
+        onClose={() => {
+          pending.current = null;
+          setSheet(null);
+        }}
+        onDone={keyDone}
+      />
+
+      {/* the bot check for free builds: on every screen, so "Build another version" has a token too */}
+      {config?.freeBuilds && !key.key ? <div className="human-check">{human.widget}</div> : null}
+
       <footer className="foot">
         <p>
-          Hundredfoldz is unofficial Fan Content permitted under the <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC. Card data and images via <a href="https://scryfall.com">Scryfall</a>. Free and open source: <a href="https://github.com/M-Sahin/mtg-master">built on the mtg-master Claude skill</a>.
+          Hundredfoldz is unofficial Fan Content permitted under the <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC. Card data and images via <a href="https://scryfall.com">Scryfall</a>. Free and open source: <a href="https://github.com/M-Sahin/mtg-master">built on the mtg-master Claude skill</a>
+          {config?.skillVersion ? ` (v${config.skillVersion})` : ""}.
           {config?.donationUrl ? (
             <>
               {" "}
@@ -592,7 +699,6 @@ function tintStyle(colors: Color[]) {
   const d = c[2] ?? b;
   return { ["--tint-a" as string]: a, ["--tint-b" as string]: b, ["--tint-c" as string]: d };
 }
-
 
 function spendText(u: Usage, model?: string) {
   return `${formatTokens(u)}, ${formatCost(model ? costUsd(model, u) : null)}`;

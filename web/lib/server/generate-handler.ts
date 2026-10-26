@@ -7,6 +7,8 @@ import { JOB_ID, JobNotFound, jobExists, newJobId, startJob, stopJob, tailJob } 
 import { runAgent } from "./agent";
 import { serverConfig } from "./config";
 import { DEMO_SEEDS, demoCaller } from "./demo";
+import { claimFreeBuild, freeRefusal, freeStatus, visitor } from "./free-builds";
+import { turnstileError, verifyTurnstile } from "./turnstile";
 import type { Budget, GenerateRequest, StreamEvent } from "../shared/types";
 import { MAX_COLLECTION } from "../shared/types";
 
@@ -143,6 +145,10 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
       [LIMITS.buildOwnKeyIp, ip],
     ]);
     if (!r.ok) return tooMany(`You've started a lot of builds in the last hour (the limit is ${cfg.ownKeyBuildsPerHour}). Try again later.`, r);
+  } else if (cfg.free && !override?.callModel) {
+    // free builds: limited per visitor below, once the request is known to be valid
+    const r = await rateLimit(LIMITS.buildServerKey(cfg.buildsPerHour), ip);
+    if (!r.ok) return tooMany(`You've built ${cfg.buildsPerHour} decks in the last hour. Try again later.`, r);
   } else if (!cfg.demo && !override?.callModel) {
     if (!cfg.accessCode && !cfg.publicAccess) {
       return Response.json({ error: "This deployment has an API key but no ACCESS_CODE. Set ACCESS_CODE (or PUBLIC_ACCESS=1) in the Vercel project settings." }, { status: 503 });
@@ -178,24 +184,54 @@ export async function handleGenerate(request: Request, override?: GenerateOverri
     req.bracket = 3; // the scripted demo deck is a Bracket 3 deck
     delete req.shape; // and it can't follow deck-shape limits
   }
+  // a free build: the visitor's bot check, then one of their free builds
+  const free = !userKey && !demo && cfg.free ? cfg.free : null;
+  const headers = new Headers();
+  let refund: (() => Promise<void>) | null = null;
+  if (free && !override?.callModel) {
+    const human = await verifyTurnstile((body as any)?.turnstile, ip, "build");
+    if (!human.ok) return turnstileError(human);
+    const v = visitor(request);
+    if (v.setCookie) headers.append("set-cookie", v.setCookie);
+    const claim = await claimFreeBuild(free, v);
+    if (!claim.ok) return Response.json({ error: freeRefusal(claim.reason, free), code: "free_used" }, { status: 402, headers });
+    refund = claim.refund;
+  }
   const wanted = typeof (body as any)?.model === "string" ? String((body as any).model).trim() : "";
-  const model = userKey ? (MODEL_ID.test(wanted) ? wanted : DEFAULT_MODEL) : cfg.model;
+  // free builds always use the free model: stronger ones need the visitor's own key
+  const model = userKey ? (MODEL_ID.test(wanted) ? wanted : DEFAULT_MODEL) : free ? free.model : cfg.model;
   const callModel = override?.callModel ?? (userKey ? anthropicCaller(userKey) : demo ? demoCaller(override?.demoSpeed ?? 1) : anthropicCaller(cfg.apiKey));
-  const engine = demo ? cfg.engine : cfg.liveEngine;
+  const engine = demo ? cfg.engine : free ? { ...cfg.liveEngine, effort: free.effort as typeof cfg.liveEngine.effort } : cfg.liveEngine;
   const id = newJobId();
   const started = Date.now();
   const run = startJob(id, async (emit, signal) => {
     try {
       const result = await runAgent(req, { model: demo ? "demo" : model, callModel, emit, signal, engine });
       if (result) emit({ type: "deck", deck: result.deck, validation: result.validation, analysis: result.analysis, review: result.review, ...(result.swaps ? { swaps: result.swaps } : {}) });
+      // no deck and not stopped by the visitor: the free build doesn't count
+      else if (!signal.aborted) await refund?.();
     } catch (e) {
+      if (!signal.aborted) await refund?.();
       emit({ type: "error", message: friendlyModelError(e, !!userKey) || "Something went wrong." });
     } finally {
       emit({ type: "done", ms: Date.now() - started });
     }
   });
   override?.waitUntil?.(run);
-  return tailResponse(id, 0, { type: "job", id });
+  const res = tailResponse(id, 0, { type: "job", id });
+  headers.forEach((v, k) => res.headers.append(k, v));
+  return res;
+}
+
+/** GET /api/free-builds: how many free builds this visitor has left (and a browser id, if new). */
+export async function handleFreeStatus(request: Request): Promise<Response> {
+  const cfg = serverConfig();
+  if (!cfg.free) return Response.json({ enabled: false }, { headers: { "cache-control": "no-store" } });
+  const v = visitor(request);
+  const status = await freeStatus(cfg.free, v);
+  const headers = new Headers({ "cache-control": "no-store" });
+  if (v.setCookie) headers.append("set-cookie", v.setCookie);
+  return Response.json({ enabled: true, ...status }, { headers });
 }
 
 /** POST /api/key/check {key}: does this key work, and which models can it use? The key isn't stored. */

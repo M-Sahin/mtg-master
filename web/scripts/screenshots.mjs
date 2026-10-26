@@ -21,13 +21,14 @@ async function run(name, viewport, steps) {
 }
 
 const loadSeeds = async (p) => {
-  await p.click("text=Load the demo seeds");
+  // the one-tap examples under the seeds (on a demo site, only the demo deck's seeds)
+  await p.click("[data-testid=examples] button >> nth=0");
   await p.waitForFunction(() => document.querySelectorAll(".flip.is-flipped").length === 5, null, { timeout: 30000 });
   await p.waitForTimeout(1500);
 };
 const toResult = async (p) => {
   await loadSeeds(p);
-  await p.click("text=Build my deck");
+  await p.click("[data-testid=build]");
   await p.waitForSelector(".deck", { timeout: 120000 });
   await p.waitForTimeout(2500);
 };
@@ -36,8 +37,11 @@ await run("1-setup-empty", { width: 1440, height: 1000 }, async () => {});
 await run("2-setup-seeds", { width: 1440, height: 1000 }, loadSeeds);
 await run("3-building", { width: 1440, height: 1000 }, async (p) => {
   await loadSeeds(p);
-  await p.click("text=Build my deck");
+  await p.click("[data-testid=build]");
   await p.waitForFunction(() => document.querySelectorAll(".cell.is-in").length > 35, null, { timeout: 120000 });
+  const plain = await p.locator(".log-tool-plain").allInnerTexts();
+  console.log(`build log in plain words: ${plain.join(" | ")}`);
+  if (!plain.length) errors.push("the build log shows no plain-language searches");
 });
 await run("4-result", { width: 1440, height: 1000 }, toResult);
 await run("5-numbers", { width: 1440, height: 1000 }, async (p) => {
@@ -46,7 +50,7 @@ await run("5-numbers", { width: 1440, height: 1000 }, async (p) => {
   await p.waitForSelector("[data-testid=openers] .op-row", { timeout: 10000 }).catch(() => errors.push("no Opening hands panel on the Numbers tab"));
   const rows = await p.locator("[data-testid=openers] .op-row").allInnerTexts();
   console.log(`opening hands: ${rows.map((r) => r.replace(/\s+/g, " ")).join(" | ")}`);
-  await p.waitForSelector("[data-testid=deck-boxes] .deckboxes-list", { timeout: 20000 }).catch(() => {});
+  await p.waitForSelector("[data-testid=deck-boxes] .deckboxes-best", { timeout: 20000 }).catch(() => {});
   const boxes = await p.locator("[data-testid=deck-boxes]").innerText({ timeout: 2000 }).catch(() => "(no panel: none of the deck's cards are in a box since 2020)");
   console.log(`singles or boxes: ${boxes.replace(/\s+/g, " ").slice(0, 400)}`);
   await p.locator("[data-testid=openers]").scrollIntoViewIfNeeded().catch(() => {});
@@ -65,7 +69,8 @@ await run("27-buy-cards", { width: 1440, height: 1000 }, async (p) => {
 // a card's price at each shop, with buy links
 await run("28-card-offers", { width: 1440, height: 1000 }, async (p) => {
   await toResult(p);
-  await p.locator(".role-grid .tile").nth(1).locator("button, [role=button], img").first().click();
+  // the stacked view: click a card's name bar (the rest of it sits under the next card)
+  await p.locator(".stack-card").nth(1).locator("button, [role=button], img").first().click({ position: { x: 30, y: 8 } });
   await p.waitForSelector("[data-testid=card-offers] .offer", { timeout: 20000 }).catch(() => errors.push("no shop prices in the card view"));
   const rows = await p.locator("[data-testid=card-offers] .offer").allInnerTexts();
   console.log(`card offers: ${rows.map((r) => r.replace(/\s+/g, " ")).join(" | ")}`);
@@ -133,7 +138,7 @@ await run("13-dropped-stream", { width: 390, height: 844 }, async (p) => {
   const reconnects = [];
   p.on("request", (r) => r.method() === "GET" && r.url().includes("/api/generate?job=") && reconnects.push(r.url()));
   await loadSeeds(p);
-  await p.click("text=Build my deck");
+  await p.click("[data-testid=build]");
   await p.waitForSelector(".deck", { timeout: 120000 });
   const body = await p.locator("body").innerText();
   console.log(`dropped stream: deck arrived after ${reconnects.length} reconnect(s): ${reconnects.map((u) => u.split("&")[1]).join(", ")}`);
@@ -145,7 +150,7 @@ await run("14-switch-apps", { width: 390, height: 844 }, async (p) => {
   const gets = [];
   p.on("response", (r) => r.request().method() === "GET" && r.url().includes("/api/generate?job=") && gets.push(Date.now()));
   await loadSeeds(p);
-  await p.click("text=Build my deck");
+  await p.click("[data-testid=build]");
   await p.waitForTimeout(1000); // the demo build takes ~9 s: switch away early
   const setVis = (state) =>
     p.evaluate((st) => {
@@ -165,6 +170,9 @@ await run("14-switch-apps", { width: 390, height: 844 }, async (p) => {
 });
 // own key panel: a made-up key is refused by Anthropic with a readable message
 await run("15-own-key", { width: 1440, height: 1000 }, async (p) => {
+  // the key setup lives in a sheet, opened from the line under the Build button
+  await p.click("[data-testid=add-key]");
+  await p.waitForSelector("[data-testid=key-sheet][open]", { timeout: 5000 }).catch(() => errors.push("the key sheet didn't open"));
   // password managers need a form with a username and a current-password field
   const form = await p.evaluate(() => {
     const f = document.querySelector("[data-testid=api-key]")?.closest("form");
@@ -181,6 +189,7 @@ await run("15-own-key", { width: 1440, height: 1000 }, async (p) => {
 });
 // collection panel: paste a list
 await run("16-collection", { width: 1440, height: 1000 }, async (p) => {
+  await p.click("[data-testid=more-options] summary");
   await p.click("text=Add my collection");
   await p.fill("textarea[aria-label='Paste your collection']", "1 Sol Ring\n1x Arcane Signet (CMR) 297\nMeren of Clan Nel Toth");
   await p.click("text=Use this list");
@@ -231,15 +240,18 @@ for (const [name, path] of [["18-mobile-bracket", "/bracket"], ["19-mobile-home-
 await run("20-complete-my-deck", { width: 1440, height: 1000 }, async (p) => {
   const picker = await p.locator("input[name=bracket]").count();
   if (picker !== 4) errors.push(`bracket picker has ${picker} options`);
-  await p.click("text=Add my deck");
+  await p.click("[data-testid=mode-deck]");
   await p.fill("[data-testid=deck-list]", "Commander\n1 Meren of Clan Nel Toth\n\nDeck\n1 Sol Ring\n1 Sakura-Tribe Elder\n1 Viscera Seer\n1 Eternal Witness\n10 Forest\n10 Swamp");
   await p.click("text=Read my deck");
   await p.waitForSelector("[data-testid=deck-start-result]", { timeout: 60000 });
   const ask = await p.locator(".deckstart-ask").innerText().catch(() => "");
   console.log(`complete my deck: ${ask.split("\n")[0]}`);
-  if (!/Your deck has 25 cards\. Do you want Hundredfoldz to complete it\?/.test(ask)) errors.push(`no completion question: ${ask}`);
-  // this demo deployment has no key: the button explains why it's off
-  if (!(await p.locator("text=Yes, complete my deck").isDisabled())) errors.push("complete button should need an API key here");
+  if (!/Your deck has 25 cards\. Complete it to 100\?/.test(ask)) errors.push(`no completion question: ${ask}`);
+  // this demo deployment has no key: the button asks for one
+  await p.click("text=Yes, complete my deck");
+  const lead = await p.locator("[data-testid=key-sheet][open] .panel-sub").first().innerText({ timeout: 5000 }).catch(() => "");
+  console.log(`complete without a key: "${lead.slice(0, 90)}"`);
+  if (!/Completing a deck needs a Claude API key/.test(lead)) errors.push(`complete without a key: ${lead}`);
 });
 // bracket checker: upload a .txt decklist
 await run("21-bracket-upload", { width: 1440, height: 1000 }, async (p) => {
@@ -269,16 +281,18 @@ await run("22-upgrade-my-deck", { width: 1440, height: 1000 }, async (p) => {
     const lines = [{ type: "status", text: "Claude is looking for upgrades" }, { type: "deck", deck, validation: { ok: true, errors: [], warnings: [], total: 100, gameChangers: [] }, swaps }, { type: "done", ms: 5 }];
     await r.fulfill({ status: 200, contentType: "application/x-ndjson", body: lines.map((l) => JSON.stringify(l)).join("\n") + "\n" });
   });
+  await p.click("[data-testid=add-key]");
   await p.fill("[data-testid=api-key]", "sk-ant-api03-" + "y".repeat(60));
   await p.press("[data-testid=api-key]", "Enter");
-  await p.waitForSelector(".keypanel .pill--ok", { timeout: 20000 });
-  await p.click("text=Add my deck");
+  // the sheet closes and the line under the Build button names the key
+  await p.waitForSelector("[data-testid=build-status]:has-text('Building with your key')", { timeout: 20000 }).catch(() => errors.push("the key wasn't taken"));
+  await p.click("[data-testid=mode-deck]");
   await p.fill("[data-testid=deck-list]", readFileSync("evals/sample-decks/judith-aristocrats--v2--1.txt", "utf8"));
   await p.click("text=Read my deck");
   await p.waitForSelector("[data-testid=deck-start-result]", { timeout: 60000 });
   const ask = await p.locator(".deckstart-ask").innerText().catch(() => "");
   console.log(`upgrade my deck: ${ask.split("\n")[0]}`);
-  if (!/Your deck is complete\. Do you want Hundredfoldz to suggest upgrades\?/.test(ask)) errors.push(`no upgrade question: ${ask}`);
+  if (!/Your deck is complete\. Look for upgrades\?/.test(ask)) errors.push(`no upgrade question: ${ask}`);
   await p.click("[data-testid=upgrade-deck]");
   await p.waitForSelector("[data-testid=upgrade-summary]", { timeout: 30000 }).catch(() => errors.push("no upgrade summary after the build"));
   const swaps = await p.locator(".swap").allInnerTexts();
@@ -328,11 +342,12 @@ await run("26-mobile-nav", { width: 390, height: 844 }, async (p) => {
 // deck shape: a broken limit is explained and blocks the build; a good one is counted
 await run("29-deck-shape", { width: 1440, height: 1000 }, async (p) => {
   await loadSeeds(p);
+  await p.click("[data-testid=more-options] summary");
   await p.click("[data-testid=deck-shape] summary");
   await p.fill("[data-testid=shape-creatures-min]", "40");
   await p.fill("[data-testid=shape-creatures-max]", "20");
   const err = await p.locator("[data-testid=deck-shape] .error").innerText().catch(() => "");
-  const blocked = await p.locator("text=Build my deck").isDisabled();
+  const blocked = await p.locator("[data-testid=build]").isDisabled();
   console.log(`deck shape: "${err}"; build blocked: ${blocked}`);
   if (!/minimum \(40\) is above the maximum \(20\)/.test(err) || !blocked) errors.push(`deck shape check: "${err}", blocked ${blocked}`);
   await p.fill("[data-testid=shape-creatures-max]", "45");
@@ -364,7 +379,65 @@ await run("31-account-decks", { width: 1440, height: 1000 }, async (p) => {
   console.log(`account decks: ${panel.replace(/\s+/g, " ").slice(0, 160)}; navbar: ${nav.replace(/\s+/g, " ")}`);
   if (!/Cloud Meren/.test(panel) || !/saved to your account/.test(panel) || !/Account/.test(nav)) errors.push(`account decks: ${panel.slice(0, 100)} / ${nav}`);
 });
-await run("7-mobile-setup", { width: 390, height: 844 }, loadSeeds);
+// free builds (faked in the browser: CI's site has no Claude key): the count, then the key sheet when they're used up
+await run("32-free-builds", { width: 1440, height: 1000 }, async (p) => {
+  let body = null;
+  await p.route("**/api/config", async (r) => {
+    const real = await (await r.fetch()).json();
+    await r.fulfill({ json: { ...real, mode: "live", ownKeys: true, freeBuilds: { limit: 3, model: "claude-haiku-5-5", modelLabel: "Claude Haiku 5.5" } } });
+  });
+  await p.route("**/api/free-builds", (r) => r.fulfill({ json: { enabled: true, limit: 3, used: 1, remaining: 2, model: "claude-haiku-5-5" } }));
+  await p.route("**/api/generate", async (r) => {
+    if (r.request().method() !== "POST") return r.fallback();
+    body = r.request().postDataJSON();
+    await r.fulfill({ status: 402, json: { error: "You've used your 3 free builds. Add your own Claude API key to keep building.", code: "free_used" } });
+  });
+  await p.goto(base, { waitUntil: "load" });
+  const status = await p.locator("[data-testid=build-status]").innerText({ timeout: 8000 }).catch(() => "");
+  const examples = await p.locator("[data-testid=examples] button").allInnerTexts();
+  console.log(`free builds: "${status}"; examples: ${examples.join(" | ")}`);
+  if (!/Free build: 2 of 3 left, on Claude Haiku 5\.5/.test(status)) errors.push(`free build line: ${status}`);
+  if (examples.length !== 3) errors.push(`${examples.length} examples on a live site`);
+  await loadSeeds(p);
+  await p.click("[data-testid=build]");
+  const lead = await p.locator("[data-testid=key-sheet][open] .panel-sub").first().innerText({ timeout: 30000 }).catch(() => "");
+  console.log(`free builds used up: sent a bot-check token: ${!!body?.turnstile}; sheet: "${lead.slice(0, 80)}"`);
+  if (!body?.turnstile) errors.push("a free build was sent without a bot-check token");
+  if (!/free builds are used up/.test(lead)) errors.push(`no key sheet after the free builds: ${lead}`);
+});
+// the result page: the stats line, the Export menu, the bracket line and the two card layouts
+await run("33-result-menus", { width: 1440, height: 1000 }, async (p) => {
+  await p.context().grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+  await toResult(p);
+  const stats = await p.locator("[data-testid=deck-stats] .deck-stat").allInnerTexts();
+  const bracket = await p.locator("[data-testid=bracket-card] summary").innerText();
+  await p.click("[data-testid=export-menu]");
+  const items = await p.locator(".menu-list [role=menuitem]").allInnerTexts();
+  await p.click("[data-testid=copy-list]");
+  const note = await p.locator(".deck-actions + .note").innerText({ timeout: 3000 }).catch(() => "");
+  console.log(`result: stats ${stats.map((x) => x.replace(/\s+/g, " ")).join(" | ")}; bracket "${bracket}"; export menu ${items.join(" | ")}; after copying: "${note}"`);
+  if (stats.length < 4) errors.push(`stats line has ${stats.length} items`);
+  if (items.length !== 3) errors.push(`export menu has ${items.length} items`);
+  if (!note) errors.push("no note after copying the list");
+  if (!/Fits Bracket 3/.test(bracket)) errors.push(`bracket line: ${bracket}`);
+  const stacked = await p.locator("[data-testid=stacks] .stack-card").count();
+  await p.click("[data-testid=view-grid]");
+  const grid = await p.locator(".role-grid .tile").count();
+  console.log(`cards: ${stacked} in stacks, ${grid} in the grid`);
+  if (!stacked || stacked !== grid) errors.push(`stacks ${stacked} vs grid ${grid}`);
+  await p.click("[data-testid=view-stacks]");
+  await p.click("[data-testid=more-menu]");
+});
+await run("7-mobile-setup", { width: 390, height: 844 }, async (p) => {
+  await loadSeeds(p);
+  await p.evaluate(() => window.scrollTo(0, 0));
+  await p.waitForTimeout(400);
+  const bar = await p.locator("[data-testid=go-bar]").isVisible().catch(() => false);
+  console.log(`phone: sticky Build bar while the button is off screen: ${bar}`);
+  if (!bar) errors.push("no sticky Build bar on the phone");
+  const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  if (overflow > 1) errors.push(`setup page scrolls sideways on a phone (${overflow}px)`);
+});
 await run("8-mobile-result", { width: 390, height: 844 }, toResult);
 
 await browser.close();

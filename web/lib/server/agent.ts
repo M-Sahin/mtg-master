@@ -337,7 +337,7 @@ export async function runAgent(req: GenerateRequest, opts: AgentOptions): Promis
     messages.push({ role: "user", content: upgradePrompt(req, upgradeList(start.deck), upgradeReport(start)) });
   } else {
     messages.push({ role: "user", content: userPrompt(req, seeds) });
-    emit({ type: "status", text: "Claude is studying the seeds with the mtg-master skill" });
+    emit({ type: "status", text: "Claude is reading the seeds" });
   }
 
   for (let turn = 0; turn < maxTurns; turn++) {

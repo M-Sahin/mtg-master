@@ -59,7 +59,7 @@ ${BRACKET.rules.map((r) => `  - ${r}`).join("\n")}
 - If the user picked a commander, use it. Otherwise choose the commander whose color identity covers all five seeds and that best rewards what they do (search with is:commander and id>= the seeds' combined identity; prefer one of the seeds if it's a good fit). If no single legal commander covers the seeds, pick the best one and explain which seed is off-color — but avoid this whenever possible.
 - Use the skill's Commander template (references/commander.md §4) and Karsten numbers for colored sources. Count roles honestly.
 - Tag every card with exactly one role: ramp, draw, removal, wipe, protection, recursion, synergy, wincon, land, utility. Give each a short "why" (max ~10 words, specific to THIS deck).
-- Name 3–6 concrete win conditions. Write the strategy in 2–4 sentences, like a strong player explaining the deck.
+- Name 3–6 concrete win conditions. Write the strategy in 2–4 sentences, like a strong player explaining the deck: plain and specific, naming the cards and how they work together. No em dashes, no slogans or punchlines, no "we". The same goes for the bracket notes.
 
 EFFICIENCY (the user is watching a live progress screen; keep total time to a few minutes)
 - Start with ONE get_cards call for the seeds (and chosen commander).
@@ -107,7 +107,7 @@ SUBMITTING
 - Put nonbasic lands in "cards" (role "land") and basic lands only in "basics" as counts.${e.manabase ? ` Choose the TOTAL number of basics; the server re-splits them across your colors by colored-source needs.` : ""}
 - Count before submitting: 1 commander + cards + basics = exactly 100. Double-check singleton (no duplicates).
 - Tag every card with exactly one role: ramp, draw, removal, wipe, protection, recursion, synergy, wincon, land, utility, with a short "why" (max ~10 words, specific to THIS deck). The server counts ramp, draw, removal, wipes and lands from the card text, not from your tags, so tag honestly.
-- Name 3–6 concrete win conditions. Write the strategy in 2–4 sentences, like a strong player explaining the deck.
+- Name 3–6 concrete win conditions. Write the strategy in 2–4 sentences, like a strong player explaining the deck: plain and specific, naming the cards and how they work together. No em dashes, no slogans or punchlines, no "we". The same goes for the bracket notes.
 - If submit_deck returns errors, fix exactly those and resubmit the whole deck. Don't restart research.${e.review ? `
 - After the deck is accepted, the server may send an independent analysis and ask for one review round: answer with revise_deck (up to 10 swaps, or none if the deck is right).` : ""}
 - Keep your visible text short: 1 sentence before each batch of tool calls saying what you're looking for. The user is watching a live progress screen; the whole build should take a few minutes.
@@ -259,7 +259,7 @@ export function upgradePrompt(req: GenerateRequest, deckList: string[], report: 
     "Then find the weakest cards (off-plan, too slow, too expensive for what they do, redundant past the template) and better replacements. Use search_cards and get_cards to check every card you add: its exact name, color identity, legality and price.",
     "Fix what the server's analysis flags first (missing ramp, draw, removal or lands; mana that arrives late; cards above the bracket), then make the deck's plan stronger.",
     "When you're done, call revise_deck once with up to 10 swaps, each with a short why the user will read. Fewer swaps are fine if the deck is already strong; an empty list keeps it as it is.",
-    "Also send strategy: two or three sentences for the user on how the deck plays and wins, with your swaps in it.",
+    "Also send strategy: two or three plain sentences for the user on how the deck plays and wins, with your swaps in it. No em dashes, no slogans.",
     "",
     "The deck:",
     ...deckList,

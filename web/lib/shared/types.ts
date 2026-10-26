@@ -145,7 +145,7 @@ export type StreamEvent =
   | { type: "deck"; deck: Deck; validation: Validation; analysis?: DeckAnalysis; review?: string; swaps?: Swap[] }
   | { type: "usage"; usage: Usage; model?: string }
   | { type: "job"; id: string }
-  | { type: "error"; message: string }
+  | { type: "error"; message: string; code?: string }
   | { type: "done"; ms: number };
 
 export const BASIC_LANDS = ["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"] as const;
