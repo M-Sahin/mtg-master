@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="supported-color-schemes" content="dark light">
+<title>Welcome to Hundredfoldz</title>
+<!-- Hundredfoldz email: Supabase Auth template "Confirm signup". Paste into Authentication → Emails → Templates. -->
+<link href="https://fonts.googleapis.com/css2?family=Alegreya:wght@700;800&amp;family=Alegreya+Sans:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; padding: 0; background: #121733; }
+  a { color: #f2c766; }
+  .btn a:hover { background: #f2c766 !important; }
+  @media (max-width: 480px) {
+    .pad { padding-left: 22px !important; padding-right: 22px !important; }
+    .h1 { font-size: 26px !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#121733;" bgcolor="#121733">
+<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;">Confirm your email to create your account and log in.&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#121733" style="background:#121733;">
+  <tr>
+    <td align="center" style="padding:32px 12px 40px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+        <!-- wordmark -->
+        <tr>
+          <td style="padding:0 6px 18px;">
+            <a href="{{ .SiteURL }}" style="text-decoration:none;color:#eef0ff;">
+              <img src="https://hundredfoldz.app/email/mark.png" width="28" height="28" alt="" style="vertical-align:middle;border:0;">
+              <span style="vertical-align:middle;font-family:'Alegreya',Georgia,'Times New Roman',serif;font-weight:800;font-size:22px;color:#eef0ff;letter-spacing:.01em;">&nbsp;Hundredfoldz</span>
+            </a>
+          </td>
+        </tr>
+        <!-- card -->
+        <tr>
+          <td bgcolor="#1b2246" style="background:#1b2246;background-image:linear-gradient(180deg,#232c5a 0%,#1b2246 38%);border:1px solid #2f3870;border-radius:22px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="center" style="padding:26px 20px 4px;">
+                  <img src="https://hundredfoldz.app/email/fan.png" width="320" height="135" alt="Five card sleeves fanned out" style="display:block;width:320px;max-width:100%;height:auto;border:0;">
+                </td>
+              </tr>
+              <tr>
+                <td class="pad" style="padding:14px 40px 0;">
+                  <h1 class="h1" style="margin:0;font-family:'Alegreya',Georgia,'Times New Roman',serif;font-weight:800;font-size:30px;line-height:1.15;color:#eef0ff;">Welcome to Hundredfoldz</h1>
+                </td>
+              </tr>
+              <tr>
+                <td class="pad" style="padding:12px 40px 0;font-family:'Alegreya Sans','Gill Sans','Trebuchet MS',Arial,sans-serif;font-size:17px;line-height:1.55;color:#c3c7ec;">
+                  One click and your account is ready. Confirm it&rsquo;s <span style="color:#eef0ff;">{{ .Email }}</span>, and every deck you build is saved to your account, on every device.
+                </td>
+              </tr>
+              <tr>
+                <td class="pad" style="padding:26px 40px 6px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="btn">
+                    <tr>
+                      <td bgcolor="#e2b04a" style="background:#e2b04a;border-radius:14px;">
+                        <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:15px 30px;font-family:'Alegreya Sans','Gill Sans','Trebuchet MS',Arial,sans-serif;font-size:17px;font-weight:700;color:#2a1e05;text-decoration:none;border-radius:14px;">Confirm and log in&nbsp;&rarr;</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td class="pad" style="padding:14px 40px 0;font-family:'Alegreya Sans','Gill Sans','Trebuchet MS',Arial,sans-serif;font-size:15px;line-height:1.5;color:#a9aed8;">
+                  Open it in the <strong style="color:#eef0ff;">same browser</strong> where you signed up. The link works once.
+                </td>
+              </tr>
+              <tr>
+                <td class="pad" style="padding:26px 40px 30px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr><td style="border-top:1px solid #2f3870;font-size:0;line-height:0;">&nbsp;</td></tr>
+                    <tr>
+                      <td style="padding-top:16px;font-family:'Alegreya Sans','Gill Sans','Trebuchet MS',Arial,sans-serif;font-size:13px;line-height:1.5;color:#7d83b0;">
+                        Button not working? Copy this link into the same browser:<br>
+                        <a href="{{ .ConfirmationURL }}" style="color:#e2b04a;word-break:break-all;">{{ .ConfirmationURL }}</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- footer -->
+        <tr>
+          <td style="padding:22px 10px 0;font-family:'Alegreya Sans','Gill Sans','Trebuchet MS',Arial,sans-serif;font-size:13px;line-height:1.55;color:#7d83b0;" align="center">
+            Didn&rsquo;t sign up? You can ignore this email: no account is made without the link.<br><br>
+            <a href="{{ .SiteURL }}" style="color:#a9aed8;text-decoration:none;font-family:'Alegreya',Georgia,serif;font-weight:700;">Hundredfoldz</a> &middot; Five cards in. A hundred out.<br>
+            <span style="color:#5d638f;">Unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards.</span>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
