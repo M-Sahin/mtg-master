@@ -11,16 +11,19 @@ export interface MenuItem {
 
 export function Menu({ label, items, className = "btn", testId }: { label: ReactNode; items: MenuItem[]; className?: string; testId?: string }) {
   const [open, setOpen] = useState(false);
-  const [align, setAlign] = useState<"left" | "right">("left");
+  const [shift, setShift] = useState(0); // px to move the list so it stays on screen
   const ref = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const id = useId();
-  // keep the list on screen: open toward the side with room (a phone's right edge is close)
+  // keep the list on screen: it opens under the button, moved left as far as it needs to fit
   useLayoutEffect(() => {
-    if (!open) return setAlign("left");
+    if (!open) return setShift(0);
     const btn = ref.current?.getBoundingClientRect();
     const list = listRef.current?.getBoundingClientRect();
-    if (btn && list && btn.left + list.width > window.innerWidth - 12) setAlign("right");
+    if (!btn || !list) return;
+    const W = document.documentElement.clientWidth;
+    const left = Math.max(12, Math.min(btn.left, W - 12 - list.width));
+    setShift(Math.round(left - btn.left));
   }, [open]);
   useEffect(() => {
     if (!open) return;
@@ -52,7 +55,7 @@ export function Menu({ label, items, className = "btn", testId }: { label: React
         </svg>
       </button>
       {open ? (
-        <div className={`menu-list ${align === "right" ? "menu-list--right" : ""}`} role="menu" id={id} onKeyDown={move} ref={listRef}>
+        <div className="menu-list" role="menu" id={id} onKeyDown={move} ref={listRef} style={shift ? { left: shift } : undefined}>
           {items.map((it) => (
             <button
               key={it.label}

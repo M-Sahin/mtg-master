@@ -533,8 +533,12 @@ await run("39-mobile-result-menus", { width: 390, height: 844 }, async (p) => {
 const offscreen = (p) =>
   p.evaluate(() => {
     const W = window.innerWidth;
+    // inside a box that scrolls sideways, or one that crops its own content (a card's art), it's on
+    // purpose; the page itself (html, body, .app, main) cropping something means it's cut off
+    const page = new Set([document.documentElement, document.body, document.querySelector(".app"), ...document.querySelectorAll("main")]);
     const scrolls = (el) => {
       for (let e = el.parentElement; e; e = e.parentElement) {
+        if (page.has(e)) continue;
         const o = getComputedStyle(e).overflowX;
         if (o === "auto" || o === "scroll" || o === "hidden" || o === "clip") return true;
       }
@@ -596,6 +600,7 @@ await run("40-phone-sweep", { width: 360, height: 740 }, async (p) => {
   await step("hand tab", async () => p.click('role=tab[name="Draw a hand"]'));
   await step("card view", async () => {
     await p.click("role=tab[name=Cards]");
+    await p.click("[data-testid=view-grid]");
     await p.locator(".role-grid .tile button").nth(3).click();
   });
   await p.keyboard.press("Escape");
