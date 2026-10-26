@@ -644,6 +644,79 @@ await run("7-mobile-setup", { width: 390, height: 844 }, async (p) => {
 });
 await run("8-mobile-result", { width: 390, height: 844 }, toResult);
 
+// README pictures: whole screens at a fixed size (not full-page, so the page's fixed background
+// covers them), published with the rest to the ci-output branch as readme-*.png
+async function shot(name, viewport, steps, scale = 1) {
+  const page = await browser.newPage({ viewport, deviceScaleFactor: scale });
+  try {
+    await page.goto(base, { waitUntil: "networkidle" });
+    await steps(page);
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: `${out}/readme-${name}.png` });
+  } catch (e) {
+    console.log(`readme picture ${name} failed: ${String(e).split("\n")[0]}`);
+  } finally {
+    await page.close();
+  }
+}
+const toTabs = (p) => p.evaluate(() => window.scrollTo(0, (document.querySelector(".tabs")?.getBoundingClientRect().top ?? 0) + window.scrollY - 16));
+await shot("setup", { width: 1440, height: 1000 }, async (p) => {
+  await loadSeeds(p);
+  await p.evaluate(() => window.scrollTo(0, 0));
+});
+await shot("building", { width: 1440, height: 1000 }, async (p) => {
+  await loadSeeds(p);
+  await p.click("[data-testid=build]");
+  await p.waitForFunction(() => document.querySelectorAll(".cell.is-in").length > 55, null, { timeout: 120000 });
+});
+await shot("result", { width: 1440, height: 1000 }, async (p) => toResult(p));
+await shot("numbers", { width: 1440, height: 1250 }, async (p) => {
+  await toResult(p);
+  await p.click("role=tab[name=Numbers]");
+  await p.waitForSelector("[data-testid=deck-boxes] .deckboxes-best", { timeout: 20000 }).catch(() => {});
+  await toTabs(p);
+});
+await shot("stacks", { width: 1440, height: 1250 }, async (p) => {
+  await toResult(p);
+  await p.click("[data-testid=view-stacks]");
+  await p.waitForTimeout(1500);
+  await toTabs(p);
+});
+await shot("card", { width: 1440, height: 1000 }, async (p) => {
+  await toResult(p);
+  await p.locator(".role-grid .tile button").nth(1).click();
+  await p.waitForSelector("[data-testid=card-offers] .offer", { timeout: 20000 }).catch(() => {});
+});
+await shot("bracket", { width: 1440, height: 1250 }, async (p) => {
+  await p.goto(`${base}/bracket`, { waitUntil: "load" });
+  await p.fill("[data-testid=bracket-list]", "Commander\n1 Meren of Clan Nel Toth\n\nDeck\n1 Sol Ring\n1 Demonic Tutor\n1 Bolas's Citadel\n1 Gravecrawler\n1 Phyrexian Altar\n1 Sakura-Tribe Elder\n10 Swamp\n10 Forest");
+  await p.waitForFunction(() => !!window.turnstile, null, { timeout: 20000 }).catch(() => {});
+  await p.click("text=Check the bracket");
+  await p.waitForSelector(".bracket-badge", { timeout: 60000 });
+  await p.evaluate(() => window.scrollTo(0, 0));
+});
+await shot("ev", { width: 1440, height: 1100 }, async (p) => {
+  await p.goto(`${base}${evFirst || "/ev/dsk-play"}`, { waitUntil: "networkidle" });
+  await p.fill("[data-testid=ev-price]", "100");
+  await p.waitForTimeout(1500);
+});
+await shot("phone-setup", { width: 390, height: 844 }, async (p) => {
+  await loadSeeds(p);
+  await p.evaluate(() => window.scrollTo(0, 0));
+}, 2);
+await shot("phone-building", { width: 390, height: 844 }, async (p) => {
+  await loadSeeds(p);
+  await p.click("[data-testid=build]");
+  await p.waitForFunction(() => document.querySelectorAll(".cell.is-in").length > 45, null, { timeout: 120000 });
+}, 2);
+await shot("phone-result", { width: 390, height: 844 }, async (p) => toResult(p), 2);
+await shot("phone-decks", { width: 390, height: 844 }, async (p) => {
+  await toResult(p);
+  await p.goto(`${base}/decks`, { waitUntil: "networkidle" });
+  await p.waitForSelector("[data-testid=deck-card]", { timeout: 8000 });
+  await p.waitForTimeout(1500);
+}, 2);
+
 await browser.close();
 console.log(errors.length ? `Browser errors:\n${errors.join("\n")}` : "No browser errors");
 if (errors.some((e) => !/net::ERR|Failed to load resource/.test(e))) process.exit(1);
